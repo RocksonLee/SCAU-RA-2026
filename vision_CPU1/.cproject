@@ -247,6 +247,7 @@
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.1898404003.2066766870" name="ARM family" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.1898404003"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpuType.1369693196.361030329" name="FPU Type" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpuType.1369693196"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.1532538732.998346528" name="Float ABI" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.1532538732"/>
+							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="com.renesas.cdt.managedbuild.llvm.core.targetPlatform" isAbstract="false" osList="all" superClass="com.renesas.cdt.managedbuild.llvm.core.targetPlatform"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.1355686428" name="SMS Assembler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.1842858115"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.366195112" name="Library Generator" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.110754779"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.compiler.525377716" name="Compiler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.compiler.670204133">
@@ -300,6 +301,7 @@
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.1898404003.516875519" name="ARM family" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.1898404003"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpuType.1369693196.1722443333" name="FPU Type" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpuType.1369693196"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.1532538732.666297734" name="Float ABI" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.1532538732"/>
+							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="com.renesas.cdt.managedbuild.llvm.core.targetPlatform" isAbstract="false" osList="all" superClass="com.renesas.cdt.managedbuild.llvm.core.targetPlatform"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.849297520" name="SMS Assembler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.1842858115"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.1609994327" name="Library Generator" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.110754779"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.compiler.835541506" name="Compiler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.compiler.670204133">
@@ -332,7 +334,7 @@
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="ra"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="ra_gen"/>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
+						<entry excluding="Uart9_thread_entry.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>
@@ -547,6 +549,7 @@
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.564290806.738933266" name="ARM family" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.564290806"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpuType.1302008848.468547664" name="FPU Type" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpuType.1302008848"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.523157295.272825161" name="Float ABI" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.523157295"/>
+							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="com.renesas.cdt.managedbuild.llvm.core.targetPlatform" isAbstract="false" osList="all" superClass="com.renesas.cdt.managedbuild.llvm.core.targetPlatform"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.264971667" name="SMS Assembler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.1163098744"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.2019118515" name="Library Generator" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.1222650659"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.compiler.948320895" name="Compiler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.compiler.1835253641">
@@ -600,6 +603,7 @@
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.564290806.68967040" name="ARM family" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.family.564290806"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpuType.1302008848.127923794" name="FPU Type" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpuType.1302008848"/>
 							<option id="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.523157295.2049050427" name="Float ABI" superClass="com.renesas.cdt.managedbuild.llvm.arm.option.cpu.fpu.523157295"/>
+							<targetPlatform archList="all" binaryParser="org.eclipse.cdt.core.ELF" id="com.renesas.cdt.managedbuild.llvm.core.targetPlatform" isAbstract="false" osList="all" superClass="com.renesas.cdt.managedbuild.llvm.core.targetPlatform"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.1116284883" name="SMS Assembler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.smsAsm.1163098744"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.2001484191" name="Library Generator" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.libgen.1222650659"/>
 							<tool id="com.renesas.cdt.managedbuild.llvm.arm.tool.compiler.831390077" name="Compiler" superClass="com.renesas.cdt.managedbuild.llvm.arm.tool.compiler.1835253641">
@@ -632,7 +636,7 @@
 					<sourceEntries>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="ra"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="ra_gen"/>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
+						<entry excluding="Uart9_thread_entry.c" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="src"/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

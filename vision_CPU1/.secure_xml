@@ -161,8 +161,6 @@
       <configSetting altId="iic0.sda0.p409" configurationId="iic0.sda0" peripheral="IIC0"/>
       <configSetting altId="p109.output.low" configurationId="p109"/>
       <configSetting altId="p109.gpio_mode.gpio_mode_out.low" configurationId="p109.gpio_mode"/>
-      <configSetting altId="p208.gpio_mode.gpio_mode_peripheral" configurationId="p208.gpio_mode"/>
-      <configSetting altId="p209.gpio_mode.gpio_mode_peripheral" configurationId="p209.gpio_mode"/>
       <configSetting altId="p409.gpio_speed.gpio_speed_m" configurationId="p409.gpio_drivecapacity"/>
       <configSetting altId="p409.gpio_mode.gpio_mode_peripheral" configurationId="p409.gpio_mode"/>
       <configSetting altId="p410.gpio_speed.gpio_speed_m" configurationId="p410.gpio_drivecapacity"/>
@@ -172,8 +170,6 @@
       <configSetting altId="p702.gpio_mode.gpio_mode_peripheral" configurationId="p702.gpio_mode"/>
       <configSetting altId="p703.gpio_mode.gpio_mode_peripheral" configurationId="p703.gpio_mode"/>
       <configSetting altId="p704.gpio_mode.gpio_mode_peripheral" configurationId="p704.gpio_mode"/>
-      <configSetting altId="sci9.rxd9.p208" configurationId="sci9.rxd9" isUsedByDriver="true" peripheral="SCI9"/>
-      <configSetting altId="sci9.txd9.p209" configurationId="sci9.txd9" isUsedByDriver="true" peripheral="SCI9"/>
     </pincfg>
     <pincfg active="false" name="solution" symbol="">
       <configSetting altId="gpt12.gtioc12a.p501" configurationId="gpt12.gtioc12a" peripheral="GPT12"/>

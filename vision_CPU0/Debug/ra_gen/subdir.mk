@@ -4,18 +4,18 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
+../ra_gen/Uart9_thread.c \
 ../ra_gen/common_data.c \
 ../ra_gen/hal_data.c \
 ../ra_gen/main.c \
-../ra_gen/new_thread0.c \
 ../ra_gen/pin_data.c \
 ../ra_gen/vector_data.c 
 
 C_DEPS += \
+./ra_gen/Uart9_thread.d \
 ./ra_gen/common_data.d \
 ./ra_gen/hal_data.d \
 ./ra_gen/main.d \
-./ra_gen/new_thread0.d \
 ./ra_gen/pin_data.d \
 ./ra_gen/vector_data.d 
 
@@ -23,10 +23,10 @@ CREF += \
 vision_CPU0.cref 
 
 OBJS += \
+./ra_gen/Uart9_thread.o \
 ./ra_gen/common_data.o \
 ./ra_gen/hal_data.o \
 ./ra_gen/main.o \
-./ra_gen/new_thread0.o \
 ./ra_gen/pin_data.o \
 ./ra_gen/vector_data.o 
 

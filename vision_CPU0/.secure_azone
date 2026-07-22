@@ -132,6 +132,8 @@
         </peripheral>
         <peripheral name="PORT2.CPU0" group="PORT">
             <slot name="P200.CPU0" secure="true"/>
+            <slot name="P208.CPU0" secure="true"/>
+            <slot name="P209.CPU0" secure="true"/>
             <slot name="P210.CPU0" secure="true"/>
             <slot name="P211.CPU0" secure="true"/>
         </peripheral>

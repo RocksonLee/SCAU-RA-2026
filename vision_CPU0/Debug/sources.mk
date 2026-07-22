@@ -57,6 +57,7 @@ S_UPPER_DEPS :=
 SUBDIRS := \
 ra/arm/CMSIS_6 \
 ra/aws/FreeRTOS/FreeRTOS/Source \
+ra/aws/FreeRTOS/FreeRTOS/Source/portable/MemMang \
 ra/board/ra8p1_ek \
 ra/fsp/src/bsp/cmsis/Device/RENESAS/Source \
 ra/fsp/src/bsp/mcu/all \
@@ -64,6 +65,7 @@ ra/fsp/src/bsp/mcu/ra8p1 \
 ra/fsp/src/r_ceu \
 ra/fsp/src/r_iic_master \
 ra/fsp/src/r_ioport \
+ra/fsp/src/r_ipc \
 ra/fsp/src/r_sci_b_uart \
 ra/fsp/src/rm_freertos_port \
 ra_gen \

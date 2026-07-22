@@ -374,8 +374,8 @@ FSP Configuration
       P201 E6 - BOOT_MODE - - Disabled - - "CGC: MD; IRQ: IRQ4" "See Manual" None - - 
       P206 B15 - ETHERNET_RXCTL - - Disabled - - "BUS: CS7; CEU: VIO_D0; CLKOUT: CLKOUT; ESWM_GMII/MII1: ET1_RX_DV; ESWM_RGMII1: RGMII1_RX_CTL; ESWM_RMII1: RMII1_CRS_DV; GPT0: GTCPPO0; GPT_OPS: GTIU; IRQ: IRQ0-DS; SDHI0: SD0DAT7; SSIE1: SSIDATA1; ULPT1: ULPTOB1; USB FS: USB_VBUSEN" "Reference E38 in manual" None - - 
       P207 A17 - PARLCD_D9G1 - - Disabled - - "ESWM_GMII/MII1: ET1_RXD5; GLCDC: LCD_DATA9; GPT3: GTCPPO3; IRQ: IRQ25" - None - - 
-      P208 C7 - JTAG_SWD_TDI - - Disabled - - "CANFD1: CRX1; CMPOUT: VCOUT; GPT1: GTIOC1B; GPT_OPS: GTOVLO; IRQ: IRQ3; JTAG/SWD: TDI; SCI9: RXD9" - None - - 
-      P209 E7 - JTAG_SWD_TDO - - Disabled - - "CANFD1: CTX1; CLKOUT: CLKOUT; GPT1: GTIOC1A; GPT_OPS: GTOVUP; IRQ: IRQ25; JTAG/SWD: TDO; SCI9: TXD9; TRACE: SWO" - None - - 
+      P208 C7 SCI9_RXD9 JTAG_SWD_TDI L None "Peripheral mode" - - "CANFD1: CRX1; CMPOUT: VCOUT; GPT1: GTIOC1B; GPT_OPS: GTOVLO; IRQ: IRQ3; JTAG/SWD: TDI; SCI9: RXD9" - I - - 
+      P209 E7 SCI9_TXD9 JTAG_SWD_TDO L None "Peripheral mode" - - "CANFD1: CTX1; CLKOUT: CLKOUT; GPT1: GTIOC1A; GPT_OPS: GTOVUP; IRQ: IRQ25; JTAG/SWD: TDO; SCI9: TXD9; TRACE: SWO" - O - - 
       P210 C6 JTAG/SWD_SWDIO JTAG_SWD_TMS L None "Peripheral mode" - - "GPT0: GTIOC0B; GPT_OPS: GTOULO; IRQ: IRQ24; JTAG/SWD: SWDIO; JTAG/SWD: TMS; SCI9: CTS_RTS9; SCI9: DE9" - IO - - 
       P211 D6 JTAG/SWD_SWCLK JTAG_SWD_TCK L None "Peripheral mode" - - "GPT0: GTIOC0A; GPT_OPS: GTOUUP; IRQ: IRQ23; JTAG/SWD: SWCLK; JTAG/SWD: TCK; SCI9: DE9; SCI9: SCK9" - IO - - 
       P212 K17 - EXTAL - - Disabled - - "AGT1: AGTEE1; CGC: EXTAL; GPT0: GTIOC0B; GPT_POEGD: GTETRGD; IRQ: IRQ3; SCI1: RXD1" "Main clock" None - - 
@@ -664,8 +664,8 @@ FSP Configuration
       P201 E6 - BOOT_MODE - - Disabled - - "CGC: MD; IRQ: IRQ4" "See Manual" None - - 
       P206 B15 - ETHERNET_RXCTL - - Disabled - - "BUS: CS7; CEU: VIO_D0; CLKOUT: CLKOUT; ESWM_GMII/MII1: ET1_RX_DV; ESWM_RGMII1: RGMII1_RX_CTL; ESWM_RMII1: RMII1_CRS_DV; GPT0: GTCPPO0; GPT_OPS: GTIU; IRQ: IRQ0-DS; SDHI0: SD0DAT7; SSIE1: SSIDATA1; ULPT1: ULPTOB1; USB FS: USB_VBUSEN" "Reference E38 in manual" None - - 
       P207 A17 - PARLCD_D9G1 - - Disabled - - "ESWM_GMII/MII1: ET1_RXD5; GLCDC: LCD_DATA9; GPT3: GTCPPO3; IRQ: IRQ25" - None - - 
-      P208 C7 - JTAG_SWD_TDI - - Disabled - - "CANFD1: CRX1; CMPOUT: VCOUT; GPT1: GTIOC1B; GPT_OPS: GTOVLO; IRQ: IRQ3; JTAG/SWD: TDI; SCI9: RXD9" - None - - 
-      P209 E7 - JTAG_SWD_TDO - - Disabled - - "CANFD1: CTX1; CLKOUT: CLKOUT; GPT1: GTIOC1A; GPT_OPS: GTOVUP; IRQ: IRQ25; JTAG/SWD: TDO; SCI9: TXD9; TRACE: SWO" - None - - 
+      P208 C7 - JTAG_SWD_TDI L None Disabled - - "CANFD1: CRX1; CMPOUT: VCOUT; GPT1: GTIOC1B; GPT_OPS: GTOVLO; IRQ: IRQ3; JTAG/SWD: TDI; SCI9: RXD9" - I - - 
+      P209 E7 - JTAG_SWD_TDO L None Disabled - - "CANFD1: CTX1; CLKOUT: CLKOUT; GPT1: GTIOC1A; GPT_OPS: GTOVUP; IRQ: IRQ25; JTAG/SWD: TDO; SCI9: TXD9; TRACE: SWO" - O - - 
       P210 C6 JTAG/SWD_SWDIO JTAG_SWD_TMS L None "Peripheral mode" - - "GPT0: GTIOC0B; GPT_OPS: GTOULO; IRQ: IRQ24; JTAG/SWD: SWDIO; JTAG/SWD: TMS; SCI9: CTS_RTS9; SCI9: DE9" - IO - - 
       P211 D6 JTAG/SWD_SWCLK JTAG_SWD_TCK L None "Peripheral mode" - - "GPT0: GTIOC0A; GPT_OPS: GTOUUP; IRQ: IRQ23; JTAG/SWD: SWCLK; JTAG/SWD: TCK; SCI9: DE9; SCI9: SCK9" - IO - - 
       P212 K17 - EXTAL - - Disabled - - "AGT1: AGTEE1; CGC: EXTAL; GPT0: GTIOC0B; GPT_POEGD: GTETRGD; IRQ: IRQ3; SCI1: RXD1" "Main clock" None - - 
@@ -936,6 +936,10 @@ FSP Configuration
     DTC Support: Disable
     Flow Control Support: Disable
     
+  Module "FreeRTOS Heap 4"
+  Module "IPC (r_ipc)"
+    Parameter Checking: Default (BSP)
+    
   FreeRTOS
     General: Custom FreeRTOSConfig.h: 
     General: Use Preemption: Enabled
@@ -970,8 +974,8 @@ FSP Configuration
     General: Message Buffer Length Type: size_t
     Memory Allocation: Clear Memory on Free: Disabled
     Memory Allocation: Support Static Allocation: Enabled
-    Memory Allocation: Support Dynamic Allocation: Disabled
-    Memory Allocation: Total Heap Size: 1024
+    Memory Allocation: Support Dynamic Allocation: Enabled
+    Memory Allocation: Total Heap Size: 32768
     Memory Allocation: Application Allocated Heap: Disabled
     Stats: Generate Run Time Stats: Disabled
     Timers: Use Timers: Enabled
@@ -1088,12 +1092,19 @@ FSP Configuration
       Interrupts: Transmit End Interrupt Priority: Priority 12
       Interrupts: Error Interrupt Priority: Priority 12
       
-  Thread "New Thread"
-    Symbol: new_thread0
-    Name: New Thread
-    Stack size (bytes): 1024
-    Priority: 1
+    Instance "g_ipc0 IPC (r_ipc)"
+      Name: g_ipc0
+      Channel: 0
+      Callback: NULL
+      Interrupt Priority: Disabled
+      
+  Thread "Uart9_thread"
+    Symbol: Uart9_thread
+    Name: Uart9_thread
+    Stack size (bytes): 4096
+    Priority: 3
     Thread Context: NULL
     Memory Allocation: Static
     Allocate Secure Context: Enable
     
+    Instance "FreeRTOS Heap 4"

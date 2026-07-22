@@ -4,19 +4,19 @@
 
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
-../src/hal_warmstart.c \
-../src/new_thread0_entry.c 
+../src/Uart9_thread_entry.c \
+../src/hal_warmstart.c 
 
 C_DEPS += \
-./src/hal_warmstart.d \
-./src/new_thread0_entry.d 
+./src/Uart9_thread_entry.d \
+./src/hal_warmstart.d 
 
 CREF += \
 vision_CPU0.cref 
 
 OBJS += \
-./src/hal_warmstart.o \
-./src/new_thread0_entry.o 
+./src/Uart9_thread_entry.o \
+./src/hal_warmstart.o 
 
 MAP += \
 vision_CPU0.map 

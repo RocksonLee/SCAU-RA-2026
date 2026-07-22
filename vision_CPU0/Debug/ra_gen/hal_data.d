@@ -53,6 +53,9 @@ ra_gen/hal_data.o: ..\ra_gen\hal_data.c ..\ra_gen\hal_data.h \
   D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\api\r_ioport_api.h \
   D:\RA_R8P_Workspace_copy\vision_CPU0\ra_cfg\fsp_cfg\r_ioport_cfg.h \
   D:\RA_R8P_Workspace_copy\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_pin_cfg.h \
+  D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\instances\r_ipc.h \
+  D:\RA_R8P_Workspace_copy\vision_CPU0\ra_cfg\fsp_cfg\r_ipc_cfg.h \
+  D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\api\r_ipc_api.h \
   D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\instances\r_sci_b_uart.h \
   D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\api\r_uart_api.h \
   D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\api\r_transfer_api.h \
@@ -117,6 +120,9 @@ D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\instances\r_ioport.h:
 D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\api\r_ioport_api.h:
 D:\RA_R8P_Workspace_copy\vision_CPU0\ra_cfg\fsp_cfg\r_ioport_cfg.h:
 D:\RA_R8P_Workspace_copy\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_pin_cfg.h:
+D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\instances\r_ipc.h:
+D:\RA_R8P_Workspace_copy\vision_CPU0\ra_cfg\fsp_cfg\r_ipc_cfg.h:
+D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\api\r_ipc_api.h:
 D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\instances\r_sci_b_uart.h:
 D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\api\r_uart_api.h:
 D:\RA_R8P_Workspace_copy\vision_CPU0\ra\fsp\inc\api\r_transfer_api.h:

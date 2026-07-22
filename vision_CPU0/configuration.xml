@@ -361,6 +361,14 @@
       <description>SCI UART</description>
       <originalPack>Renesas.RA.6.5.0.pack</originalPack>
     </component>
+    <component apiversion="" class="Heaps" condition="" group="FreeRTOS" subgroup="heap_4" variant="" vendor="AWS" version="11.1.0+fsp.6.5.0">
+      <description>FreeRTOS - Memory Management - Heap 4</description>
+      <originalPack>Amazon.FreeRTOS-Kernel.11.1.0+fsp.6.5.0.pack</originalPack>
+    </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_ipc" variant="" vendor="Renesas" version="6.5.0">
+      <description>IPC</description>
+      <originalPack>Renesas.RA.6.5.0.pack</originalPack>
+    </component>
   </raComponentSelection>
   <raElcConfiguration/>
   <raIcuConfiguration/>
@@ -449,27 +457,39 @@
       <property id="module.driver.uart.tei_ipl" value="board.icu.common.irq.priority12"/>
       <property id="module.driver.uart.eri_ipl" value="board.icu.common.irq.priority12"/>
     </module>
+    <module id="module.freertos.heap.4.2014352262"/>
+    <module id="module.driver.ipc_on_ipc.1840296284">
+      <property id="module.driver.ipc.name" value="g_ipc0"/>
+      <property id="module.driver.ipc.channel" value="enum.driver.ipc.channel.0"/>
+      <property id="module.driver.ipc.callback" value="NULL"/>
+      <property id="module.driver.ipc.ipl" value="_disabled"/>
+    </module>
     <context id="_hal.0">
       <stack module="module.driver.ioport_on_ioport.0"/>
       <stack module="module.middleware.rm_freertos_port.0"/>
       <stack module="module.driver.i2c_on_iic_master.1193799299"/>
       <stack module="module.driver.ceu_on_capture.1058570193"/>
       <stack module="module.driver.uart_on_sci_b_uart.342909597"/>
+      <stack module="module.driver.ipc_on_ipc.1840296284"/>
     </context>
     <context id="rtos.awsfreertos.thread.0">
-      <property id="_symbol" value="new_thread0"/>
-      <property id="rtos.awsfreertos.thread.name" value="New Thread"/>
-      <property id="rtos.awsfreertos.thread.stack" value="1024"/>
-      <property id="rtos.awsfreertos.thread.priority" value="1"/>
+      <property id="_symbol" value="Uart9_thread"/>
+      <property id="rtos.awsfreertos.thread.name" value="Uart9_thread"/>
+      <property id="rtos.awsfreertos.thread.stack" value="4096"/>
+      <property id="rtos.awsfreertos.thread.priority" value="3"/>
       <property id="rtos.awsfreertos.thread.context" value="NULL"/>
       <property id="rtos.awsfreertos.thread.allocation" value="rtos.awsfreertos.thread.allocation.static"/>
       <property id="rtos.awsfreertos.thread.secure_context" value="rtos.awsfreertos.thread.secure_context.enable"/>
+      <stack module="module.freertos.heap.4.2014352262"/>
     </context>
     <config id="config.driver.sci_b_uart">
       <property id="config.driver.sci_b_uart.param_checking_enable" value="config.driver.sci_b_uart.param_checking_enable.bsp"/>
       <property id="config.driver.sci_b_uart.fifo_support" value="config.driver.sci_b_uart.fifo_support.disabled"/>
       <property id="config.driver.sci_b_uart.dtc_support" value="config.driver.sci_b_uart.dtc_support.disabled"/>
       <property id="config.driver.sci_b_uart.flow_control" value="config.driver.sci_b_uart.flow_control.disabled"/>
+    </config>
+    <config id="config.driver.ipc">
+      <property id="config.driver.ipc.param_checking_enable" value="config.driver.ipc.param_checking_enable.bsp"/>
     </config>
     <config id="config.driver.iic_master">
       <property id="config.driver.iic_master.param_checking_enable" value="config.driver.iic_master.param_checking_enable.bsp"/>
@@ -514,8 +534,8 @@
       <property id="config.awsfreertos.thread.configmessage_buffer_length_type" value="size_t"/>
       <property id="config.awsfreertos.thread.configheap_clear_memory_on_free" value="config.awsfreertos.thread.configheap_clear_memory_on_free.disabled"/>
       <property id="config.awsfreertos.thread.configsupport_static_allocation" value="config.awsfreertos.thread.configsupport_static_allocation.enabled"/>
-      <property id="config.awsfreertos.thread.configsupport_dynamic_allocation" value="config.awsfreertos.thread.configsupport_dynamic_allocation.disabled"/>
-      <property id="config.awsfreertos.thread.configtotal_heap_size" value="1024"/>
+      <property id="config.awsfreertos.thread.configsupport_dynamic_allocation" value="config.awsfreertos.thread.configsupport_dynamic_allocation.enabled"/>
+      <property id="config.awsfreertos.thread.configtotal_heap_size" value="32768"/>
       <property id="config.awsfreertos.thread.configapplication_allocated_heap" value="config.awsfreertos.thread.configapplication_allocated_heap.disabled"/>
       <property id="config.awsfreertos.thread.configgenerate_run_time_stats" value="config.awsfreertos.thread.configgenerate_run_time_stats.disabled"/>
       <property id="config.awsfreertos.thread.configuse_timers" value="config.awsfreertos.thread.configuse_timers.enabled"/>
@@ -850,6 +870,10 @@
       <configSetting altId="p109.gpio_speed.gpio_speed_m" configurationId="p109.gpio_drivecapacity" secureAltId="p109.output.high"/>
       <configSetting altId="p109.gpio_mode.gpio_mode_out.low" configurationId="p109.gpio_mode" secureAltId="p109.output.high"/>
       <configSetting altId="p109.gpio_otype.gpio_otype_n_ch_od" configurationId="p109.gpio_otype" secureAltId="p109.output.high"/>
+      <configSetting altId="p208.sci9.rxd9" configurationId="p208"/>
+      <configSetting altId="p208.gpio_mode.gpio_mode_peripheral" configurationId="p208.gpio_mode"/>
+      <configSetting altId="p209.sci9.txd9" configurationId="p209"/>
+      <configSetting altId="p209.gpio_mode.gpio_mode_peripheral" configurationId="p209.gpio_mode"/>
       <configSetting altId="p409.iic0.sda0" configurationId="p409"/>
       <configSetting altId="p409.gpio_speed.gpio_speed_m" configurationId="p409.gpio_drivecapacity"/>
       <configSetting altId="p409.gpio_mode.gpio_mode_peripheral" configurationId="p409.gpio_mode"/>
@@ -865,6 +889,9 @@
       <configSetting altId="p703.ceu.vio_d7" configurationId="p703"/>
       <configSetting altId="p703.gpio_mode.gpio_mode_peripheral" configurationId="p703.gpio_mode"/>
       <configSetting altId="pdm2.mode.custom.free" configurationId="pdm2.mode"/>
+      <configSetting altId="sci9.mode.asynchronousuart.free" configurationId="sci9.mode"/>
+      <configSetting altId="sci9.rxd9.p208" configurationId="sci9.rxd9"/>
+      <configSetting altId="sci9.txd9.p209" configurationId="sci9.txd9"/>
       <configSetting altId="sdram.mode.custom.free" configurationId="sdram.mode"/>
       <configSetting altId="usbfs.mode.custom.free" configurationId="usbfs.mode"/>
       <configSetting altId="usbhs.mode.custom.free" configurationId="usbhs.mode"/>

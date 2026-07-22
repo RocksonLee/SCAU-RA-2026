@@ -5,12 +5,10 @@
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
 ../src/Can_Thread_entry.c \
-../src/Uart9_thread_entry.c \
 ../src/hal_warmstart.c 
 
 C_DEPS += \
 ./src/Can_Thread_entry.d \
-./src/Uart9_thread_entry.d \
 ./src/hal_warmstart.d 
 
 CREF += \
@@ -18,7 +16,6 @@ vision_CPU1.cref
 
 OBJS += \
 ./src/Can_Thread_entry.o \
-./src/Uart9_thread_entry.o \
 ./src/hal_warmstart.o 
 
 MAP += \

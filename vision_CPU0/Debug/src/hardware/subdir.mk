@@ -5,18 +5,21 @@
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
 ../src/hardware/camera_ov5640.c \
-../src/hardware/camera_stream.c 
+../src/hardware/camera_stream.c \
+../src/hardware/drv_uart.c 
 
 C_DEPS += \
 ./src/hardware/camera_ov5640.d \
-./src/hardware/camera_stream.d 
+./src/hardware/camera_stream.d \
+./src/hardware/drv_uart.d 
 
 CREF += \
 vision_CPU0.cref 
 
 OBJS += \
 ./src/hardware/camera_ov5640.o \
-./src/hardware/camera_stream.o 
+./src/hardware/camera_stream.o \
+./src/hardware/drv_uart.o 
 
 MAP += \
 vision_CPU0.map 

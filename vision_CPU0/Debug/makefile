@@ -15,6 +15,7 @@ RM := rm -rf
 -include ra_gen/subdir.mk
 -include ra/fsp/src/rm_freertos_port/subdir.mk
 -include ra/fsp/src/r_sci_b_uart/subdir.mk
+-include ra/fsp/src/r_ipc/subdir.mk
 -include ra/fsp/src/r_ioport/subdir.mk
 -include ra/fsp/src/r_iic_master/subdir.mk
 -include ra/fsp/src/r_ceu/subdir.mk
@@ -22,6 +23,7 @@ RM := rm -rf
 -include ra/fsp/src/bsp/mcu/all/subdir.mk
 -include ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/subdir.mk
 -include ra/board/ra8p1_ek/subdir.mk
+-include ra/aws/FreeRTOS/FreeRTOS/Source/portable/MemMang/subdir.mk
 -include ra/aws/FreeRTOS/FreeRTOS/Source/subdir.mk
 -include ra/arm/CMSIS_6/subdir.mk
 -include subdir.mk

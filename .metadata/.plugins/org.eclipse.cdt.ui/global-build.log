@@ -19,3 +19,143 @@ make -r --output-sync -j20 all
 llvm-size --format=berkeley "vision_CPU1.elf"
    text	   data	    bss	    dec	    hex	filename
   33370	    112	  44940	  78422	  13256	vision_CPU1.elf
+Extracting support files...
+21:36:33 **** 项目vision_CPU0配置Debug的构建 ****
+make -r --output-sync -j20 all 
+Building file: ../ra_gen/Uart9_thread.c
+Building file: ../ra_gen/main.c
+Building file: ../src/Uart9_thread_entry.c
+Building file: ../src/hardware/drv_uart.c
+Building file: ../src/hardware/camera_ov5640.c
+Building file: ../src/hal_warmstart.c
+Building file: ../src/hardware/camera_stream.c
+Building file: ../ra_gen/hal_data.c
+Building file: ../ra/fsp/src/r_ipc/r_ipc.c
+Building file: ../ra_gen/pin_data.c
+Building file: ../ra/fsp/src/rm_freertos_port/port.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/list.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/portable/MemMang/heap_4.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/timers.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/event_groups.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/stream_buffer.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/queue.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/tasks.c
+Building target: vision_CPU0.elf
+llvm-size --format=berkeley "vision_CPU0.elf"
+   text	   data	    bss	    dec	    hex	filename
+  26434	      4	  55632	  82070	  14096	vision_CPU0.elf
+llvm-objcopy "vision_CPU0.elf" -O srec  "vision_CPU0.srec"
+Extracting support files...
+21:36:39 **** 项目vision_CPU1配置Debug的仅清理的构建 ****
+make -r --output-sync -j20 clean 
+rm -rf  vision_CPU1.elf
+rm -rf vision_CPU1.siz ./src/hardware/canfd0.d ./src/hardware/drv_uart.d ./src/hardware/jiesuan.d ./src/Can_Thread_entry.d ./src/Uart9_thread_entry.d ./src/hal_warmstart.d ./ra_gen/Can_Thread.d ./ra_gen/Uart9_thread.d ./ra_gen/common_data.d ./ra_gen/hal_data.d ./ra_gen/main.d ./ra_gen/pin_data.d ./ra_gen/vector_data.d ./ra/fsp/src/rm_freertos_port/port.d ./ra/fsp/src/r_sci_b_uart/r_sci_b_uart.d ./ra/fsp/src/r_ioport/r_ioport.d ./ra/fsp/src/r_canfd/r_canfd.d ./ra/fsp/src/bsp/mcu/ra8p1/bsp_linker.d ./ra/fsp/src/bsp/mcu/all/bsp_clocks.d ./ra/fsp/src/bsp/mcu/all/bsp_common.d ./ra/fsp/src/bsp/mcu/all/bsp_delay.d ./ra/fsp/src/bsp/mcu/all/bsp_group_irq.d ./ra/fsp/src/bsp/mcu/all/bsp_guard.d ./ra/fsp/src/bsp/mcu/all/bsp_io.d ./ra/fsp/src/bsp/mcu/all/bsp_ipc.d ./ra/fsp/src/bsp/mcu/all/bsp_irq.d ./ra/fsp/src/bsp/mcu/all/bsp_macl.d ./ra/fsp/src/bsp/mcu/all/bsp_ospi_b.d ./ra/fsp/src/bsp/mcu/all/bsp_register_protection.d ./ra/fsp/src/bsp/mcu/all/bsp_sbrk.d ./ra/fsp/src/bsp/mcu/all/bsp_sdram.d ./ra/fsp/src/bsp/mcu/all/bsp_security.d ./ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/startup.d ./ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/system.d ./ra/board/ra8p1_ek/board_init.d ./ra/board/ra8p1_ek/board_leds.d ./ra/aws/FreeRTOS/FreeRTOS/Source/portable/MemMang/heap_4.d ./ra/aws/FreeRTOS/FreeRTOS/Source/event_groups.d ./ra/aws/FreeRTOS/FreeRTOS/Source/list.d ./ra/aws/FreeRTOS/FreeRTOS/Source/queue.d ./ra/aws/FreeRTOS/FreeRTOS/Source/stream_buffer.d ./ra/aws/FreeRTOS/FreeRTOS/Source/tasks.d ./ra/aws/FreeRTOS/FreeRTOS/Source/timers.d vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.cref vision_CPU1.srec ./src/hardware/canfd0.o ./src/hardware/drv_uart.o ./src/hardware/jiesuan.o ./src/Can_Thread_entry.o ./src/Uart9_thread_entry.o ./src/hal_warmstart.o ./ra_gen/Can_Thread.o ./ra_gen/Uart9_thread.o ./ra_gen/common_data.o ./ra_gen/hal_data.o ./ra_gen/main.o ./ra_gen/pin_data.o ./ra_gen/vector_data.o ./ra/fsp/src/rm_freertos_port/port.o ./ra/fsp/src/r_sci_b_uart/r_sci_b_uart.o ./ra/fsp/src/r_ioport/r_ioport.o ./ra/fsp/src/r_canfd/r_canfd.o ./ra/fsp/src/bsp/mcu/ra8p1/bsp_linker.o ./ra/fsp/src/bsp/mcu/all/bsp_clocks.o ./ra/fsp/src/bsp/mcu/all/bsp_common.o ./ra/fsp/src/bsp/mcu/all/bsp_delay.o ./ra/fsp/src/bsp/mcu/all/bsp_group_irq.o ./ra/fsp/src/bsp/mcu/all/bsp_guard.o ./ra/fsp/src/bsp/mcu/all/bsp_io.o ./ra/fsp/src/bsp/mcu/all/bsp_ipc.o ./ra/fsp/src/bsp/mcu/all/bsp_irq.o ./ra/fsp/src/bsp/mcu/all/bsp_macl.o ./ra/fsp/src/bsp/mcu/all/bsp_ospi_b.o ./ra/fsp/src/bsp/mcu/all/bsp_register_protection.o ./ra/fsp/src/bsp/mcu/all/bsp_sbrk.o ./ra/fsp/src/bsp/mcu/all/bsp_sdram.o ./ra/fsp/src/bsp/mcu/all/bsp_security.o ./ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/startup.o ./ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/system.o ./ra/board/ra8p1_ek/board_init.o ./ra/board/ra8p1_ek/board_leds.o ./ra/aws/FreeRTOS/FreeRTOS/Source/portable/MemMang/heap_4.o ./ra/aws/FreeRTOS/FreeRTOS/Source/event_groups.o ./ra/aws/FreeRTOS/FreeRTOS/Source/list.o ./ra/aws/FreeRTOS/FreeRTOS/Source/queue.o ./ra/aws/FreeRTOS/FreeRTOS/Source/stream_buffer.o ./ra/aws/FreeRTOS/FreeRTOS/Source/tasks.o ./ra/aws/FreeRTOS/FreeRTOS/Source/timers.o vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map vision_CPU1.map
+ 
+Extracting support files...
+21:36:40 **** 项目vision_CPU1配置Debug的构建 ****
+make -r --output-sync -j20 all 
+../src/hardware/jiesuan.c:5:9: warning: 'M_PI' macro redefined [-Wmacro-redefined]
+Building file: ../src/hardware/jiesuan.c
+    5 | #define M_PI 3.14159
+      |         ^
+E:\RA\e2studio_v2026-04.2_fsp_v6.5.0\toolchains\llvm_arm\ATfE-21.1.1-Windows-x86_64\bin\..\lib\clang-runtimes\arm-none-eabi/include\math.h:708:9: note: previous definition is here
+  708 | #define M_PI            3.14159265358979323846
+      |         ^
+1 warning generated.
+Building file: ../ra_gen/common_data.c
+Building file: ../src/hal_warmstart.c
+Building file: ../ra_gen/vector_data.c
+Building file: ../ra_gen/Can_Thread.c
+Building file: ../src/hardware/canfd0.c
+Building file: ../ra_gen/pin_data.c
+Building file: ../src/Can_Thread_entry.c
+Building file: ../ra_gen/hal_data.c
+Building file: ../ra_gen/main.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_common.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_io.c
+Building file: ../ra/fsp/src/bsp/mcu/ra8p1/bsp_linker.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_delay.c
+Building file: ../ra/fsp/src/r_ipc/r_ipc.c
+Building file: ../ra/fsp/src/rm_freertos_port/port.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_guard.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_group_irq.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_clocks.c
+Building file: ../ra/fsp/src/r_ioport/r_ioport.c
+Building file: ../ra/fsp/src/r_canfd/r_canfd.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_ipc.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_irq.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_macl.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_ospi_b.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_register_protection.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_sdram.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_sbrk.c
+Building file: ../ra/fsp/src/bsp/mcu/all/bsp_security.c
+Building file: ../ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/startup.c
+Building file: ../ra/board/ra8p1_ek/board_init.c
+Building file: ../ra/board/ra8p1_ek/board_leds.c
+Building file: ../ra/fsp/src/bsp/cmsis/Device/RENESAS/Source/system.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/event_groups.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/list.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/portable/MemMang/heap_4.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/timers.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/queue.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/stream_buffer.c
+Building file: ../ra/aws/FreeRTOS/FreeRTOS/Source/tasks.c
+Building target: vision_CPU1.elf
+llvm-size --format=berkeley "vision_CPU1.elf"
+   text	   data	    bss	    dec	    hex	filename
+  25150	     96	  40640	  65886	  1015e	vision_CPU1.elf
+llvm-objcopy "vision_CPU1.elf" -O srec  "vision_CPU1.srec"
+Extracting support files...
+21:36:50 **** 项目vision_CPU0配置Debug的增量构建 ****
+make -r --output-sync -j20 all 
+llvm-size --format=berkeley "vision_CPU0.elf"
+   text	   data	    bss	    dec	    hex	filename
+  26434	      4	  55632	  82070	  14096	vision_CPU0.elf
+Extracting support files...
+21:36:51 **** 项目vision_CPU1配置Debug的增量构建 ****
+make -r --output-sync -j20 all 
+llvm-size --format=berkeley "vision_CPU1.elf"
+   text	   data	    bss	    dec	    hex	filename
+  25150	     96	  40640	  65886	  1015e	vision_CPU1.elf
+Extracting support files...
+21:37:03 **** 项目vision_CPU0配置Debug的增量构建 ****
+make -r --output-sync -j20 all 
+llvm-size --format=berkeley "vision_CPU0.elf"
+   text	   data	    bss	    dec	    hex	filename
+  26434	      4	  55632	  82070	  14096	vision_CPU0.elf
+Extracting support files...
+21:37:03 **** 项目vision_CPU1配置Debug的增量构建 ****
+make -r --output-sync -j20 all 
+llvm-size --format=berkeley "vision_CPU1.elf"
+   text	   data	    bss	    dec	    hex	filename
+  25150	     96	  40640	  65886	  1015e	vision_CPU1.elf
+Extracting support files...
+21:38:33 **** 项目vision_CPU0配置Debug的增量构建 ****
+make -r --output-sync -j20 all 
+llvm-size --format=berkeley "vision_CPU0.elf"
+   text	   data	    bss	    dec	    hex	filename
+  26434	      4	  55632	  82070	  14096	vision_CPU0.elf
+Extracting support files...
+21:38:34 **** 项目vision_CPU1配置Debug的增量构建 ****
+make -r --output-sync -j20 all 
+llvm-size --format=berkeley "vision_CPU1.elf"
+   text	   data	    bss	    dec	    hex	filename
+  25150	     96	  40640	  65886	  1015e	vision_CPU1.elf
+Extracting support files...
+21:43:19 **** 项目vision_CPU0配置Debug的增量构建 ****
+make -r --output-sync -j20 all 
+Building file: ../src/Uart9_thread_entry.c
+Building target: vision_CPU0.elf
+llvm-size --format=berkeley "vision_CPU0.elf"
+   text	   data	    bss	    dec	    hex	filename
+  26530	     20	  55632	  82182	  14106	vision_CPU0.elf
+llvm-objcopy "vision_CPU0.elf" -O srec  "vision_CPU0.srec"
+Extracting support files...
+21:43:25 **** 项目vision_CPU1配置Debug的增量构建 ****
+make -r --output-sync -j20 all 
+Building target: vision_CPU1.elf
+llvm-size --format=berkeley "vision_CPU1.elf"
+   text	   data	    bss	    dec	    hex	filename
+  25150	     96	  40640	  65886	  1015e	vision_CPU1.elf
+llvm-objcopy "vision_CPU1.elf" -O srec  "vision_CPU1.srec"

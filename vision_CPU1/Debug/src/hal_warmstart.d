@@ -54,10 +54,9 @@ src/hal_warmstart.o: ..\src\hal_warmstart.c \
   D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_ioport_api.h \
   D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\r_ioport_cfg.h \
   D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\bsp\bsp_pin_cfg.h \
-  D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\instances\r_sci_b_uart.h \
-  D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_uart_api.h \
-  D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_transfer_api.h \
-  D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\r_sci_b_uart_cfg.h \
+  D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\instances\r_ipc.h \
+  D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\r_ipc_cfg.h \
+  D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_ipc_api.h \
   D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\instances\r_canfd.h \
   D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\r_canfd_cfg.h \
   D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_can_api.h
@@ -116,10 +115,9 @@ D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\instances\r_ioport.h:
 D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_ioport_api.h:
 D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\r_ioport_cfg.h:
 D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\bsp\bsp_pin_cfg.h:
-D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\instances\r_sci_b_uart.h:
-D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_uart_api.h:
-D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_transfer_api.h:
-D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\r_sci_b_uart_cfg.h:
+D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\instances\r_ipc.h:
+D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\r_ipc_cfg.h:
+D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_ipc_api.h:
 D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\instances\r_canfd.h:
 D:\RA_R8P_Workspace_copy\vision_CPU1\ra_cfg\fsp_cfg\r_canfd_cfg.h:
 D:\RA_R8P_Workspace_copy\vision_CPU1\ra\fsp\inc\api\r_can_api.h:
