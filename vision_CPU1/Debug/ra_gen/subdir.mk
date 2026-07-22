@@ -5,6 +5,7 @@
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
 ../ra_gen/Can_Thread.c \
+../ra_gen/Uart9_thread.c \
 ../ra_gen/common_data.c \
 ../ra_gen/hal_data.c \
 ../ra_gen/main.c \
@@ -13,6 +14,7 @@ C_SRCS += \
 
 C_DEPS += \
 ./ra_gen/Can_Thread.d \
+./ra_gen/Uart9_thread.d \
 ./ra_gen/common_data.d \
 ./ra_gen/hal_data.d \
 ./ra_gen/main.d \
@@ -24,6 +26,7 @@ vision_CPU1.cref
 
 OBJS += \
 ./ra_gen/Can_Thread.o \
+./ra_gen/Uart9_thread.o \
 ./ra_gen/common_data.o \
 ./ra_gen/hal_data.o \
 ./ra_gen/main.o \

@@ -5,10 +5,12 @@
 # Add inputs and outputs from these tool invocations to the build variables 
 C_SRCS += \
 ../src/hardware/canfd0.c \
+../src/hardware/drv_uart.c \
 ../src/hardware/jiesuan.c 
 
 C_DEPS += \
 ./src/hardware/canfd0.d \
+./src/hardware/drv_uart.d \
 ./src/hardware/jiesuan.d 
 
 CREF += \
@@ -16,6 +18,7 @@ vision_CPU1.cref
 
 OBJS += \
 ./src/hardware/canfd0.o \
+./src/hardware/drv_uart.o \
 ./src/hardware/jiesuan.o 
 
 MAP += \

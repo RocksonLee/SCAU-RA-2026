@@ -14,6 +14,7 @@ RM := rm -rf
 -include src/subdir.mk
 -include ra_gen/subdir.mk
 -include ra/fsp/src/rm_freertos_port/subdir.mk
+-include ra/fsp/src/r_sci_b_uart/subdir.mk
 -include ra/fsp/src/r_ioport/subdir.mk
 -include ra/fsp/src/r_canfd/subdir.mk
 -include ra/fsp/src/bsp/mcu/ra8p1/subdir.mk

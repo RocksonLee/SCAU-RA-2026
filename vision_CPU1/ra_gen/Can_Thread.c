@@ -32,7 +32,7 @@ void Can_Thread_create(void) {
                     #endif
 			Can_Thread_func, (const char*) "Can_Thread", 4096 / 4, // In words, not bytes
 			(void*) &Can_Thread_parameters, //pvParameters
-			1,
+			4,
 #if 1
 			(StackType_t*) &Can_Thread_stack, (StaticTask_t*) &Can_Thread_memory
 #else
