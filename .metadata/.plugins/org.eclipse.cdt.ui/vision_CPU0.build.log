@@ -1,0 +1,8 @@
+15:16:57 **** 项目vision_CPU0配置Debug的增量构建 ****
+make -r --output-sync -j20 all 
+llvm-size --format=berkeley "vision_CPU0.elf"
+   text	   data	    bss	    dec	    hex	filename
+  16942	      0	  19604	  36546	   8ec2	vision_CPU0.elf
+
+15:16:57 Build Finished. 0 errors, 0 warnings. (took 137ms)
+

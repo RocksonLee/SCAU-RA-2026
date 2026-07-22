@@ -1,0 +1,45 @@
+{
+   "action": {
+      "default_icon": "assets/icon19_normal.png",
+      "default_popup": "popup.html",
+      "default_title": "迅雷Chrome支持"
+   },
+   "background": {
+      "service_worker": "service-worker-loader.js",
+      "type": "module"
+   },
+   "content_scripts": [ {
+      "all_frames": true,
+      "css": [ "assets/content.css", "assets/content-9bfc665e.css" ],
+      "js": [ "assets/content.js-loader-f2335cd0.js" ],
+      "matches": [ "http://*/*", "https://*/*", "ftp://*/*" ],
+      "run_at": "document_start"
+   } ],
+   "default_locale": "zh_CN",
+   "description": "__MSG_description__",
+   "differential_fingerprint": "1.6c718d76c27849a7789777ae8e9d7ac81170f6d4ffeff8b6736d9c6db37600d7",
+   "host_permissions": [ "\u003Call_urls>", "http://*/*", "https://*/*" ],
+   "icons": {
+      "128": "assets/install_logo.png",
+      "16": "assets/menu_logo.png",
+      "48": "assets/extension_logo.png"
+   },
+   "incognito": "split",
+   "key": "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDEa5DG04lhgzzm3gRSXPPOZOv6ZXnzQrBv+rjUE/dL5br9Duh1kbwGQJCO4QMDvD1usf6FoXDsuvZwYzH6lg1pLI7m/wmQC3NQURHQ7J5zAy7VY0F7qSVqclcpRKY2k00vcqxok6lota3Z1QxUVUwWc9VUfr4gRUeQa4KlEsXzGwIDAQAB",
+   "manifest_version": 3,
+   "name": "迅雷下载支持",
+   "optional_permissions": [  ],
+   "options_page": "options.html",
+   "permissions": [ "contextMenus", "cookies", "tabs", "webRequest", "downloads", "nativeMessaging", "storage", "scripting", "notifications" ],
+   "update_url": "https://clients2.google.com/service/update2/crx",
+   "version": "4.0.2",
+   "web_accessible_resources": [ {
+      "matches": [ "\u003Call_urls>" ],
+      "resources": [ "assets/*" ],
+      "use_dynamic_url": false
+   }, {
+      "matches": [ "ftp://*/*", "http://*/*", "https://*/*" ],
+      "resources": [ "assets/runtime-dom.esm-bundler-a526bd15.js", "assets/index-939ebd95.js", "assets/message-service-aa573b0d.js", "assets/pino-006bffb0.js", "assets/util-3d43c686.js", "assets/config-e4533f77.js", "assets/get-dom-39ecddd5.js", "assets/takeover-gate-diag-592cad41.js", "assets/stat-utils-1aee6f65.js", "assets/content.js-acf3cf84.js" ],
+      "use_dynamic_url": false
+   } ]
+}
