@@ -1,3 +1,10 @@
+collapse/module.arm.cmsis.dsp.2022858128=false
+collapse/module.arm.cmsis.nn.916683916=false
+collapse/module.arm.ethosu.profiler.718917959=false
 collapse/module.driver.i2c_on_iic_master.1193799299=false
 collapse/module.driver.uart_on_sci_b_uart.342909597=false
+collapse/module.google.tflm.core.lib.1745382523=false
+collapse/module.google.tflm.kernel.cmsis.nn.223472841=false
+collapse/module.google.tflm.kernel.ethosu.621752557=false
+collapse/module.middleware.rm_ethosu.1538195641=false
 eclipse.preferences.version=1

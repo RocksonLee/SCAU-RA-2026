@@ -7,8 +7,10 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "app_detection.h"
 #include "camera_ov5640.h"
 #include "hal_data.h"
+#include "ipc_detection_tx.h"
 
 #define CAMERA_UART_CHUNK_BYTES (1024U)
 #define CAMERA_AE_SETTLE_MS     (1500U)
@@ -20,6 +22,7 @@ static uint8_t g_camera_frame[CAMERA_OV5640_FRAME_BYTES] BSP_PLACE_IN_SECTION(".
 static volatile bool g_uart_tx_busy;
 static uart_callback_args_t g_uart_callback_memory;
 static char g_uart_line[CAMERA_UART_LINE_BYTES];
+static app_detection_result_t g_detection_results[APP_DETECTION_MAX_RESULTS];
 
 static void camera_uart_callback(uart_callback_args_t * p_args)
 {
@@ -195,6 +198,7 @@ static bool camera_stream_send_frame(void)
 void camera_stream_task(void)
 {
     fsp_err_t err;
+    bool detection_sent = false;
 
     err = g_uart9.p_api->open(g_uart9.p_ctrl, g_uart9.p_cfg);
     if ((FSP_SUCCESS == err) || (FSP_ERR_ALREADY_OPEN == err))
@@ -213,6 +217,16 @@ void camera_stream_task(void)
         }
     }
 
+    if (!app_detection_init())
+    {
+        camera_uart_send_text("DET_ERR init\r\n");
+
+        while (1)
+        {
+            vTaskDelay(pdMS_TO_TICKS(1000U));
+        }
+    }
+
     camera_uart_send_ov5640_diagnostics();
 
     vTaskDelay(pdMS_TO_TICKS(CAMERA_AE_SETTLE_MS));
@@ -223,14 +237,53 @@ void camera_stream_task(void)
         vTaskDelay(pdMS_TO_TICKS(100U));
     }
 
-    if (CAMERA_OV5640_OK == camera_ov5640_capture_frame(g_camera_frame))
+    while (!detection_sent)
     {
-        camera_uart_send_ceu_events_line();
-        uint32_t const crc_before = camera_crc32(g_camera_frame, CAMERA_OV5640_FRAME_BYTES);
-        camera_uart_send_crc_line("FRAME_CRC_BEFORE", crc_before);
-        (void) camera_stream_send_frame();
-        uint32_t const crc_after = camera_crc32(g_camera_frame, CAMERA_OV5640_FRAME_BYTES);
-        camera_uart_send_crc_line("\r\nFRAME_CRC_AFTER", crc_after);
+        if (CAMERA_OV5640_OK != camera_ov5640_capture_frame(g_camera_frame))
+        {
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
+
+        uint32_t result_count = 0U;
+        bool const detection_ok = app_detection_run_frame(g_camera_frame,
+                                                           g_detection_results,
+                                                           APP_DETECTION_MAX_RESULTS,
+                                                           &result_count,
+                                                           camera_uart_send_text);
+
+        if (!detection_ok)
+        {
+            camera_uart_send_text("DET_ERR run\r\n");
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
+
+        if (0U == result_count)
+        {
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
+
+        if (ipc_detection_send_results(g_detection_results, result_count))
+        {
+            detection_sent = true;
+
+            int const count = snprintf(g_uart_line,
+                                       sizeof(g_uart_line),
+                                       "DET_IPC_SENT count=%lu\r\n",
+                                       (unsigned long) result_count);
+
+            if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
+            {
+                camera_uart_send_text(g_uart_line);
+            }
+        }
+        else
+        {
+            camera_uart_send_text("DET_ERR ipc_send\r\n");
+            vTaskDelay(pdMS_TO_TICKS(10U));
+        }
     }
 
     while (1)

@@ -55,6 +55,37 @@ S_UPPER_DEPS :=
 
 # Every subdirectory with source files must be described here
 SUBDIRS := \
+ra/arm/CMSIS-DSP/Source/BasicMathFunctions \
+ra/arm/CMSIS-DSP/Source/BayesFunctions \
+ra/arm/CMSIS-DSP/Source/CommonTables \
+ra/arm/CMSIS-DSP/Source/ComplexMathFunctions \
+ra/arm/CMSIS-DSP/Source/ControllerFunctions \
+ra/arm/CMSIS-DSP/Source/DistanceFunctions \
+ra/arm/CMSIS-DSP/Source/FastMathFunctions \
+ra/arm/CMSIS-DSP/Source/FilteringFunctions \
+ra/arm/CMSIS-DSP/Source/InterpolationFunctions \
+ra/arm/CMSIS-DSP/Source \
+ra/arm/CMSIS-DSP/Source/MatrixFunctions \
+ra/arm/CMSIS-DSP/Source/QuaternionMathFunctions \
+ra/arm/CMSIS-DSP/Source/SVMFunctions \
+ra/arm/CMSIS-DSP/Source/StatisticsFunctions \
+ra/arm/CMSIS-DSP/Source/SupportFunctions \
+ra/arm/CMSIS-DSP/Source/TransformFunctions \
+ra/arm/CMSIS-DSP/Source/WindowFunctions \
+ra/arm/CMSIS-NN/Source/ActivationFunctions \
+ra/arm/CMSIS-NN/Source/BasicMathFunctions \
+ra/arm/CMSIS-NN/Source/ConcatenationFunctions \
+ra/arm/CMSIS-NN/Source/ConvolutionFunctions \
+ra/arm/CMSIS-NN/Source/FullyConnectedFunctions \
+ra/arm/CMSIS-NN/Source/LSTMFunctions \
+ra/arm/CMSIS-NN/Source/NNSupportFunctions \
+ra/arm/CMSIS-NN/Source/PadFunctions \
+ra/arm/CMSIS-NN/Source/PoolingFunctions \
+ra/arm/CMSIS-NN/Source/ReshapeFunctions \
+ra/arm/CMSIS-NN/Source/SVDFunctions \
+ra/arm/CMSIS-NN/Source/SoftmaxFunctions \
+ra/arm/CMSIS-NN/Source/TransposeFunctions \
+ra/arm/CMSIS-View/EventRecorder/Source \
 ra/arm/CMSIS_6 \
 ra/aws/FreeRTOS/FreeRTOS/Source \
 ra/aws/FreeRTOS/FreeRTOS/Source/portable/MemMang \
@@ -67,8 +98,23 @@ ra/fsp/src/r_iic_master \
 ra/fsp/src/r_ioport \
 ra/fsp/src/r_ipc \
 ra/fsp/src/r_sci_b_uart \
+ra/fsp/src/rm_ethosu \
 ra/fsp/src/rm_freertos_port \
+ra/npu/ethos-u-core-driver/src \
+ra/npu/tflite-micro/tensorflow/compiler/mlir/lite/core/api \
+ra/npu/tflite-micro/tensorflow/compiler/mlir/lite/core/c \
+ra/npu/tflite-micro/tensorflow/compiler/mlir/lite/kernels/internal \
+ra/npu/tflite-micro/tensorflow/compiler/mlir/lite/schema \
+ra/npu/tflite-micro/tensorflow/lite/c \
+ra/npu/tflite-micro/tensorflow/lite/core \
+ra/npu/tflite-micro/tensorflow/lite/core/api \
+ra/npu/tflite-micro/tensorflow/lite/core/c \
+ra/npu/tflite-micro/tensorflow/lite/kernels \
+ra/npu/tflite-micro/tensorflow/lite/kernels/internal \
+ra/npu/tflite-micro/tensorflow/lite/micro/tflite_bridge \
+ra/npu/tflite-micro/tensorflow/lite/schema \
 ra_gen \
 src \
 src/hardware \
+src/models \
 

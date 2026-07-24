@@ -940,6 +940,19 @@ FSP Configuration
   Module "IPC (r_ipc)"
     Parameter Checking: Default (BSP)
     
+  Module "Google TFLM Core Lib"
+  Module "Google Flatbuffers"
+  Module "Google TFLM Ethos-U Kernel"
+  Module "Arm Ethos-U Core Driver Wrapper (rm_ethosu)"
+    Parameter Checking: Default (BSP)
+    Ethos-U log level: Disabled
+    
+  Module "Arm Ethos-U Core Driver"
+  Module "Arm Ethos-U Profiler"
+  Module "Arm CMSIS View Library Source"
+  Module "Google TFLM CMSIS-NN Kernel"
+  Module "Arm CMSIS NN Library Source"
+  Module "Arm CMSIS DSP Library Source"
   FreeRTOS
     General: Custom FreeRTOSConfig.h: 
     General: Use Preemption: Enabled
@@ -1098,9 +1111,27 @@ FSP Configuration
       Callback: NULL
       Interrupt Priority: Disabled
       
-  Thread "Uart9_thread"
-    Symbol: Uart9_thread
-    Name: Uart9_thread
+    Instance "Google TFLM Core Lib"
+      Instance "Google Flatbuffers"
+      Instance "Google TFLM CMSIS-NN Kernel"
+        Instance "Arm CMSIS NN Library Source"
+          Instance "Arm CMSIS DSP Library Source"
+      Instance "Google TFLM Ethos-U Kernel"
+        Instance "Arm Ethos-U Core Driver Wrapper (rm_ethosu)"
+          Name: g_rm_ethosu0
+          Callback: NULL
+          NPU Interrupt Priority: Priority 12
+          Enable Secure Mode: Enabled
+          Enable Privilege Mode: Enabled
+          
+          Instance "Arm Ethos-U Core Driver"
+            Name: g_ethosu0
+            
+        Instance "Arm Ethos-U Profiler"
+          Instance "Arm CMSIS View Library Source"
+  Thread "Camera_thread"
+    Symbol: Camera_thread
+    Name: Camera_thread
     Stack size (bytes): 4096
     Priority: 3
     Thread Context: NULL
