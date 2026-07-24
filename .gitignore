@@ -1,0 +1,21 @@
+# Eclipse / e2 studio workspace metadata
+/.metadata/
+
+# Build output directories
+**/Debug/
+**/Release/
+**/build/
+
+# Compiler and linker outputs
+*.o
+*.o.in
+*.d
+*.elf
+*.map
+*.sbd
+*.srec
+*.rpd
+*.cref
+
+# Debugger and build logs
+*.log
