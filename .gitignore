@@ -1,5 +1,5 @@
 # Eclipse / e2 studio workspace metadata
-/.metadata/
+/.metadata/*
 
 # Build output directories
 **/Debug/
