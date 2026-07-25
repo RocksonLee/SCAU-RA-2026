@@ -1,218 +1,218 @@
 src/hardware/camera_stream.o: ..\src\hardware\camera_stream.c \
   ..\src\hardware\camera_stream.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\FreeRTOS.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\aws\FreeRTOSConfig.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\bsp_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\fsp_common_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\fsp_version.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_gen\bsp_clock_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_family_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_device_pn_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_device_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_override.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\r_lpm_device_types.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_mcu_info.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_elc.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_feature.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_peripheral.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\r_adc_device_types.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_ofs_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\board_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_init.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_leds.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_ethernet_phy.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_gen\vector_data.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_exceptions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\renesas.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\cmsis_compiler.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\cmsis_clang.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\R7KA8P1KF_core0.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\core_cm85.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\system.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_common.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\api\fsp_common_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_compiler_support.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_tfu.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_sdram.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_mmf.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_ipc.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_ospi_b.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\FreeRTOS.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\aws\FreeRTOSConfig.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\bsp_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\fsp_common_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\fsp_version.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_gen\bsp_clock_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_family_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_device_pn_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_device_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_override.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\r_lpm_device_types.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_mcu_info.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_elc.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_feature.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_peripheral.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\r_adc_device_types.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_ofs_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\board_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_init.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_leds.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_ethernet_phy.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_gen\vector_data.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_exceptions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\renesas.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\cmsis_compiler.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\cmsis_clang.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\R7KA8P1KF_core0.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\core_cm85.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\system.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_common.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\api\fsp_common_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_compiler_support.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_tfu.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_sdram.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_mmf.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_ipc.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_ospi_b.h \
   bsp_linker_info.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_register_protection.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_irq.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_io.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_group_irq.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_clocks.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_module_stop.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_security.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\fsp_features.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\..\..\fsp\src\bsp\mcu\all\bsp_compiler_support.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_delay.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_mcu_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\projdefs.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\portable.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\deprecated_definitions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\src\rm_freertos_port\portmacro.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\mpu_wrappers.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\task.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\list.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_register_protection.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_irq.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_io.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_group_irq.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_clocks.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_module_stop.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_security.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\fsp_features.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\..\..\fsp\src\bsp\mcu\all\bsp_compiler_support.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_delay.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_mcu_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\projdefs.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\portable.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\deprecated_definitions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\src\rm_freertos_port\portmacro.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\mpu_wrappers.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\task.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\list.h \
   ..\src\hardware\app_detection.h ..\src\hardware\camera_ov5640.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_gen\hal_data.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_gen\common_data.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\rm_ethosu_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\rm_ethosu.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\rm_ethosu_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\npu\ethos-u-core-driver\include\ethosu_driver.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\npu\ethos-u-core-driver\include\ethosu_types.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math_types.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math_memory.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\none.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\utils.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\basic_math_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\interpolation_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\bayes_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\statistics_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\fast_math_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\matrix_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\complex_math_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\controller_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\support_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\distance_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\svm_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\svm_defines.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\transform_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\filtering_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\quaternion_math_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\window_functions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nnfunctions.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nn_math_types.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nn_types.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ioport.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_ioport_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_ioport_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_pin_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ipc.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_ipc_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_ipc_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_sci_b_uart.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_uart_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_transfer_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_sci_b_uart_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_capture_api.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ceu.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_iic_master.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_iic_master_cfg.h \
-  D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_i2c_master_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_gen\hal_data.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_gen\common_data.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\rm_ethosu_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\rm_ethosu.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\rm_ethosu_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\npu\ethos-u-core-driver\include\ethosu_driver.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\npu\ethos-u-core-driver\include\ethosu_types.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math_types.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math_memory.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\none.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\utils.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\basic_math_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\interpolation_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\bayes_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\statistics_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\fast_math_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\matrix_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\complex_math_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\controller_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\support_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\distance_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\svm_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\svm_defines.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\transform_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\filtering_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\quaternion_math_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\window_functions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nnfunctions.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nn_math_types.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nn_types.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ioport.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_ioport_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_ioport_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_pin_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ipc.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_ipc_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_ipc_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_sci_b_uart.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_uart_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_transfer_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_sci_b_uart_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_capture_api.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ceu.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_iic_master.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_iic_master_cfg.h \
+  E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_i2c_master_api.h \
   ..\src\hardware\ipc_detection_tx.h
 ..\src\hardware\camera_stream.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\FreeRTOS.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\aws\FreeRTOSConfig.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\bsp_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\fsp_common_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\fsp_version.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_gen\bsp_clock_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_family_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_device_pn_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_device_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_override.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\r_lpm_device_types.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_mcu_info.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_elc.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_feature.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_peripheral.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\r_adc_device_types.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_ofs_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\board_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_init.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_leds.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_ethernet_phy.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_gen\vector_data.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_exceptions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\renesas.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\cmsis_compiler.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\cmsis_clang.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\R7KA8P1KF_core0.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\core_cm85.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\system.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_common.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\api\fsp_common_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_compiler_support.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_tfu.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_sdram.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_mmf.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_ipc.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_ospi_b.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\FreeRTOS.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\aws\FreeRTOSConfig.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\bsp_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\fsp_common_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\fsp_version.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_gen\bsp_clock_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_family_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_device_pn_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_device_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_override.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\r_lpm_device_types.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_mcu_info.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_elc.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_feature.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\bsp_peripheral.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\fsp\src\bsp\mcu\ra8p1\r_adc_device_types.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_mcu_ofs_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\board_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_init.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_leds.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\..\..\..\ra\board\ra8p1_ek\board_ethernet_phy.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_gen\vector_data.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_exceptions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\renesas.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\cmsis_compiler.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\cmsis_clang.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\R7KA8P1KF_core0.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS_6\CMSIS\Core\Include\core_cm85.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\cmsis\Device\RENESAS\Include\system.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_common.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\api\fsp_common_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_compiler_support.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_tfu.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_sdram.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_mmf.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_ipc.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_ospi_b.h:
 bsp_linker_info.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_register_protection.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_irq.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_io.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_group_irq.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_clocks.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_module_stop.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_security.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\fsp_features.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\..\..\fsp\src\bsp\mcu\all\bsp_compiler_support.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_delay.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_mcu_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\projdefs.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\portable.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\deprecated_definitions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\src\rm_freertos_port\portmacro.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\mpu_wrappers.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\task.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\list.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_register_protection.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_irq.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_io.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_group_irq.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_clocks.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_module_stop.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_security.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\fsp_features.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\inc\..\..\fsp\src\bsp\mcu\all\bsp_compiler_support.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_delay.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\..\..\src\bsp\mcu\all\bsp_mcu_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\projdefs.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\portable.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\deprecated_definitions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\src\rm_freertos_port\portmacro.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\mpu_wrappers.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\task.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\aws\FreeRTOS\FreeRTOS\Source\include\list.h:
 ..\src\hardware\app_detection.h:
 ..\src\hardware\camera_ov5640.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_gen\hal_data.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_gen\common_data.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\rm_ethosu_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\rm_ethosu.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\rm_ethosu_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\npu\ethos-u-core-driver\include\ethosu_driver.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\npu\ethos-u-core-driver\include\ethosu_types.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math_types.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math_memory.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\none.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\utils.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\basic_math_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\interpolation_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\bayes_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\statistics_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\fast_math_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\matrix_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\complex_math_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\controller_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\support_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\distance_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\svm_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\svm_defines.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\transform_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\filtering_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\quaternion_math_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\window_functions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nnfunctions.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nn_math_types.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nn_types.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ioport.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_ioport_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_ioport_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_pin_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ipc.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_ipc_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_ipc_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_sci_b_uart.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_uart_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_transfer_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_sci_b_uart_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_capture_api.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ceu.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_iic_master.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_iic_master_cfg.h:
-D:\e2studioworkspace\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_i2c_master_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_gen\hal_data.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_gen\common_data.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\rm_ethosu_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\rm_ethosu.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\rm_ethosu_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\npu\ethos-u-core-driver\include\ethosu_driver.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\npu\ethos-u-core-driver\include\ethosu_types.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math_types.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\arm_math_memory.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\none.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\utils.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\basic_math_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\interpolation_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\bayes_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\statistics_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\fast_math_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\matrix_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\complex_math_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\controller_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\support_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\distance_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\svm_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\svm_defines.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\transform_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\filtering_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\quaternion_math_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-DSP\Include\dsp\window_functions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nnfunctions.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nn_math_types.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\arm\CMSIS-NN\Include\arm_nn_types.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ioport.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_ioport_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_ioport_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\bsp\bsp_pin_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ipc.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_ipc_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_ipc_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_sci_b_uart.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_uart_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_transfer_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_sci_b_uart_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_capture_api.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_ceu.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\instances\r_iic_master.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra_cfg\fsp_cfg\r_iic_master_cfg.h:
+E:\RA\ project\SCAU-RA-2026\vision_CPU0\ra\fsp\inc\api\r_i2c_master_api.h:
 ..\src\hardware\ipc_detection_tx.h:
