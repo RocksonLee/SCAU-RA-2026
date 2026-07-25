@@ -9,7 +9,8 @@ extern "C" {
 
 typedef enum e_fruit_ui_target
 {
-    FRUIT_UI_TARGET_TOMATO = 0,
+    FRUIT_UI_TARGET_NONE = 0,
+    FRUIT_UI_TARGET_TOMATO,
     FRUIT_UI_TARGET_PURPLE_GRAPE,
     FRUIT_UI_TARGET_GREEN_GRAPE,
 } fruit_ui_target_t;

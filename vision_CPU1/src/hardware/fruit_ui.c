@@ -24,12 +24,13 @@ typedef struct st_target_view
 
 static target_view_t g_targets[] =
 {
+    {FRUIT_UI_TARGET_NONE,         "None",         "no target",    LV_COLOR_MAKE(119, 129, 140), 0,   0,   0},
     {FRUIT_UI_TARGET_TOMATO,       "Tomato",       "red fruit",    LV_COLOR_MAKE(222, 55, 48),  186, 214, 72},
     {FRUIT_UI_TARGET_PURPLE_GRAPE, "Purple Grape", "purple grape", LV_COLOR_MAKE(112, 55, 160), 241, 168, 64},
     {FRUIT_UI_TARGET_GREEN_GRAPE,  "Green Grape",  "green grape",  LV_COLOR_MAKE(78, 165, 75),  142, 238, 69},
 };
 
-static fruit_ui_target_t g_selected = FRUIT_UI_TARGET_TOMATO;
+static fruit_ui_target_t g_selected = FRUIT_UI_TARGET_NONE;
 static bool g_style_ready;
 static lv_style_t g_style_screen;
 static lv_style_t g_style_card;
@@ -264,7 +265,6 @@ static void show_home(void)
 {
     lv_obj_t * card;
     lv_obj_t * chip;
-    char buf[80];
     target_view_t * target = get_target(g_selected);
 
     prepare_screen();
@@ -279,7 +279,7 @@ static void show_home(void)
     card = add_card(lv_screen_active(), 20, 104, 270, 150);
     add_label(card, "System Overview", lv_color_hex(0x20303F),
               &lv_font_montserrat_18, LV_ALIGN_TOP_LEFT, 0, 0);
-    add_label(card, "Vision: online\nTouch: ready\nArm link: standby\nMode: target select",
+    add_label(card, "Vision: online\nTouch: ready\nArm link: standby\nMode: target select,weight detect",
               lv_color_hex(0x435466), &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 36);
 
     chip = lv_obj_create(card);
@@ -290,19 +290,11 @@ static void show_home(void)
     add_label(chip, "RA8P1 + LVGL", lv_color_hex(0x31445A),
               &lv_font_montserrat_12, LV_ALIGN_CENTER, 0, 0);
 
-    card = add_card(lv_screen_active(), 310, 104, 150, 68);
-    add_label(card, "Selected", lv_color_hex(0x77818C),
+    card = add_card(lv_screen_active(), 310, 104, 150, 150);
+    add_label(card, "Detected", lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
     add_label(card, target->name, target->color,
               &lv_font_montserrat_16, LV_ALIGN_CENTER, 0, 8);
-
-    card = add_card(lv_screen_active(), 310, 188, 150, 66);
-    add_label(card, "Target Pos", lv_color_hex(0x77818C),
-              &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
-    (void) snprintf(buf, sizeof(buf), "X:%ld  Y:%ld\nZ:%ld",
-                    (long) target->x, (long) target->y, (long) target->z);
-    add_label(card, buf, lv_color_hex(0x20303F),
-              &lv_font_montserrat_14, LV_ALIGN_CENTER, 0, 10);
 
     add_button(lv_screen_active(), "START", 138, 274, 204, 36, on_home_start, NULL);
 }
@@ -375,7 +367,7 @@ static void show_detail(fruit_ui_target_t target)
     card = add_card(lv_screen_active(), 20, 164, 440, 86);
     add_label(card, "Robot Plan", lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
-    add_label(card, "1. lock target    2. solve arm pose    3. close gripper",
+    add_label(card, "1.lock target 2.solve arm pose 3.close gripper 4.detect weight",
               lv_color_hex(0x435466), &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 30);
 
     add_button(lv_screen_active(), "CONFIRM PICK", 138, 270, 204, 36, on_back_home, NULL);

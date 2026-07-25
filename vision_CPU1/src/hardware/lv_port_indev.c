@@ -11,7 +11,7 @@
 #define TOUCH_SCREEN_H           320
 #define TOUCH_NATIVE_W           320
 #define TOUCH_NATIVE_H           480
-#define TOUCH_ROTATION           1
+#define TOUCH_ROTATION           3
 #define TOUCH_RELEASE_DEBOUNCE   2U
 
 lv_indev_t * g_touch_indev;
