@@ -15,7 +15,7 @@
 #define CAMERA_UART_CHUNK_BYTES (1024U)
 #define CAMERA_AE_SETTLE_MS     (1500U)
 #define CAMERA_DISCARD_FRAMES   (5U)
-#define CAMERA_UART_LINE_BYTES  (96U)
+#define CAMERA_UART_LINE_BYTES  (192U)
 
 static uint8_t g_camera_frame[CAMERA_OV5640_FRAME_BYTES] BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
 
@@ -131,10 +131,35 @@ static void camera_uart_send_crc_line(char const * p_label, uint32_t crc)
 static void camera_uart_send_ceu_events_line(void)
 {
     uint32_t const events = camera_ov5640_last_ceu_events();
+    camera_ov5640_ceu_debug_t debug;
+    camera_ov5640_get_ceu_debug(&debug);
     int const count = snprintf(g_uart_line,
                                sizeof(g_uart_line),
-                               "CEU_EVENTS=0x%08lX\r\n",
-                               (unsigned long) events);
+                               "CEU_HW events=%08lX start=%lu caps=%08lX csts=%08lX "
+                               "flags=%08lX size=%08lX cam=%08lX\r\n",
+                               (unsigned long) events,
+                               (unsigned long) debug.capture_start_error,
+                               (unsigned long) debug.caps,
+                               (unsigned long) debug.status,
+                               (unsigned long) debug.events,
+                               (unsigned long) debug.data_size,
+                               (unsigned long) debug.interface_control);
+    if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
+    {
+        camera_uart_send_text(g_uart_line);
+    }
+}
+
+static void camera_uart_send_camera_init_error(camera_ov5640_result_t result)
+{
+    uint16_t const chip_id = camera_ov5640_chip_id();
+    int const count = snprintf(g_uart_line,
+                               sizeof(g_uart_line),
+                               "CAMERA_INIT_ERR code=%lu step=%lu chip=0x%04X\r\n",
+                               (unsigned long) result,
+                               (unsigned long) camera_ov5640_last_error_step(),
+                               (unsigned int) chip_id);
+
     if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
     {
         camera_uart_send_text(g_uart_line);
@@ -207,10 +232,14 @@ void camera_stream_task(void)
                                           camera_uart_callback,
                                           NULL,
                                           &g_uart_callback_memory);
+        camera_uart_send_text("FW=CPU0_CEU_V3\r\n");
     }
 
-    if (CAMERA_OV5640_OK != camera_ov5640_init())
+    camera_ov5640_result_t const camera_init_result = camera_ov5640_init();
+    if (CAMERA_OV5640_OK != camera_init_result)
     {
+        camera_uart_send_camera_init_error(camera_init_result);
+
         while (1)
         {
             vTaskDelay(pdMS_TO_TICKS(1000U));
@@ -241,6 +270,7 @@ void camera_stream_task(void)
     {
         if (CAMERA_OV5640_OK != camera_ov5640_capture_frame(g_camera_frame))
         {
+            camera_uart_send_ceu_events_line();
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }
