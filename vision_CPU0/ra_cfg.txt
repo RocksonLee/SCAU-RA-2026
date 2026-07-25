@@ -1132,7 +1132,7 @@ FSP Configuration
   Thread "Camera_thread"
     Symbol: Camera_thread
     Name: Camera_thread
-    Stack size (bytes): 4096
+    Stack size (bytes): 8192
     Priority: 3
     Thread Context: NULL
     Memory Allocation: Static

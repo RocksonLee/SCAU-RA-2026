@@ -6,16 +6,27 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#define OV5640_I2C_TIMEOUT_TICKS    (pdMS_TO_TICKS(100U))
+#define OV5640_I2C_TIMEOUT_TICKS    (pdMS_TO_TICKS(500U))
 #define OV5640_CAPTURE_TIMEOUT_MS   (1000U)
 #define OV5640_CHIP_ID              (0x5640U)
 #define OV5640_REG_END              (0xFFFFU)
 #define OV5640_REG_DELAY            (0xFFFEU)
+#define OV5640_RESET_RETRIES        (3U)
 
 #define OV5640_PIN_RESET            BSP_IO_PORT_07_PIN_09
 #define OV5640_PIN_PWDN             BSP_IO_PORT_07_PIN_10
 #define OV5640_ENABLE_COLOR_BAR     (0)
 #define OV5640_CEU_FATAL_EVENTS     (CEU_EVENT_CRAM_OVERFLOW | CEU_EVENT_FIREWALL)
+
+#define OV5640_STEP_NONE            (0U)
+#define OV5640_STEP_I2C_OPEN        (1U)
+#define OV5640_STEP_SOFT_RESET      (2U)
+#define OV5640_STEP_CHIP_ID         (3U)
+#define OV5640_STEP_INIT_TABLE      (4U)
+#define OV5640_STEP_QVGA_TABLE      (5U)
+#define OV5640_STEP_AWB_TABLE       (6U)
+#define OV5640_STEP_COLOR_BAR       (7U)
+#define OV5640_STEP_CEU_OPEN        (8U)
 
 typedef struct st_ov5640_reg
 {
@@ -27,6 +38,8 @@ static volatile bool g_i2c_done;
 static volatile bool g_i2c_error;
 static volatile bool g_frame_done;
 static volatile uint32_t g_ceu_events;
+static uint32_t g_last_error_step;
+static camera_ov5640_ceu_debug_t g_ceu_debug;
 
 static const ov5640_reg_t g_ov5640_init_regs[] =
 {
@@ -213,13 +226,67 @@ static bool ov5640_write_table(ov5640_reg_t const * p_table)
     return true;
 }
 
+static void ov5640_configure_parallel_pins(void)
+{
+    uint32_t const ceu_input =
+        (uint32_t) IOPORT_CFG_DRIVE_MID |
+        (uint32_t) IOPORT_CFG_PERIPHERAL_PIN |
+        (uint32_t) IOPORT_PERIPHERAL_CEU;
+    uint32_t const ceu_input_high_drive =
+        (uint32_t) IOPORT_CFG_DRIVE_HIGH |
+        (uint32_t) IOPORT_CFG_NMOS_ENABLE |
+        (uint32_t) IOPORT_CFG_PERIPHERAL_PIN |
+        (uint32_t) IOPORT_PERIPHERAL_CEU;
+
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_04_PIN_00, ceu_input_high_drive);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_04_PIN_01, ceu_input_high_drive);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_04_PIN_05, ceu_input);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_04_PIN_06, ceu_input);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_04_PIN_14, ceu_input);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_04_PIN_15, ceu_input);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_07_PIN_00, ceu_input);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_07_PIN_01, ceu_input);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_07_PIN_02, ceu_input);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_07_PIN_03, ceu_input);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_07_PIN_08, ceu_input);
+}
+
+static void ov5640_save_ceu_debug(fsp_err_t capture_start_error)
+{
+    g_ceu_debug.capture_start_error = (uint32_t) capture_start_error;
+    g_ceu_debug.caps                = R_CEU->CAPSR;
+    g_ceu_debug.status              = R_CEU->CSTSR;
+    g_ceu_debug.events              = R_CEU->CETCR;
+    g_ceu_debug.data_size           = R_CEU->CDSSR;
+    g_ceu_debug.interface_control   = R_CEU->CAMCR;
+}
+
 static void ov5640_pin_reset(void)
 {
-    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_PWDN, BSP_IO_LEVEL_LOW);
     (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_RESET, BSP_IO_LEVEL_LOW);
-    vTaskDelay(pdMS_TO_TICKS(20U));
+    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_PWDN, BSP_IO_LEVEL_HIGH);
+    vTaskDelay(pdMS_TO_TICKS(50U));
+    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_PWDN, BSP_IO_LEVEL_LOW);
+    vTaskDelay(pdMS_TO_TICKS(50U));
     (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_RESET, BSP_IO_LEVEL_HIGH);
-    vTaskDelay(pdMS_TO_TICKS(20U));
+    vTaskDelay(pdMS_TO_TICKS(200U));
+}
+
+static bool ov5640_soft_reset(void)
+{
+    for (uint32_t attempt = 0U; attempt < OV5640_RESET_RETRIES; attempt++)
+    {
+        if (ov5640_write_reg(0x3103, 0x03) && ov5640_write_reg(0x3008, 0x82))
+        {
+            vTaskDelay(pdMS_TO_TICKS(100U));
+            return true;
+        }
+
+        (void) g_i2c_camera.p_api->abort(g_i2c_camera.p_ctrl);
+        ov5640_pin_reset();
+    }
+
+    return false;
 }
 
 static bool ov5640_recover_ceu(void)
@@ -266,40 +333,68 @@ uint32_t camera_ov5640_last_ceu_events(void)
     return g_ceu_events;
 }
 
+uint32_t camera_ov5640_last_error_step(void)
+{
+    return g_last_error_step;
+}
+
+void camera_ov5640_get_ceu_debug(camera_ov5640_ceu_debug_t * p_debug)
+{
+    if (NULL != p_debug)
+    {
+        *p_debug = g_ceu_debug;
+    }
+}
+
 camera_ov5640_result_t camera_ov5640_init(void)
 {
     fsp_err_t err;
 
+    g_last_error_step = OV5640_STEP_NONE;
+    ov5640_configure_parallel_pins();
     ov5640_pin_reset();
 
     err = g_i2c_camera.p_api->open(g_i2c_camera.p_ctrl, g_i2c_camera.p_cfg);
     if ((FSP_SUCCESS != err) && (FSP_ERR_ALREADY_OPEN != err))
     {
+        g_last_error_step = OV5640_STEP_I2C_OPEN;
         return CAMERA_OV5640_ERR_I2C;
     }
 
-    if (!ov5640_write_reg(0x3103, 0x03) || !ov5640_write_reg(0x3008, 0x82))
+    if (!ov5640_soft_reset())
     {
+        g_last_error_step = OV5640_STEP_SOFT_RESET;
         return CAMERA_OV5640_ERR_I2C;
     }
-
-    vTaskDelay(pdMS_TO_TICKS(10U));
 
     if (OV5640_CHIP_ID != camera_ov5640_chip_id())
     {
+        g_last_error_step = OV5640_STEP_CHIP_ID;
         return CAMERA_OV5640_ERR_CHIP_ID;
     }
 
-    if (!ov5640_write_table(g_ov5640_init_regs) ||
-        !ov5640_write_table(g_ov5640_qvga_rgb565_regs) ||
-        !ov5640_write_table(g_ov5640_advanced_awb_regs))
+    if (!ov5640_write_table(g_ov5640_init_regs))
     {
+        g_last_error_step = OV5640_STEP_INIT_TABLE;
+        return CAMERA_OV5640_ERR_I2C;
+    }
+
+    if (!ov5640_write_table(g_ov5640_qvga_rgb565_regs))
+    {
+        g_last_error_step = OV5640_STEP_QVGA_TABLE;
+        return CAMERA_OV5640_ERR_I2C;
+    }
+
+    if (!ov5640_write_table(g_ov5640_advanced_awb_regs))
+    {
+        g_last_error_step = OV5640_STEP_AWB_TABLE;
         return CAMERA_OV5640_ERR_I2C;
     }
 
 #if OV5640_ENABLE_COLOR_BAR
     if (!ov5640_write_reg(0x503D, 0x80) || !ov5640_write_reg(0x4741, 0x00))
     {
+        g_last_error_step = OV5640_STEP_COLOR_BAR;
         return CAMERA_OV5640_ERR_I2C;
     }
 #endif
@@ -307,6 +402,7 @@ camera_ov5640_result_t camera_ov5640_init(void)
     err = g_ceu0.p_api->open(g_ceu0.p_ctrl, g_ceu0.p_cfg);
     if ((FSP_SUCCESS != err) && (FSP_ERR_ALREADY_OPEN != err))
     {
+        g_last_error_step = OV5640_STEP_CEU_OPEN;
         return CAMERA_OV5640_ERR_CAPTURE;
     }
 
@@ -316,17 +412,27 @@ camera_ov5640_result_t camera_ov5640_init(void)
 camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
 {
     TickType_t const start = xTaskGetTickCount();
+    fsp_err_t capture_start_error;
 
     if (NULL == p_frame)
     {
         return CAMERA_OV5640_ERR_CAPTURE;
     }
 
+    ov5640_configure_parallel_pins();
     g_frame_done = false;
     g_ceu_events = 0U;
+    g_ceu_debug.capture_start_error = 0U;
+    g_ceu_debug.caps                = 0U;
+    g_ceu_debug.status              = 0U;
+    g_ceu_debug.events              = 0U;
+    g_ceu_debug.data_size           = 0U;
+    g_ceu_debug.interface_control   = 0U;
 
-    if (FSP_SUCCESS != g_ceu0.p_api->captureStart(g_ceu0.p_ctrl, p_frame))
+    capture_start_error = g_ceu0.p_api->captureStart(g_ceu0.p_ctrl, p_frame);
+    if (FSP_SUCCESS != capture_start_error)
     {
+        ov5640_save_ceu_debug(capture_start_error);
         (void) ov5640_recover_ceu();
         return CAMERA_OV5640_ERR_CAPTURE;
     }
@@ -335,12 +441,14 @@ camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
     {
         if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(OV5640_CAPTURE_TIMEOUT_MS))
         {
+            ov5640_save_ceu_debug(FSP_SUCCESS);
             (void) ov5640_recover_ceu();
             return CAMERA_OV5640_ERR_CAPTURE;
         }
 
         if (0U != (g_ceu_events & OV5640_CEU_FATAL_EVENTS))
         {
+            ov5640_save_ceu_debug(FSP_SUCCESS);
             (void) ov5640_recover_ceu();
             return CAMERA_OV5640_ERR_CAPTURE;
         }
@@ -350,6 +458,7 @@ camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
 
     if (0U != (g_ceu_events & OV5640_CEU_FATAL_EVENTS))
     {
+        ov5640_save_ceu_debug(FSP_SUCCESS);
         (void) ov5640_recover_ceu();
         return CAMERA_OV5640_ERR_CAPTURE;
     }

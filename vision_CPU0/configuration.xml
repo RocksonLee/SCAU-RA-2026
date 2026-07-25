@@ -549,7 +549,7 @@
     <context id="rtos.awsfreertos.thread.0">
       <property id="_symbol" value="Camera_thread"/>
       <property id="rtos.awsfreertos.thread.name" value="Camera_thread"/>
-      <property id="rtos.awsfreertos.thread.stack" value="4096"/>
+      <property id="rtos.awsfreertos.thread.stack" value="8192"/>
       <property id="rtos.awsfreertos.thread.priority" value="3"/>
       <property id="rtos.awsfreertos.thread.context" value="NULL"/>
       <property id="rtos.awsfreertos.thread.allocation" value="rtos.awsfreertos.thread.allocation.static"/>
@@ -932,10 +932,17 @@
     <comment propertyId="pd06.comment" value="Enable when connected"/>
     <pincfg active="true" name="RA8P1 EK" selected="true" symbol="g_bsp_pin_cfg">
       <configSetting altId="ceu.mode.custom.free" configurationId="ceu.mode"/>
+      <configSetting altId="ceu.vio_clk.p414" configurationId="ceu.vio_clk" secureAltId="eswm_rgmii1.et1_mdio.p414"/>
+      <configSetting altId="ceu.vio_d0.p400" configurationId="ceu.vio_d0" secureAltId="i3c0.i3c_scl0.p400"/>
+      <configSetting altId="ceu.vio_d1.p401" configurationId="ceu.vio_d1" secureAltId="i3c0.i3c_sda0.p401"/>
+      <configSetting altId="ceu.vio_d2.p405" configurationId="ceu.vio_d2" secureAltId="ssie0.ssitxd0.p405"/>
+      <configSetting altId="ceu.vio_d3.p406" configurationId="ceu.vio_d3" secureAltId="ssie0.ssirxd0.p406"/>
       <configSetting altId="ceu.vio_d4.p700" configurationId="ceu.vio_d4"/>
       <configSetting altId="ceu.vio_d5.p701" configurationId="ceu.vio_d5"/>
       <configSetting altId="ceu.vio_d6.p702" configurationId="ceu.vio_d6"/>
       <configSetting altId="ceu.vio_d7.p703" configurationId="ceu.vio_d7"/>
+      <configSetting altId="ceu.vio_hd.p415" configurationId="ceu.vio_hd" secureAltId="eswm_rgmii1.et1_mdc.p415"/>
+      <configSetting altId="ceu.vio_vd.p708" configurationId="ceu.vio_vd" secureAltId="p708.output.high"/>
       <configSetting altId="gpt12.mode.gtiocaorgtiocb.free" configurationId="gpt12.mode"/>
       <configSetting altId="iic0.mode.custom.free" configurationId="iic0.mode"/>
       <configSetting altId="iic0.scl0.p410" configurationId="iic0.scl0"/>
@@ -952,12 +959,32 @@
       <configSetting altId="p208.gpio_mode.gpio_mode_peripheral" configurationId="p208.gpio_mode"/>
       <configSetting altId="p209.sci9.txd9" configurationId="p209"/>
       <configSetting altId="p209.gpio_mode.gpio_mode_peripheral" configurationId="p209.gpio_mode"/>
+      <configSetting altId="p400.ceu.vio_d0" configurationId="p400" secureAltId="i3c0.i3c_scl0.p400"/>
+      <configSetting altId="p400.gpio_speed.gpio_speed_h" configurationId="p400.gpio_drivecapacity" secureAltId="i3c0.i3c_scl0.p400"/>
+      <configSetting altId="p400.gpio_mode.gpio_mode_peripheral" configurationId="p400.gpio_mode" secureAltId="i3c0.i3c_scl0.p400"/>
+      <configSetting altId="p400.gpio_otype.gpio_otype_n_ch_od" configurationId="p400.gpio_otype" secureAltId="i3c0.i3c_scl0.p400"/>
+      <configSetting altId="p401.ceu.vio_d1" configurationId="p401" secureAltId="i3c0.i3c_sda0.p401"/>
+      <configSetting altId="p401.gpio_speed.gpio_speed_h" configurationId="p401.gpio_drivecapacity" secureAltId="i3c0.i3c_sda0.p401"/>
+      <configSetting altId="p401.gpio_mode.gpio_mode_peripheral" configurationId="p401.gpio_mode" secureAltId="i3c0.i3c_sda0.p401"/>
+      <configSetting altId="p401.gpio_otype.gpio_otype_n_ch_od" configurationId="p401.gpio_otype" secureAltId="i3c0.i3c_sda0.p401"/>
+      <configSetting altId="p405.ceu.vio_d2" configurationId="p405" secureAltId="ssie0.ssitxd0.p405"/>
+      <configSetting altId="p405.gpio_speed.gpio_speed_m" configurationId="p405.gpio_drivecapacity" secureAltId="ssie0.ssitxd0.p405"/>
+      <configSetting altId="p405.gpio_mode.gpio_mode_peripheral" configurationId="p405.gpio_mode" secureAltId="ssie0.ssitxd0.p405"/>
+      <configSetting altId="p406.ceu.vio_d3" configurationId="p406" secureAltId="ssie0.ssirxd0.p406"/>
+      <configSetting altId="p406.gpio_speed.gpio_speed_m" configurationId="p406.gpio_drivecapacity" secureAltId="ssie0.ssirxd0.p406"/>
+      <configSetting altId="p406.gpio_mode.gpio_mode_peripheral" configurationId="p406.gpio_mode" secureAltId="ssie0.ssirxd0.p406"/>
       <configSetting altId="p409.iic0.sda0" configurationId="p409"/>
       <configSetting altId="p409.gpio_speed.gpio_speed_m" configurationId="p409.gpio_drivecapacity"/>
       <configSetting altId="p409.gpio_mode.gpio_mode_peripheral" configurationId="p409.gpio_mode"/>
       <configSetting altId="p410.iic0.scl0" configurationId="p410"/>
       <configSetting altId="p410.gpio_speed.gpio_speed_m" configurationId="p410.gpio_drivecapacity"/>
       <configSetting altId="p410.gpio_mode.gpio_mode_peripheral" configurationId="p410.gpio_mode"/>
+      <configSetting altId="p414.ceu.vio_clk" configurationId="p414" secureAltId="eswm_rgmii1.et1_mdio.p414"/>
+      <configSetting altId="p414.gpio_speed.gpio_speed_m" configurationId="p414.gpio_drivecapacity" secureAltId="eswm_rgmii1.et1_mdio.p414"/>
+      <configSetting altId="p414.gpio_mode.gpio_mode_peripheral" configurationId="p414.gpio_mode" secureAltId="eswm_rgmii1.et1_mdio.p414"/>
+      <configSetting altId="p415.ceu.vio_hd" configurationId="p415" secureAltId="eswm_rgmii1.et1_mdc.p415"/>
+      <configSetting altId="p415.gpio_speed.gpio_speed_m" configurationId="p415.gpio_drivecapacity" secureAltId="eswm_rgmii1.et1_mdc.p415"/>
+      <configSetting altId="p415.gpio_mode.gpio_mode_peripheral" configurationId="p415.gpio_mode" secureAltId="eswm_rgmii1.et1_mdc.p415"/>
       <configSetting altId="p700.ceu.vio_d4" configurationId="p700"/>
       <configSetting altId="p700.gpio_mode.gpio_mode_peripheral" configurationId="p700.gpio_mode"/>
       <configSetting altId="p701.ceu.vio_d5" configurationId="p701"/>
@@ -966,6 +993,11 @@
       <configSetting altId="p702.gpio_mode.gpio_mode_peripheral" configurationId="p702.gpio_mode"/>
       <configSetting altId="p703.ceu.vio_d7" configurationId="p703"/>
       <configSetting altId="p703.gpio_mode.gpio_mode_peripheral" configurationId="p703.gpio_mode"/>
+      <configSetting altId="p708.ceu.vio_vd" configurationId="p708" secureAltId="p708.output.high"/>
+      <configSetting altId="p708.gpio_speed.gpio_speed_m" configurationId="p708.gpio_drivecapacity" secureAltId="p708.output.high"/>
+      <configSetting altId="p708.gpio_mode.gpio_mode_peripheral" configurationId="p708.gpio_mode" secureAltId="p708.output.high"/>
+      <configSetting altId="p710.output.low" configurationId="p710" secureAltId="glcdc.lcd_extclk.p710"/>
+      <configSetting altId="p710.gpio_mode.gpio_mode_out.low" configurationId="p710.gpio_mode" secureAltId="glcdc.lcd_extclk.p710"/>
       <configSetting altId="pdm2.mode.custom.free" configurationId="pdm2.mode"/>
       <configSetting altId="sci9.mode.asynchronousuart.free" configurationId="sci9.mode"/>
       <configSetting altId="sci9.rxd9.p208" configurationId="sci9.rxd9"/>
