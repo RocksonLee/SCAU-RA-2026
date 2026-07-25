@@ -247,8 +247,8 @@ FSP Configuration
   RA8P1 Core 1 Options
   RA8P1 event data
   RA Common
-    Main stack size (bytes): 0x4000
-    Heap size (bytes): 0x1000
+    Main stack size (bytes): 0x400
+    Heap size (bytes): 0
     Bootloader Secondary XIP: Disabled
     MCU Vcc (mV): 3300
     Parameter checking: Disabled
@@ -1080,12 +1080,3 @@ FSP Configuration
     Allocate Secure Context: Enable
     
     Instance "FreeRTOS Heap 4"
-  Thread "Screen_Thread"
-    Symbol: Screen_Thread
-    Name: Screen_Thread
-    Stack size (bytes): 8192
-    Priority: 3
-    Thread Context: NULL
-    Memory Allocation: Static
-    Allocate Secure Context: Enable
-    

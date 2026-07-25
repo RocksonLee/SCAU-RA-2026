@@ -66,8 +66,8 @@ FSP Configuration
     Clocks: MSTP Change Delays: Enabled
     Clocks: Settling Delay (us): 30
     Main Oscillator Wait Time: 8163 cycles
-    Cache settings: Data cache: Disabled
-    Cache settings: Data cache forced write-through: Disabled
+    Cache settings: Data cache: Enabled
+    Cache settings: Data cache forced write-through: Enabled
     I/O Ports: Voltage Mode: VCC: High (VCC >= 2.7 V)
     I/O Ports: Voltage Mode: VCC2: High (VCC2 >= 2.7 V)
     
@@ -248,7 +248,7 @@ FSP Configuration
   RA8P1 event data
   RA Common
     Main stack size (bytes): 0x4000
-    Heap size (bytes): 0
+    Heap size (bytes): 0x1000
     Bootloader Secondary XIP: Disabled
     MCU Vcc (mV): 3300
     Parameter checking: Disabled
