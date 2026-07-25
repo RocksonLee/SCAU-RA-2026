@@ -250,6 +250,7 @@
             <slot name="IRQ6.CPU0" secure="true"/>
             <slot name="IRQ7.CPU0" secure="true"/>
             <slot name="IRQ8.CPU0" secure="true"/>
+            <slot name="IRQ9.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORT7.CPU1" group="PORT">
             <slot name="P704.CPU1" secure="true"/>
@@ -423,6 +424,7 @@
             <assign peripheral="ICU.IRQ6"/>
             <assign peripheral="ICU.IRQ7"/>
             <assign peripheral="ICU.IRQ8"/>
+            <assign peripheral="ICU.IRQ9"/>
         </zone>
     </zones>
 </azone>
