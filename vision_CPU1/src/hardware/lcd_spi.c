@@ -107,7 +107,7 @@ void lcd_init(void)
       dc_high(); cs_low(); for (int i=0;i<15;i++) spi_write_byte(g[i]); cs_high(); }
 
     lcd_cmd(0xF4); lcd_data(0x00); lcd_data(0x00); lcd_data(0x0F);
-    lcd_cmd(0x36); lcd_data(0x68);
+    lcd_cmd(0x36); lcd_data(0xA8);
     lcd_cmd(0x3A); lcd_data(0x66);
     lcd_cmd(0x21);
     lcd_cmd(0x11); R_BSP_SoftwareDelay(120, BSP_DELAY_UNITS_MILLISECONDS);
