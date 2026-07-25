@@ -2,9 +2,9 @@
 /.metadata/*
 
 # Build output directories
-**/Debug/
-**/Release/
-**/build/
+**/Debug/*
+**/Release/*
+**/build/*
 
 # Compiler and linker outputs
 *.o
