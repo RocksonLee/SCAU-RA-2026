@@ -99,7 +99,7 @@ FSP_HEADER
 #define configUSE_QUEUE_SETS (0)
 #endif
 #ifndef configUSE_TIME_SLICING
-#define configUSE_TIME_SLICING (0)
+#define configUSE_TIME_SLICING (1)
 #endif
 #ifndef configUSE_NEWLIB_REENTRANT
 #define configUSE_NEWLIB_REENTRANT (0)

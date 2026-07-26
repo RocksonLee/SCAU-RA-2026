@@ -449,15 +449,6 @@
       <property id="rtos.awsfreertos.thread.secure_context" value="rtos.awsfreertos.thread.secure_context.enable"/>
       <stack module="module.freertos.heap.4.504853218"/>
     </context>
-    <context id="rtos.awsfreertos.thread.112427958">
-      <property id="_symbol" value="Screen_Thread"/>
-      <property id="rtos.awsfreertos.thread.name" value="Screen_Thread"/>
-      <property id="rtos.awsfreertos.thread.stack" value="8192"/>
-      <property id="rtos.awsfreertos.thread.priority" value="3"/>
-      <property id="rtos.awsfreertos.thread.context" value="NULL"/>
-      <property id="rtos.awsfreertos.thread.allocation" value="rtos.awsfreertos.thread.allocation.static"/>
-      <property id="rtos.awsfreertos.thread.secure_context" value="rtos.awsfreertos.thread.secure_context.enable"/>
-    </context>
     <config id="config.driver.ipc">
       <property id="config.driver.ipc.param_checking_enable" value="config.driver.ipc.param_checking_enable.bsp"/>
     </config>
@@ -630,7 +621,7 @@
     <symbolicName propertyId="p511.symbolic_name" value="SYS_I2C_SDA"/>
     <symbolicName propertyId="p512.symbolic_name" value="SYS_I2C_SCL"/>
     <symbolicName propertyId="p513.symbolic_name" value="DISP_TCON3"/>
-    <symbolicName propertyId="p514.symbolic_name" value="DISP_BLEN"/>
+    <symbolicName propertyId="p514.symbolic_name" value="sck4"/>
     <symbolicName propertyId="p515.symbolic_name" value="DISP_CLK"/>
     <symbolicName propertyId="p600.symbolic_name" value="USER_LED_BLUE"/>
     <symbolicName propertyId="p601.symbolic_name" value="PMOD2_RTS_SSL"/>
@@ -663,7 +654,7 @@
     <symbolicName propertyId="p714.symbolic_name" value="PARLCD_D22R6"/>
     <symbolicName propertyId="p715.symbolic_name" value="PARLCD_D23R7"/>
     <symbolicName propertyId="p800.symbolic_name" value="OSPI_SIO5_PMOD1_CTS_IRQ"/>
-    <symbolicName propertyId="p801.symbolic_name" value="OSPI_DQS_PMOD1_TXD_MOSI"/>
+    <symbolicName propertyId="p801.symbolic_name" value="Touch_reset"/>
     <symbolicName propertyId="p802.symbolic_name" value="OSPI_SIO6_PMOD1_RXD_MISO"/>
     <symbolicName propertyId="p803.symbolic_name" value="OSPI_SIO1_PMOD1_SCK"/>
     <symbolicName propertyId="p804.symbolic_name" value="OSPI_SIO7_PMOD1_CTSRTS_SS"/>
@@ -794,7 +785,7 @@
     <comment propertyId="p703.comment" value="See SW4 in manual"/>
     <comment propertyId="p704.comment" value="Enable when connected"/>
     <comment propertyId="p800.comment" value="See SW4 in manual"/>
-    <comment propertyId="p801.comment" value="See SW4 in manual"/>
+    <comment propertyId="p801.comment" value=" "/>
     <comment propertyId="p802.comment" value="See SW4 in manual"/>
     <comment propertyId="p803.comment" value="See SW4 in manual"/>
     <comment propertyId="p804.comment" value="See SW4 in manual"/>
@@ -835,7 +826,6 @@
       <configSetting altId="gpt12.mode.gtiocaorgtiocb.free" configurationId="gpt12.mode"/>
       <configSetting altId="iic1.mode.custom.free" configurationId="iic1.mode"/>
       <configSetting altId="jtag_fslash_swd.mode.swd.free" configurationId="jtag_fslash_swd.mode"/>
-      <configSetting altId="ospi0.mode.custom.free" configurationId="ospi0.mode"/>
       <configSetting altId="ospi1.mode.custom.free" configurationId="ospi1.mode"/>
       <configSetting altId="p402.canfd0.crx0" configurationId="p402" secureAltId="ssie.audio_clk.p402"/>
       <configSetting altId="p402.gpio_mode.gpio_mode_peripheral" configurationId="p402.gpio_mode" secureAltId="ssie.audio_clk.p402"/>

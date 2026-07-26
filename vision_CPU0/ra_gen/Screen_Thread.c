@@ -4,9 +4,9 @@
 #if 1
 static StaticTask_t Screen_Thread_memory;
 #if defined(__ARMCC_VERSION)           /* AC6 compiler */
-                static uint8_t Screen_Thread_stack[8192] BSP_PLACE_IN_SECTION(BSP_UNINIT_SECTION_PREFIX ".stack.thread") BSP_ALIGN_VARIABLE(BSP_STACK_ALIGNMENT);
+                static uint8_t Screen_Thread_stack[8096] BSP_PLACE_IN_SECTION(BSP_UNINIT_SECTION_PREFIX ".stack.thread") BSP_ALIGN_VARIABLE(BSP_STACK_ALIGNMENT);
                 #else
-static uint8_t Screen_Thread_stack[8192] BSP_PLACE_IN_SECTION(BSP_UNINIT_SECTION_PREFIX ".stack.Screen_Thread") BSP_ALIGN_VARIABLE(BSP_STACK_ALIGNMENT);
+static uint8_t Screen_Thread_stack[8096] BSP_PLACE_IN_SECTION(BSP_UNINIT_SECTION_PREFIX ".stack.Screen_Thread") BSP_ALIGN_VARIABLE(BSP_STACK_ALIGNMENT);
 #endif
 #endif
 TaskHandle_t Screen_Thread;
@@ -30,7 +30,7 @@ void Screen_Thread_create(void) {
 #else
                     BaseType_t Screen_Thread_create_err = xTaskCreate(
                     #endif
-			Screen_Thread_func, (const char*) "Screen_Thread", 8192 / 4, // In words, not bytes
+			Screen_Thread_func, (const char*) "Screen_Thread", 8096 / 4, // In words, not bytes
 			(void*) &Screen_Thread_parameters, //pvParameters
 			3,
 #if 1

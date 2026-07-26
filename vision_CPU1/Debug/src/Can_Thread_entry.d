@@ -72,7 +72,8 @@ src/Can_Thread_entry.o: ..\src\Can_Thread_entry.c \
   E:\RA\ project\SCAU-RA-2026\vision_CPU1\ra\fsp\inc\instances\r_canfd.h \
   E:\RA\ project\SCAU-RA-2026\vision_CPU1\ra_cfg\fsp_cfg\r_canfd_cfg.h \
   E:\RA\ project\SCAU-RA-2026\vision_CPU1\ra\fsp\inc\api\r_can_api.h \
-  ..\src\hardware\canfd0.h
+  ..\src\hardware\canfd0.h ..\src\ipc_detection_protocol.h \
+  ..\src\ipc_detection_rx.h
 E:\RA\ project\SCAU-RA-2026\vision_CPU1\ra_gen\Can_Thread.h:
 E:\RA\ project\SCAU-RA-2026\vision_CPU1\ra\fsp\inc\api\bsp_api.h:
 E:\RA\ project\SCAU-RA-2026\vision_CPU1\ra\fsp\inc\api\fsp_common_api.h:
@@ -147,3 +148,5 @@ E:\RA\ project\SCAU-RA-2026\vision_CPU1\ra\fsp\inc\instances\r_canfd.h:
 E:\RA\ project\SCAU-RA-2026\vision_CPU1\ra_cfg\fsp_cfg\r_canfd_cfg.h:
 E:\RA\ project\SCAU-RA-2026\vision_CPU1\ra\fsp\inc\api\r_can_api.h:
 ..\src\hardware\canfd0.h:
+..\src\ipc_detection_protocol.h:
+..\src\ipc_detection_rx.h:

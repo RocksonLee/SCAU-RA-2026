@@ -24,11 +24,11 @@ FSP_HEADER
 #define ARDUINO_AN5 (BSP_IO_PORT_00_PIN_15) /* Enable when connected */
 #define OSPI_SIO0_ARDUINO_MISO (BSP_IO_PORT_01_PIN_00) /* See SW4 in manual */
 #define OSPI_SIO3_ARDUINO_MOSI (BSP_IO_PORT_01_PIN_01) /* See SW4 in manual */
-#define OSPI_SIO4_ARDUINO_D13_SCK (BSP_IO_PORT_01_PIN_02) /* See SW4 in manual */
+#define LCD_DC (BSP_IO_PORT_01_PIN_02) /*   */
 #define OSPI_SIO2_ARDUINO_D10_SS (BSP_IO_PORT_01_PIN_03) /* See SW4 in manual */
 #define OSPI_CS_ARDUINO_D5 (BSP_IO_PORT_01_PIN_04) /* See SW4 in manual */
 #define OSPI_ECS_ARDUINO_D6 (BSP_IO_PORT_01_PIN_05) /* See SW4 in manual */
-#define OSPI_RESET (BSP_IO_PORT_01_PIN_06) /* See SW4 in manual */
+#define LCD_LED (BSP_IO_PORT_01_PIN_06) /*   */
 #define ETHERNET_MDINT (BSP_IO_PORT_01_PIN_07)
 #define J2_30 (BSP_IO_PORT_01_PIN_08) /* Enable when connected */
 #define CAMERA_FLASH (BSP_IO_PORT_01_PIN_09)
@@ -92,9 +92,9 @@ FSP_HEADER
 #define SYS_I2C_SDA (BSP_IO_PORT_05_PIN_11)
 #define SYS_I2C_SCL (BSP_IO_PORT_05_PIN_12)
 #define DISP_TCON3 (BSP_IO_PORT_05_PIN_13)
-#define DISP_BLEN (BSP_IO_PORT_05_PIN_14)
+#define SCK (BSP_IO_PORT_05_PIN_14)
 #define DISP_CLK (BSP_IO_PORT_05_PIN_15) /* Enable when connected */
-#define USER_LED_BLUE (BSP_IO_PORT_06_PIN_00)
+#define LCD_RST (BSP_IO_PORT_06_PIN_00)
 #define PMOD2_RTS_SSL (BSP_IO_PORT_06_PIN_01) /* See E16 / E14 in manual */
 #define PMOD2_RX (BSP_IO_PORT_06_PIN_02)
 #define PMOD2_TX (BSP_IO_PORT_06_PIN_03)
@@ -121,10 +121,10 @@ FSP_HEADER
 #define PARLCD_D19R3 (BSP_IO_PORT_07_PIN_11)
 #define PARLCD_D20R4 (BSP_IO_PORT_07_PIN_12)
 #define PARLCD_D21R5 (BSP_IO_PORT_07_PIN_13)
-#define PARLCD_D22R6 (BSP_IO_PORT_07_PIN_14)
+#define MOSI (BSP_IO_PORT_07_PIN_14)
 #define PARLCD_D23R7 (BSP_IO_PORT_07_PIN_15)
 #define OSPI_SIO5_PMOD1_CTS_IRQ (BSP_IO_PORT_08_PIN_00) /* See SW4 in manual */
-#define OSPI_DQS_PMOD1_TXD_MOSI (BSP_IO_PORT_08_PIN_01) /* See SW4 in manual */
+#define T_CS (BSP_IO_PORT_08_PIN_01) /*   */
 #define OSPI_SIO6_PMOD1_RXD_MISO (BSP_IO_PORT_08_PIN_02) /* See SW4 in manual */
 #define OSPI_SIO1_PMOD1_SCK (BSP_IO_PORT_08_PIN_03) /* See SW4 in manual */
 #define OSPI_SIO7_PMOD1_CTSRTS_SS (BSP_IO_PORT_08_PIN_04) /* See SW4 in manual */

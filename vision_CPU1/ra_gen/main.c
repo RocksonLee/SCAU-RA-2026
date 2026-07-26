@@ -5,8 +5,6 @@
 #include "semphr.h"
 extern void Can_Thread_create(void);
 extern TaskHandle_t Can_Thread;
-extern void Screen_Thread_create(void);
-extern TaskHandle_t Screen_Thread;
 uint32_t g_fsp_common_thread_count;
 bool g_fsp_common_initialized;
 SemaphoreHandle_t g_fsp_common_initialized_semaphore;
@@ -97,7 +95,6 @@ int main(void) {
 
 	/* Init RTOS tasks. */
 	Can_Thread_create();
-	Screen_Thread_create();
 
 	/* Start the scheduler. */
 	vTaskStartScheduler();

@@ -7,13 +7,25 @@ C_SRCS += \
 ../src/hardware/app_detection.c \
 ../src/hardware/camera_ov5640.c \
 ../src/hardware/camera_stream.c \
-../src/hardware/ipc_detection_tx.c 
+../src/hardware/fruit_ui.c \
+../src/hardware/ft6336.c \
+../src/hardware/ipc_detection_tx.c \
+../src/hardware/lcd_spi.c \
+../src/hardware/lcd_test.c \
+../src/hardware/lv_port_disp.c \
+../src/hardware/lv_port_indev.c 
 
 C_DEPS += \
 ./src/hardware/app_detection.d \
 ./src/hardware/camera_ov5640.d \
 ./src/hardware/camera_stream.d \
-./src/hardware/ipc_detection_tx.d 
+./src/hardware/fruit_ui.d \
+./src/hardware/ft6336.d \
+./src/hardware/ipc_detection_tx.d \
+./src/hardware/lcd_spi.d \
+./src/hardware/lcd_test.d \
+./src/hardware/lv_port_disp.d \
+./src/hardware/lv_port_indev.d 
 
 CREF += \
 vision_CPU0.cref 
@@ -22,7 +34,13 @@ OBJS += \
 ./src/hardware/app_detection.o \
 ./src/hardware/camera_ov5640.o \
 ./src/hardware/camera_stream.o \
-./src/hardware/ipc_detection_tx.o 
+./src/hardware/fruit_ui.o \
+./src/hardware/ft6336.o \
+./src/hardware/ipc_detection_tx.o \
+./src/hardware/lcd_spi.o \
+./src/hardware/lcd_test.o \
+./src/hardware/lv_port_disp.o \
+./src/hardware/lv_port_indev.o 
 
 MAP += \
 vision_CPU0.map 
@@ -31,6 +49,6 @@ vision_CPU0.map
 # Each subdirectory must supply rules for building sources it contributes
 src/hardware/%.o: ../src/hardware/%.c
 	@echo 'Building file: $<'
-	$(file > $@.in,-mcpu=cortex-m85 -mthumb -mlittle-endian -mfloat-abi=hard -Os -ffunction-sections -fdata-sections -fno-strict-aliasing -fmessage-length=0 -funsigned-char -Wunused -Wuninitialized -Wall -Wextra -Wmissing-declarations -Wconversion -Wpointer-arith -Wshadow -Waggregate-return -Wno-parentheses-equality -Wfloat-equal -g3 -std=c99 -flax-vector-conversions -fshort-enums -fno-unroll-loops -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra_cfg\\fsp_cfg\\bsp" -I"." -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra_gen" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra_cfg\\fsp_cfg" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra_cfg\\aws" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS_6\\CMSIS\\Core\\Include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\src" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\src\\models" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\src\\hardware" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\inc" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\inc\\api" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\inc\\instances" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\src\\rm_freertos_port" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\aws\\FreeRTOS\\FreeRTOS\\Source\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-driver\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-NN\\Include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-NN" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\layer_by_layer_profiler\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\ethosu_monitor\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\ethosu_profiler\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\crc\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\arm_profiler\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-View\\EventRecorder\\Include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-View\\EventRecorder\\Config" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\tflite-micro" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ruy" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\gemmlowp" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\src\\rm_ethosu" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-DSP\\PrivateInclude" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-DSP\\Include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\flatbuffers\\include" -D_RENESAS_RA_ -D_RA_CORE=CPU0 -D_RA_ORDINAL=1 -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -x c "$<" -c -o "$@")
+	$(file > $@.in,-mcpu=cortex-m85 -mthumb -mlittle-endian -mfloat-abi=hard -Os -ffunction-sections -fdata-sections -fno-strict-aliasing -fmessage-length=0 -funsigned-char -Wunused -Wuninitialized -Wall -Wextra -Wmissing-declarations -Wconversion -Wpointer-arith -Wshadow -Waggregate-return -Wno-parentheses-equality -Wfloat-equal -g3 -std=c99 -flax-vector-conversions -fshort-enums -fno-unroll-loops -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra_cfg\\fsp_cfg\\bsp" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\lvgl\\lvgl" -I"." -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra_gen" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra_cfg\\fsp_cfg" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra_cfg\\aws" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS_6\\CMSIS\\Core\\Include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\src" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\src\\models" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\src\\hardware" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\inc" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\inc\\api" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\inc\\instances" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\src\\rm_freertos_port" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\aws\\FreeRTOS\\FreeRTOS\\Source\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-driver\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-NN\\Include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-NN" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\layer_by_layer_profiler\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\ethosu_monitor\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\ethosu_profiler\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\crc\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ethos-u-core-software\\lib\\arm_profiler\\include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-View\\EventRecorder\\Include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-View\\EventRecorder\\Config" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\tflite-micro" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\ruy" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\gemmlowp" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\fsp\\src\\rm_ethosu" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-DSP\\PrivateInclude" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\arm\\CMSIS-DSP\\Include" -I"E:\\RA project\\SCAU-RA-2026\\vision_CPU0\\ra\\npu\\flatbuffers\\include" -D_RENESAS_RA_ -D_RA_CORE=CPU0 -D_RA_ORDINAL=1 -MMD -MP -MF"$(@:%.o=%.d)" -MT"$@" -x c "$<" -c -o "$@")
 	@clang --target=arm-none-eabi @"$@.in"
 

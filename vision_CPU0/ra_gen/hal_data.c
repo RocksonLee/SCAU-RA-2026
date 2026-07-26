@@ -1,5 +1,138 @@
 /* generated HAL source file - do not edit */
 #include "hal_data.h"
+
+dmac_instance_ctrl_t g_spi_lcd_rx_transfer_ctrl;
+transfer_info_t g_spi_lcd_rx_transfer_info =
+		{ .transfer_settings_word_b.dest_addr_mode =
+				TRANSFER_ADDR_MODE_INCREMENTED,
+				.transfer_settings_word_b.repeat_area =
+						TRANSFER_REPEAT_AREA_DESTINATION,
+				.transfer_settings_word_b.irq = TRANSFER_IRQ_END,
+				.transfer_settings_word_b.chain_mode =
+						TRANSFER_CHAIN_MODE_DISABLED,
+				.transfer_settings_word_b.src_addr_mode =
+						TRANSFER_ADDR_MODE_FIXED,
+				.transfer_settings_word_b.size = TRANSFER_SIZE_1_BYTE,
+				.transfer_settings_word_b.mode = TRANSFER_MODE_NORMAL, .p_dest =
+						(void*) NULL, .p_src = (void const*) NULL, .num_blocks =
+						0, .length = 0, };
+const dmac_extended_cfg_t g_spi_lcd_rx_transfer_extend = { .offset = 1,
+		.src_buffer_size = 1,
+#if defined(VECTOR_NUMBER_DMAC1_INT)
+    .irq                 = VECTOR_NUMBER_DMAC1_INT,
+#else
+		.irq = FSP_INVALID_VECTOR,
+#endif
+		.ipl = (12), .channel = 1, .p_callback = g_spi_lcd_rx_transfer_callback,
+		.p_context = NULL, .activation_source = ELC_EVENT_SCI4_RXI, };
+const transfer_cfg_t g_spi_lcd_rx_transfer_cfg =
+		{ .p_info = &g_spi_lcd_rx_transfer_info, .p_extend =
+				&g_spi_lcd_rx_transfer_extend, };
+/* Instance structure to use this module. */
+const transfer_instance_t g_spi_lcd_rx_transfer = { .p_ctrl =
+		&g_spi_lcd_rx_transfer_ctrl, .p_cfg = &g_spi_lcd_rx_transfer_cfg,
+		.p_api = &g_transfer_on_dmac };
+
+dmac_instance_ctrl_t g_spi_lcd_tx_transfer_ctrl;
+transfer_info_t g_spi_lcd_tx_transfer_info =
+		{ .transfer_settings_word_b.dest_addr_mode = TRANSFER_ADDR_MODE_FIXED,
+				.transfer_settings_word_b.repeat_area =
+						TRANSFER_REPEAT_AREA_SOURCE,
+				.transfer_settings_word_b.irq = TRANSFER_IRQ_END,
+				.transfer_settings_word_b.chain_mode =
+						TRANSFER_CHAIN_MODE_DISABLED,
+				.transfer_settings_word_b.src_addr_mode =
+						TRANSFER_ADDR_MODE_INCREMENTED,
+				.transfer_settings_word_b.size = TRANSFER_SIZE_1_BYTE,
+				.transfer_settings_word_b.mode = TRANSFER_MODE_NORMAL, .p_dest =
+						(void*) NULL, .p_src = (void const*) NULL, .num_blocks =
+						0, .length = 0, };
+const dmac_extended_cfg_t g_spi_lcd_tx_transfer_extend = { .offset = 1,
+		.src_buffer_size = 1,
+#if defined(VECTOR_NUMBER_DMAC0_INT)
+    .irq                 = VECTOR_NUMBER_DMAC0_INT,
+#else
+		.irq = FSP_INVALID_VECTOR,
+#endif
+		.ipl = (12), .channel = 0, .p_callback = g_spi_lcd_tx_transfer_callback,
+		.p_context = NULL, .activation_source = ELC_EVENT_SCI4_TXI, };
+const transfer_cfg_t g_spi_lcd_tx_transfer_cfg =
+		{ .p_info = &g_spi_lcd_tx_transfer_info, .p_extend =
+				&g_spi_lcd_tx_transfer_extend, };
+/* Instance structure to use this module. */
+const transfer_instance_t g_spi_lcd_tx_transfer = { .p_ctrl =
+		&g_spi_lcd_tx_transfer_ctrl, .p_cfg = &g_spi_lcd_tx_transfer_cfg,
+		.p_api = &g_transfer_on_dmac };
+#define RA_NOT_DEFINED (UINT32_MAX)
+#if (RA_NOT_DEFINED) != (1)
+
+/* If the TX transfer module is DMAC, define a DMAC TX transfer callback. */
+#include "r_dmac.h"
+extern void sci_b_spi_tx_dmac_callback(
+		sci_b_spi_instance_ctrl_t const *const p_ctrl);
+
+void g_spi_lcd_tx_transfer_callback(dmac_callback_args_t *p_args) {
+	FSP_PARAMETER_NOT_USED(p_args);
+	sci_b_spi_tx_dmac_callback(&g_spi_lcd_ctrl);
+}
+#endif
+
+#if (RA_NOT_DEFINED) != (1)
+
+/* If the RX transfer module is DMAC, define a DMAC RX transfer callback. */
+#include "r_dmac.h"
+extern void sci_b_spi_rx_dmac_callback(
+		sci_b_spi_instance_ctrl_t const *const p_ctrl);
+
+void g_spi_lcd_rx_transfer_callback(dmac_callback_args_t *p_args) {
+	FSP_PARAMETER_NOT_USED(p_args);
+	sci_b_spi_rx_dmac_callback(&g_spi_lcd_ctrl);
+}
+#endif
+#undef RA_NOT_DEFINED
+
+sci_b_spi_instance_ctrl_t g_spi_lcd_ctrl;
+
+/** SPI extended configuration */
+const sci_b_spi_extended_cfg_t g_spi_lcd_cfg_extend = { .clk_div = {
+/* Actual calculated bitrate: 7812500. */.cks = 0, .brr = 7, .bgdm = 1, },
+		.clock_source = (sci_b_spi_clock_source_t) 1, .rx_sampling_delay =
+				SCI_B_SPI_RX_SAMPLING_DELAY_CYCLES_0, .tx_fifo_trigger =
+				SCI_B_SPI_TX_FIFO_TRIGGER_DISABLED, };
+
+const spi_cfg_t g_spi_lcd_cfg = { .channel = 4, .operating_mode =
+		SPI_MODE_MASTER, .clk_phase = SPI_CLK_PHASE_EDGE_ODD, .clk_polarity =
+		SPI_CLK_POLARITY_LOW, .mode_fault = SPI_MODE_FAULT_ERROR_DISABLE,
+		.bit_order = SPI_BIT_ORDER_MSB_FIRST,
+#define RA_NOT_DEFINED (1)
+#if (RA_NOT_DEFINED == g_spi_lcd_tx_transfer)
+    .p_transfer_tx   = NULL,
+#else
+		.p_transfer_tx = &g_spi_lcd_tx_transfer,
+#endif
+#if (RA_NOT_DEFINED == g_spi_lcd_rx_transfer)
+    .p_transfer_rx   = NULL,
+#else
+		.p_transfer_rx = &g_spi_lcd_rx_transfer,
+#endif
+#undef RA_NOT_DEFINED
+		.p_callback = lcd_spi_callback, .p_context = NULL,
+#if defined(VECTOR_NUMBER_SCI4_RXI)
+    .rxi_irq         = VECTOR_NUMBER_SCI4_RXI,
+#else
+		.rxi_irq = FSP_INVALID_VECTOR,
+#endif
+#if defined(VECTOR_NUMBER_SCI4_TXI)
+    .txi_irq         = VECTOR_NUMBER_SCI4_TXI,
+#else
+		.txi_irq = FSP_INVALID_VECTOR,
+#endif
+		.tei_irq = VECTOR_NUMBER_SCI4_TEI, .eri_irq = VECTOR_NUMBER_SCI4_ERI,
+		.rxi_ipl = (BSP_IRQ_DISABLED), .txi_ipl = (BSP_IRQ_DISABLED), .tei_ipl =
+				(12), .eri_ipl = (12), .p_extend = &g_spi_lcd_cfg_extend, };
+/* Instance structure to use this module. */
+const spi_instance_t g_spi_lcd = { .p_ctrl = &g_spi_lcd_ctrl, .p_cfg =
+		&g_spi_lcd_cfg, .p_api = &g_spi_on_sci_b };
 ipc_instance_ctrl_t g_ipc0_ctrl;
 
 /** IPC configuration */
