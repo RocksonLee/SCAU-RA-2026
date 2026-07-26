@@ -817,7 +817,7 @@
     <comment propertyId="pd05.comment" value="See E9 in manual"/>
     <comment propertyId="pd06.comment" value="Enable when connected"/>
     <pincfg active="true" name="RA8P1 EK" selected="true" symbol="g_bsp_pin_cfg">
-      <configSetting altId="canfd0.crx0.p402" configurationId="canfd0.crx0" secureAltId="ssie.audio_clk.p402"/>
+      <configSetting altId="canfd0.crx0.p402" configurationId="canfd0.crx0"/>
       <configSetting altId="canfd0.ctx0.p704" configurationId="canfd0.ctx0"/>
       <configSetting altId="canfd0.mode.enabled.free" configurationId="canfd0.mode"/>
       <configSetting altId="ceu.mode.custom.free" configurationId="ceu.mode"/>
@@ -827,8 +827,8 @@
       <configSetting altId="iic1.mode.custom.free" configurationId="iic1.mode"/>
       <configSetting altId="jtag_fslash_swd.mode.swd.free" configurationId="jtag_fslash_swd.mode"/>
       <configSetting altId="ospi1.mode.custom.free" configurationId="ospi1.mode"/>
-      <configSetting altId="p402.canfd0.crx0" configurationId="p402" secureAltId="ssie.audio_clk.p402"/>
-      <configSetting altId="p402.gpio_mode.gpio_mode_peripheral" configurationId="p402.gpio_mode" secureAltId="ssie.audio_clk.p402"/>
+      <configSetting altId="p402.canfd0.crx0" configurationId="p402"/>
+      <configSetting altId="p402.gpio_mode.gpio_mode_peripheral" configurationId="p402.gpio_mode"/>
       <configSetting altId="p704.canfd0.ctx0" configurationId="p704"/>
       <configSetting altId="p704.gpio_mode.gpio_mode_peripheral" configurationId="p704.gpio_mode"/>
       <configSetting altId="pdm2.mode.custom.free" configurationId="pdm2.mode"/>

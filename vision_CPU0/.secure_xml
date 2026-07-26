@@ -286,6 +286,7 @@
       <configSetting altId="p512.gpio_speed.gpio_speed_m" configurationId="p512.gpio_drivecapacity"/>
       <configSetting altId="p512.gpio_mode.gpio_mode_peripheral" configurationId="p512.gpio_mode"/>
       <configSetting altId="p512.gpio_otype.gpio_otype_n_ch_od" configurationId="p512.gpio_otype"/>
+      <configSetting altId="p514.gpio_speed.gpio_speed_m" configurationId="p514.gpio_drivecapacity"/>
       <configSetting altId="p600.gpio_speed.gpio_speed_h" configurationId="p600.gpio_drivecapacity"/>
       <configSetting altId="p606.output.low" configurationId="p606"/>
       <configSetting altId="p606.gpio_speed.gpio_speed_m" configurationId="p606.gpio_drivecapacity"/>

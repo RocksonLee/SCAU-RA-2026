@@ -141,7 +141,6 @@
         <peripheral name="PORT4.CPU0" group="PORT">
             <slot name="P400.CPU0" secure="true"/>
             <slot name="P401.CPU0" secure="true"/>
-            <slot name="P402.CPU0" secure="true"/>
             <slot name="P405.CPU0" secure="true"/>
             <slot name="P406.CPU0" secure="true"/>
             <slot name="P407.CPU0" secure="true"/>

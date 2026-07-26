@@ -856,8 +856,6 @@
       <configSetting altId="p303.output.low" configurationId="p303"/>
       <configSetting altId="p303.gpio_speed.gpio_speed_h" configurationId="p303.gpio_drivecapacity"/>
       <configSetting altId="p303.gpio_mode.gpio_mode_out.low" configurationId="p303.gpio_mode"/>
-      <configSetting altId="p402.ssie.audio_clk" configurationId="p402"/>
-      <configSetting altId="p402.gpio_mode.gpio_mode_peripheral" configurationId="p402.gpio_mode"/>
       <configSetting altId="p407.usbfs.usb_vbus" configurationId="p407"/>
       <configSetting altId="p407.gpio_speed.gpio_speed_m" configurationId="p407.gpio_drivecapacity"/>
       <configSetting altId="p407.gpio_mode.gpio_mode_peripheral" configurationId="p407.gpio_mode"/>
@@ -1118,8 +1116,6 @@
       <configSetting altId="sdram.sdclk.pa15" configurationId="sdram.sdclk"/>
       <configSetting altId="sdram.sdcs.p813" configurationId="sdram.sdcs"/>
       <configSetting altId="sdram.we.pa08" configurationId="sdram.we"/>
-      <configSetting altId="ssie.audio_clk.p402" configurationId="ssie.audio_clk"/>
-      <configSetting altId="ssie.mode.custom.free" configurationId="ssie.mode"/>
       <configSetting altId="usbfs.mode.custom.free" configurationId="usbfs.mode"/>
       <configSetting altId="usbfs.usb_dm.p815" configurationId="usbfs.usb_dm"/>
       <configSetting altId="usbfs.usb_dp.p814" configurationId="usbfs.usb_dp"/>

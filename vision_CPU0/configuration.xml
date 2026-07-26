@@ -1062,6 +1062,7 @@
       <configSetting altId="p415.ceu.vio_hd" configurationId="p415"/>
       <configSetting altId="p415.gpio_mode.gpio_mode_peripheral" configurationId="p415.gpio_mode"/>
       <configSetting altId="p514.sci4.sck4" configurationId="p514" secureAltId="p514.output.low"/>
+      <configSetting altId="p514.gpio_speed.gpio_speed_m" configurationId="p514.gpio_drivecapacity" secureAltId="p514.output.low"/>
       <configSetting altId="p514.gpio_mode.gpio_mode_peripheral" configurationId="p514.gpio_mode" secureAltId="p514.output.low"/>
       <configSetting altId="p600.output.high" configurationId="p600" secureAltId="p600.output.low"/>
       <configSetting altId="p600.gpio_speed.gpio_speed_h" configurationId="p600.gpio_drivecapacity" secureAltId="p600.output.low"/>

@@ -218,7 +218,6 @@ static uint8_t ft6336_read_reg(uint8_t reg, uint8_t * value)
 
 void ft6336_init(void)
 {
-    R_BSP_PinAccessEnable();
     R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_CTP_SDA, IOPORT_CFG_PORT_DIRECTION_OUTPUT);
     R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_CTP_SCL, IOPORT_CFG_PORT_DIRECTION_OUTPUT);
     R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_CTP_RST, IOPORT_CFG_PORT_DIRECTION_OUTPUT);

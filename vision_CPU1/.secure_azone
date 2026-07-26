@@ -141,7 +141,6 @@
         <peripheral name="PORT4.CPU0" group="PORT">
             <slot name="P400.CPU0" secure="true"/>
             <slot name="P401.CPU0" secure="true"/>
-            <slot name="P402.CPU0" secure="true"/>
             <slot name="P405.CPU0" secure="true"/>
             <slot name="P406.CPU0" secure="true"/>
             <slot name="P407.CPU0" secure="true"/>
@@ -257,6 +256,9 @@
             <slot name="IRQ12.CPU0" secure="true"/>
             <slot name="IRQ13.CPU0" secure="true"/>
         </peripheral>
+        <peripheral name="PORT4.CPU1" group="PORT">
+            <slot name="P402.CPU1" secure="true"/>
+        </peripheral>
         <peripheral name="PORT7.CPU1" group="PORT">
             <slot name="P704.CPU1" secure="true"/>
         </peripheral>
@@ -336,7 +338,6 @@
             <assign group="PORT" peripheral="PORT3.P303"/>
             <assign group="PORT" peripheral="PORT4.P400"/>
             <assign group="PORT" peripheral="PORT4.P401"/>
-            <assign group="PORT" peripheral="PORT4.P402"/>
             <assign group="PORT" peripheral="PORT4.P405"/>
             <assign group="PORT" peripheral="PORT4.P406"/>
             <assign group="PORT" peripheral="PORT4.P407"/>

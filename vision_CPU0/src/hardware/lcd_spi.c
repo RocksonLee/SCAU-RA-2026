@@ -206,7 +206,6 @@ void lcd_fill_rect(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uint16_t 
 /* ===== ILI9488 init (STM32 4SPI reference, 18-bit RGB666) ===== */
 void lcd_init(void)
 {
-    R_BSP_PinAccessEnable();
     R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_CS,   IOPORT_CFG_PORT_DIRECTION_OUTPUT | IOPORT_CFG_DRIVE_HIGH | IOPORT_CFG_PORT_OUTPUT_HIGH);
     R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_RST,  IOPORT_CFG_PORT_DIRECTION_OUTPUT | IOPORT_CFG_DRIVE_HIGH | IOPORT_CFG_PORT_OUTPUT_HIGH);
     R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_DC,   IOPORT_CFG_PORT_DIRECTION_OUTPUT | IOPORT_CFG_DRIVE_HIGH | IOPORT_CFG_PORT_OUTPUT_LOW);

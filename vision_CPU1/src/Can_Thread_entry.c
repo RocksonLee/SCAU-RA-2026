@@ -187,3 +187,4 @@ void Can_Thread_entry(void *pvParameters) {
 		vTaskDelay(pdMS_TO_TICKS(10U));
 	}
 }
+
