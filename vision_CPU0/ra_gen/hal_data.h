@@ -4,6 +4,10 @@
 #include <stdint.h>
 #include "bsp_api.h"
 #include "common_data.h"
+#include "r_dmac.h"
+#include "r_transfer_api.h"
+#include "r_sci_b_spi.h"
+#include "r_spi_api.h"
 #include "r_ipc.h"
 #include "r_sci_b_uart.h"
 #include "r_uart_api.h"
@@ -12,6 +16,37 @@
 #include "r_iic_master.h"
 #include "r_i2c_master_api.h"
 FSP_HEADER
+/* Transfer on DMAC Instance. */
+extern const transfer_instance_t g_spi_lcd_rx_transfer;
+
+/** Access the DMAC instance using these structures when calling API functions directly (::p_api is not used). */
+extern dmac_instance_ctrl_t g_spi_lcd_rx_transfer_ctrl;
+extern const transfer_cfg_t g_spi_lcd_rx_transfer_cfg;
+
+#ifndef g_spi_lcd_rx_transfer_callback
+void g_spi_lcd_rx_transfer_callback(transfer_callback_args_t *p_args);
+#endif
+/* Transfer on DMAC Instance. */
+extern const transfer_instance_t g_spi_lcd_tx_transfer;
+
+/** Access the DMAC instance using these structures when calling API functions directly (::p_api is not used). */
+extern dmac_instance_ctrl_t g_spi_lcd_tx_transfer_ctrl;
+extern const transfer_cfg_t g_spi_lcd_tx_transfer_cfg;
+
+#ifndef g_spi_lcd_tx_transfer_callback
+void g_spi_lcd_tx_transfer_callback(transfer_callback_args_t *p_args);
+#endif
+/** SPI on SCI Instance. */
+extern const spi_instance_t g_spi_lcd;
+
+/** Access the SCI_B_SPI instance using these structures when calling API functions directly (::p_api is not used). */
+extern sci_b_spi_instance_ctrl_t g_spi_lcd_ctrl;
+extern const spi_cfg_t g_spi_lcd_cfg;
+
+/** Called by the driver when a transfer has completed or an error has occurred (Must be implemented by the user). */
+#ifndef lcd_spi_callback
+void lcd_spi_callback(spi_callback_args_t *p_args);
+#endif
 /** IPC Instance. */
 extern const ipc_instance_t g_ipc0;
 

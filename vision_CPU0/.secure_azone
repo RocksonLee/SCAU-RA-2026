@@ -10,9 +10,9 @@
         <memory parent="RAM" name="RAM_CPU1_C" size="0x0" offset="0x1D4000" security="c" Pname="CPU1"/>
         <memory parent="FLASH_NS" name="FLASH_NS_CPU0_N" size="0x0" offset="0x100000" security="n" Pname="CPU0"/>
         <memory parent="FLASH_NS" name="FLASH_NS_CPU1_N" size="0x0" offset="0x100000" security="n" Pname="CPU1"/>
-        <memory parent="FLASH" name="FLASH_CPU0_S" size="0x80000" offset="0x0" security="s" Pname="CPU0"/>
-        <memory parent="FLASH" name="FLASH_CPU0_C" size="0x0" offset="0x80000" security="c" Pname="CPU0"/>
-        <memory parent="FLASH" name="FLASH_CPU1_S" size="0x80000" offset="0x80000" security="s" Pname="CPU1"/>
+        <memory parent="FLASH" name="FLASH_CPU0_S" size="0xE0000" offset="0x0" security="s" Pname="CPU0"/>
+        <memory parent="FLASH" name="FLASH_CPU0_C" size="0x0" offset="0xE0000" security="c" Pname="CPU0"/>
+        <memory parent="FLASH" name="FLASH_CPU1_S" size="0x20000" offset="0xE0000" security="s" Pname="CPU1"/>
         <memory parent="FLASH" name="FLASH_CPU1_C" size="0x0" offset="0x100000" security="c" Pname="CPU1"/>
         <memory parent="DATA_FLASH_NS" name="DATA_FLASH_NS_CPU0_N" size="0x0" offset="0x0" security="n" Pname="CPU0"/>
         <memory parent="DATA_FLASH_NS" name="DATA_FLASH_NS_CPU1_N" size="0x0" offset="0x0" security="n" Pname="CPU1"/>
@@ -115,12 +115,7 @@
             <slot name="P013.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORT1.CPU0" group="PORT">
-            <slot name="P100.CPU0" secure="true"/>
-            <slot name="P101.CPU0" secure="true"/>
             <slot name="P102.CPU0" secure="true"/>
-            <slot name="P103.CPU0" secure="true"/>
-            <slot name="P104.CPU0" secure="true"/>
-            <slot name="P105.CPU0" secure="true"/>
             <slot name="P106.CPU0" secure="true"/>
             <slot name="P107.CPU0" secure="true"/>
             <slot name="P109.CPU0" secure="true"/>
@@ -144,11 +139,17 @@
             <slot name="P303.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORT4.CPU0" group="PORT">
+            <slot name="P400.CPU0" secure="true"/>
+            <slot name="P401.CPU0" secure="true"/>
             <slot name="P402.CPU0" secure="true"/>
+            <slot name="P405.CPU0" secure="true"/>
+            <slot name="P406.CPU0" secure="true"/>
             <slot name="P407.CPU0" secure="true"/>
             <slot name="P408.CPU0" secure="true"/>
             <slot name="P409.CPU0" secure="true"/>
             <slot name="P410.CPU0" secure="true"/>
+            <slot name="P414.CPU0" secure="true"/>
+            <slot name="P415.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORT5.CPU0" group="PORT">
             <slot name="P500.CPU0" secure="true"/>
@@ -184,15 +185,13 @@
             <slot name="P701.CPU0" secure="true"/>
             <slot name="P702.CPU0" secure="true"/>
             <slot name="P703.CPU0" secure="true"/>
+            <slot name="P708.CPU0" secure="true"/>
             <slot name="P709.CPU0" secure="true"/>
+            <slot name="P714.CPU0" secure="true"/>
+            <slot name="P715.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORT8.CPU0" group="PORT">
-            <slot name="P800.CPU0" secure="true"/>
             <slot name="P801.CPU0" secure="true"/>
-            <slot name="P802.CPU0" secure="true"/>
-            <slot name="P803.CPU0" secure="true"/>
-            <slot name="P804.CPU0" secure="true"/>
-            <slot name="P808.CPU0" secure="true"/>
             <slot name="P812.CPU0" secure="true"/>
             <slot name="P813.CPU0" secure="true"/>
             <slot name="P814.CPU0" secure="true"/>
@@ -240,6 +239,8 @@
         </peripheral>
         <peripheral name="IIC0.CPU0" group="IIC" security="s"/>
         <peripheral name="CEU.CPU0" security="s"/>
+        <peripheral name="DMA_DMAC0.CPU0" group="DMA_DMAC" security="s"/>
+        <peripheral name="DMA_DMAC1.CPU0" group="DMA_DMAC" security="s"/>
         <peripheral name="ICU.CPU0">
             <slot name="IRQ0.CPU0" secure="true"/>
             <slot name="IRQ1.CPU0" secure="true"/>
@@ -251,6 +252,10 @@
             <slot name="IRQ7.CPU0" secure="true"/>
             <slot name="IRQ8.CPU0" secure="true"/>
             <slot name="IRQ9.CPU0" secure="true"/>
+            <slot name="IRQ10.CPU0" secure="true"/>
+            <slot name="IRQ11.CPU0" secure="true"/>
+            <slot name="IRQ12.CPU0" secure="true"/>
+            <slot name="IRQ13.CPU0" secure="true"/>
         </peripheral>
     </partition>
 </azone>
