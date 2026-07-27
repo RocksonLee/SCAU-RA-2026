@@ -137,6 +137,7 @@
             <slot name="P301.CPU0" secure="true"/>
             <slot name="P302.CPU0" secure="true"/>
             <slot name="P303.CPU0" secure="true"/>
+            <slot name="P310.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORT4.CPU0" group="PORT">
             <slot name="P400.CPU0" secure="true"/>
@@ -168,6 +169,8 @@
         </peripheral>
         <peripheral name="PORT6.CPU0" group="PORT">
             <slot name="P600.CPU0" secure="true"/>
+            <slot name="P602.CPU0" secure="true"/>
+            <slot name="P603.CPU0" secure="true"/>
             <slot name="P606.CPU0" secure="true"/>
             <slot name="P607.CPU0" secure="true"/>
             <slot name="P608.CPU0" secure="true"/>
@@ -195,6 +198,9 @@
             <slot name="P813.CPU0" secure="true"/>
             <slot name="P814.CPU0" secure="true"/>
             <slot name="P815.CPU0" secure="true"/>
+        </peripheral>
+        <peripheral name="PORT9.CPU0" group="PORT">
+            <slot name="P905.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORTA.CPU0" group="PORT">
             <slot name="PA00.CPU0" secure="true"/>
@@ -255,6 +261,8 @@
             <slot name="IRQ11.CPU0" secure="true"/>
             <slot name="IRQ12.CPU0" secure="true"/>
             <slot name="IRQ13.CPU0" secure="true"/>
+            <slot name="IRQ14.CPU0" secure="true"/>
+            <slot name="IRQ15.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORT4.CPU1" group="PORT">
             <slot name="P402.CPU1" secure="true"/>
@@ -336,6 +344,7 @@
             <assign group="PORT" peripheral="PORT3.P301"/>
             <assign group="PORT" peripheral="PORT3.P302"/>
             <assign group="PORT" peripheral="PORT3.P303"/>
+            <assign group="PORT" peripheral="PORT3.P310"/>
             <assign group="PORT" peripheral="PORT4.P400"/>
             <assign group="PORT" peripheral="PORT4.P401"/>
             <assign group="PORT" peripheral="PORT4.P405"/>
@@ -361,6 +370,8 @@
             <assign group="PORT" peripheral="PORT5.P512"/>
             <assign group="PORT" peripheral="PORT5.P514"/>
             <assign group="PORT" peripheral="PORT6.P600"/>
+            <assign group="PORT" peripheral="PORT6.P602"/>
+            <assign group="PORT" peripheral="PORT6.P603"/>
             <assign group="PORT" peripheral="PORT6.P606"/>
             <assign group="PORT" peripheral="PORT6.P607"/>
             <assign group="PORT" peripheral="PORT6.P608"/>
@@ -384,6 +395,7 @@
             <assign group="PORT" peripheral="PORT8.P813"/>
             <assign group="PORT" peripheral="PORT8.P814"/>
             <assign group="PORT" peripheral="PORT8.P815"/>
+            <assign group="PORT" peripheral="PORT9.P905"/>
             <assign group="PORT" peripheral="PORTA.PA00"/>
             <assign group="PORT" peripheral="PORTA.PA01"/>
             <assign group="PORT" peripheral="PORTA.PA02"/>
@@ -436,6 +448,8 @@
             <assign peripheral="ICU.IRQ11"/>
             <assign peripheral="ICU.IRQ12"/>
             <assign peripheral="ICU.IRQ13"/>
+            <assign peripheral="ICU.IRQ14"/>
+            <assign peripheral="ICU.IRQ15"/>
         </zone>
     </zones>
 </azone>

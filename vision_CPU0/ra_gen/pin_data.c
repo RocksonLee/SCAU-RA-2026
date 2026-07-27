@@ -90,6 +90,9 @@ const ioport_pin_cfg_t g_bsp_pin_cfg_data[] = {
 		| (uint32_t) IOPORT_CFG_PORT_DIRECTION_OUTPUT
 		| (uint32_t) IOPORT_CFG_PORT_OUTPUT_LOW) },
 
+{ .pin = BSP_IO_PORT_03_PIN_10, .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN
+		| (uint32_t) IOPORT_PERIPHERAL_SCI1_3_5_7_9) },
+
 { .pin = BSP_IO_PORT_04_PIN_00, .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN
 		| (uint32_t) IOPORT_PERIPHERAL_CEU) },
 
@@ -185,6 +188,12 @@ const ioport_pin_cfg_t g_bsp_pin_cfg_data[] = {
 		| (uint32_t) IOPORT_CFG_PORT_DIRECTION_OUTPUT
 		| (uint32_t) IOPORT_CFG_PORT_OUTPUT_HIGH) },
 
+{ .pin = BSP_IO_PORT_06_PIN_02, .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN
+		| (uint32_t) IOPORT_PERIPHERAL_SCI0_2_4_6_8) },
+
+{ .pin = BSP_IO_PORT_06_PIN_03, .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN
+		| (uint32_t) IOPORT_PERIPHERAL_SCI0_2_4_6_8) },
+
 { .pin = BSP_IO_PORT_06_PIN_06, .pin_cfg = ((uint32_t) IOPORT_CFG_DRIVE_MID
 		| (uint32_t) IOPORT_CFG_PORT_DIRECTION_OUTPUT
 		| (uint32_t) IOPORT_CFG_PORT_OUTPUT_LOW) },
@@ -269,6 +278,9 @@ const ioport_pin_cfg_t g_bsp_pin_cfg_data[] = {
 { .pin = BSP_IO_PORT_08_PIN_15, .pin_cfg = ((uint32_t) IOPORT_CFG_DRIVE_HIGH
 		| (uint32_t) IOPORT_CFG_PERIPHERAL_PIN
 		| (uint32_t) IOPORT_PERIPHERAL_USB_FS) },
+
+{ .pin = BSP_IO_PORT_09_PIN_05, .pin_cfg = ((uint32_t) IOPORT_CFG_PERIPHERAL_PIN
+		| (uint32_t) IOPORT_PERIPHERAL_SCI1_3_5_7_9) },
 
 { .pin = BSP_IO_PORT_10_PIN_00, .pin_cfg = ((uint32_t) IOPORT_CFG_DRIVE_HIGH
 		| (uint32_t) IOPORT_CFG_PERIPHERAL_PIN

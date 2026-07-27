@@ -1,11 +1,14 @@
 #include "ft6336.h"
 #include "hal_data.h"
 
-#define PIN_CTP_SDA BSP_IO_PORT_08_PIN_02
-#define PIN_CTP_SCL BSP_IO_PORT_08_PIN_00
+#include <stdbool.h>
+#include <stddef.h>
+
+#include "FreeRTOS.h"
+#include "task.h"
+
 #define PIN_CTP_RST BSP_IO_PORT_08_PIN_01
 
-#define FT6336_I2C_ADDR         0x38U
 #define FT6336_REG_GESTURE_ID   0x01U
 #define FT6336_REG_TD_STATUS    0x02U
 #define FT6336_REG_TOUCH1_XH    0x03U
@@ -19,7 +22,7 @@
 #define FT6336_TOUCH_HIGH_MASK  0x0FU
 #define FT6336_TOUCH_ID_MASK    0xF0U
 #define FT6336_TOUCH_THRESHOLD  32U
-#define FT6336_I2C_TIMEOUT      250U
+#define FT6336_I2C_TIMEOUT      pdMS_TO_TICKS(50U)
 
 volatile uint8_t g_ft6336_last_frame[FT6336_TOUCH_FRAME_LEN];
 volatile uint8_t g_ft6336_last_read_ok;
@@ -28,183 +31,78 @@ volatile uint8_t g_ft6336_last_chip_id;
 volatile uint8_t g_ft6336_last_vendor_id;
 volatile uint8_t g_ft6336_last_focaltech_id;
 
-static void i2c_delay(void)
-{
-    R_BSP_SoftwareDelay(5U, BSP_DELAY_UNITS_MICROSECONDS);
-}
+static volatile bool g_i2c_done;
+static volatile bool g_i2c_error;
+static bool g_i2c_open;
 
-static void ctp_sda_out(void)
+void i2c_touch_callback(i2c_master_callback_args_t * p_args)
 {
-    R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_CTP_SDA, IOPORT_CFG_PORT_DIRECTION_OUTPUT);
-}
-
-static void ctp_sda_in(void)
-{
-    R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_CTP_SDA, IOPORT_CFG_PORT_DIRECTION_INPUT);
-}
-
-static void ctp_sda_write(bsp_io_level_t v)
-{
-    R_IOPORT_PinWrite(&g_ioport_ctrl, PIN_CTP_SDA, v);
-}
-
-static void ctp_scl_write(bsp_io_level_t v)
-{
-    R_IOPORT_PinWrite(&g_ioport_ctrl, PIN_CTP_SCL, v);
-}
-
-static bsp_io_level_t ctp_sda_read(void)
-{
-    bsp_io_level_t v;
-    R_IOPORT_PinRead(&g_ioport_ctrl, PIN_CTP_SDA, &v);
-    return v;
-}
-
-static void i2c_bus_recover(void)
-{
-    ctp_sda_out();
-    ctp_sda_write(BSP_IO_LEVEL_HIGH);
-    for (int i = 0; i < 9; i++) {
-        ctp_scl_write(BSP_IO_LEVEL_LOW);
-        i2c_delay();
-        ctp_scl_write(BSP_IO_LEVEL_HIGH);
-        i2c_delay();
+    if (p_args == NULL) {
+        return;
     }
-    ctp_scl_write(BSP_IO_LEVEL_LOW);
+
+    g_i2c_error = (p_args->event == I2C_MASTER_EVENT_ABORTED);
+    if ((p_args->event == I2C_MASTER_EVENT_TX_COMPLETE) ||
+        (p_args->event == I2C_MASTER_EVENT_RX_COMPLETE) ||
+        (p_args->event == I2C_MASTER_EVENT_ABORTED)) {
+        g_i2c_done = true;
+    }
 }
 
-static void i2c_start(void)
+static bool i2c_wait_done(void)
 {
-    ctp_sda_out();
-    ctp_sda_write(BSP_IO_LEVEL_HIGH);
-    ctp_scl_write(BSP_IO_LEVEL_HIGH);
-    R_BSP_SoftwareDelay(30U, BSP_DELAY_UNITS_MICROSECONDS);
-    ctp_sda_write(BSP_IO_LEVEL_LOW);
-    i2c_delay();
-    ctp_scl_write(BSP_IO_LEVEL_LOW);
-}
+    TickType_t const start = xTaskGetTickCount();
 
-static void i2c_stop(void)
-{
-    ctp_sda_out();
-    ctp_scl_write(BSP_IO_LEVEL_HIGH);
-    R_BSP_SoftwareDelay(30U, BSP_DELAY_UNITS_MICROSECONDS);
-    ctp_sda_write(BSP_IO_LEVEL_LOW);
-    i2c_delay();
-    ctp_sda_write(BSP_IO_LEVEL_HIGH);
-    i2c_delay();
-}
-
-static uint8_t i2c_wait_ack(void)
-{
-    uint16_t timeout = 0U;
-
-    ctp_sda_in();
-    ctp_sda_write(BSP_IO_LEVEL_HIGH);
-    ctp_scl_write(BSP_IO_LEVEL_LOW);
-    i2c_delay();
-    ctp_scl_write(BSP_IO_LEVEL_HIGH);
-    i2c_delay();
-    while (ctp_sda_read() != BSP_IO_LEVEL_LOW) {
-        timeout++;
-        if (timeout > FT6336_I2C_TIMEOUT) {
-            i2c_bus_recover();
-            i2c_stop();
-            return 1U;
+    while (!g_i2c_done) {
+        if ((xTaskGetTickCount() - start) > FT6336_I2C_TIMEOUT) {
+            (void) g_i2c_touch.p_api->abort(g_i2c_touch.p_ctrl);
+            return false;
         }
-        i2c_delay();
+        vTaskDelay(1);
     }
 
-    ctp_scl_write(BSP_IO_LEVEL_LOW);
-    return 0U;
-}
-
-static void i2c_send_byte(uint8_t data)
-{
-    ctp_sda_out();
-    for (int i = 0; i < 8; i++) {
-        ctp_scl_write(BSP_IO_LEVEL_LOW);
-        i2c_delay();
-        ctp_sda_write((data & 0x80U) ? BSP_IO_LEVEL_HIGH : BSP_IO_LEVEL_LOW);
-        i2c_delay();
-        ctp_scl_write(BSP_IO_LEVEL_HIGH);
-        i2c_delay();
-        data <<= 1;
-    }
-    ctp_scl_write(BSP_IO_LEVEL_LOW);
-}
-
-static uint8_t i2c_read_byte(uint8_t send_ack)
-{
-    uint8_t byte = 0U;
-
-    ctp_sda_in();
-    R_BSP_SoftwareDelay(30U, BSP_DELAY_UNITS_MICROSECONDS);
-    for (int i = 0; i < 8; i++) {
-        ctp_scl_write(BSP_IO_LEVEL_LOW);
-        i2c_delay();
-        ctp_scl_write(BSP_IO_LEVEL_HIGH);
-        i2c_delay();
-        byte = (uint8_t) (((uint32_t) byte << 1U) |
-                          ((ctp_sda_read() != BSP_IO_LEVEL_LOW) ? 1U : 0U));
-    }
-
-    ctp_scl_write(BSP_IO_LEVEL_LOW);
-    ctp_sda_out();
-    ctp_sda_write(send_ack ? BSP_IO_LEVEL_LOW : BSP_IO_LEVEL_HIGH);
-    i2c_delay();
-    ctp_scl_write(BSP_IO_LEVEL_HIGH);
-    i2c_delay();
-    ctp_scl_write(BSP_IO_LEVEL_LOW);
-    return byte;
+    return !g_i2c_error;
 }
 
 static uint8_t ft6336_write_reg(uint8_t reg, uint8_t value)
 {
-    i2c_start();
-    i2c_send_byte((uint8_t) ((FT6336_I2C_ADDR << 1) | 0U));
-    if (i2c_wait_ack() != 0U) {
+    uint8_t tx[2] = {reg, value};
+
+    if (!g_i2c_open) {
         return 1U;
     }
-    i2c_send_byte(reg);
-    if (i2c_wait_ack() != 0U) {
+
+    g_i2c_done = false;
+    g_i2c_error = false;
+    if (g_i2c_touch.p_api->write(g_i2c_touch.p_ctrl, tx, sizeof(tx), false) != FSP_SUCCESS) {
         return 1U;
     }
-    i2c_send_byte(value);
-    if (i2c_wait_ack() != 0U) {
-        return 1U;
-    }
-    i2c_stop();
-    return 0U;
+
+    return i2c_wait_done() ? 0U : 1U;
 }
 
 static uint8_t ft6336_read_block(uint8_t reg, uint8_t * buf, uint8_t len)
 {
-    if ((buf == NULL) || (len == 0U)) {
+    if ((!g_i2c_open) || (buf == NULL) || (len == 0U)) {
         return 1U;
     }
 
-    i2c_start();
-    i2c_send_byte((uint8_t) ((FT6336_I2C_ADDR << 1) | 0U));
-    if (i2c_wait_ack() != 0U) {
+    g_i2c_done = false;
+    g_i2c_error = false;
+    if (g_i2c_touch.p_api->write(g_i2c_touch.p_ctrl, &reg, 1U, true) != FSP_SUCCESS) {
         return 1U;
     }
-    i2c_send_byte(reg);
-    if (i2c_wait_ack() != 0U) {
-        return 1U;
-    }
-
-    i2c_start();
-    i2c_send_byte((uint8_t) ((FT6336_I2C_ADDR << 1) | 1U));
-    if (i2c_wait_ack() != 0U) {
+    if (!i2c_wait_done()) {
         return 1U;
     }
 
-    for (uint8_t i = 0U; i < len; i++) {
-        buf[i] = i2c_read_byte((uint8_t) (i + 1U < len));
+    g_i2c_done = false;
+    g_i2c_error = false;
+    if (g_i2c_touch.p_api->read(g_i2c_touch.p_ctrl, buf, len, false) != FSP_SUCCESS) {
+        return 1U;
     }
-    i2c_stop();
-    return 0U;
+
+    return i2c_wait_done() ? 0U : 1U;
 }
 
 static uint8_t ft6336_read_reg(uint8_t reg, uint8_t * value)
@@ -218,17 +116,14 @@ static uint8_t ft6336_read_reg(uint8_t reg, uint8_t * value)
 
 void ft6336_init(void)
 {
-    R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_CTP_SDA, IOPORT_CFG_PORT_DIRECTION_OUTPUT);
-    R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_CTP_SCL, IOPORT_CFG_PORT_DIRECTION_OUTPUT);
     R_IOPORT_PinCfg(&g_ioport_ctrl, PIN_CTP_RST, IOPORT_CFG_PORT_DIRECTION_OUTPUT);
-    R_IOPORT_PinWrite(&g_ioport_ctrl, PIN_CTP_SDA, BSP_IO_LEVEL_HIGH);
-    R_IOPORT_PinWrite(&g_ioport_ctrl, PIN_CTP_SCL, BSP_IO_LEVEL_HIGH);
 
     R_IOPORT_PinWrite(&g_ioport_ctrl, PIN_CTP_RST, BSP_IO_LEVEL_LOW);
     R_BSP_SoftwareDelay(20, BSP_DELAY_UNITS_MILLISECONDS);
     R_IOPORT_PinWrite(&g_ioport_ctrl, PIN_CTP_RST, BSP_IO_LEVEL_HIGH);
     R_BSP_SoftwareDelay(300, BSP_DELAY_UNITS_MILLISECONDS);
 
+    g_i2c_open = (g_i2c_touch.p_api->open(g_i2c_touch.p_ctrl, g_i2c_touch.p_cfg) == FSP_SUCCESS);
     (void) ft6336_write_reg(FT6336_REG_THRESHOLD, FT6336_TOUCH_THRESHOLD);
     g_ft6336_last_read_ok = 0U;
     g_ft6336_last_touches = 0U;

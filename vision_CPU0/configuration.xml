@@ -417,6 +417,10 @@
       <description>Serial Peripheral Interface on Serial Communications Interface</description>
       <originalPack>Renesas.RA.6.5.0.pack</originalPack>
     </component>
+    <component apiversion="" class="HAL Drivers" condition="" group="all" subgroup="r_sci_b_i2c" variant="" vendor="Renesas" version="6.5.0">
+      <description>SCI_B I2C Master Interface</description>
+      <originalPack>Renesas.RA.6.5.0.pack</originalPack>
+    </component>
   </raComponentSelection>
   <raElcConfiguration/>
   <raIcuConfiguration/>
@@ -582,6 +586,21 @@
       <property id="module.driver.transfer.offset" value="1"/>
       <property id="module.driver.transfer.src.buffer" value="1"/>
     </module>
+    <module id="module.driver.i2c_on_sci_b_i2c.1301483422">
+      <property id="module.driver.i2c.name" value="g_i2c_touch"/>
+      <property id="module.driver.i2c.channel" value="3"/>
+      <property id="module.driver.i2c.slave" value="0x38"/>
+      <property id="module.driver.i2c.addr_mode" value="module.driver.i2c.addr_mode.addr_mode_7bit"/>
+      <property id="module.driver.i2c.rate" value="module.driver.i2c.rate.rate_standard"/>
+      <property id="module.driver.i2c.rate_value" value="0"/>
+      <property id="module.driver.i2c.sda_delay" value="300"/>
+      <property id="module.driver.i2c.snfr" value="module.driver.i2c.snfr.div_one"/>
+      <property id="module.driver.i2c.clock_source" value="module.driver.i2c.clock_source.pclk"/>
+      <property id="module.driver.i2c.bitrate_modulation" value="module.driver.i2c.bitrate_modulation.true"/>
+      <property id="module.driver.i2c.p_callback" value="i2c_touch_callback"/>
+      <property id="module.driver.i2c.ipl" value="board.icu.common.irq.priority12"/>
+      <property id="module.driver.i2c.rx_ipl" value="_disabled"/>
+    </module>
     <context id="_hal.0">
       <stack module="module.driver.ioport_on_ioport.0"/>
       <stack module="module.middleware.rm_freertos_port.0"/>
@@ -609,6 +628,7 @@
         <stack module="module.driver.transfer_on_dmac.1360539416" requires="module.driver.spi_on_sci_b_spi.requires.transfer_tx"/>
         <stack module="module.driver.transfer_on_dmac.666527178" requires="module.driver.spi_on_sci_b_spi.requires.transfer_rx"/>
       </stack>
+      <stack module="module.driver.i2c_on_sci_b_i2c.1301483422"/>
     </context>
     <context id="rtos.awsfreertos.thread.0">
       <property id="_symbol" value="Camera_thread"/>
@@ -658,6 +678,11 @@
     <config id="config.driver.ioport">
       <property id="config.driver.ioport.checking" value="config.driver.ioport.checking.system"/>
       <property id="config.driver.ioport.ccd_support_enable" value="config.driver.ioport.ccd_support_enable.disabled"/>
+    </config>
+    <config id="config.driver.sci_b_i2c">
+      <property id="config.driver.sci_b_i2c.param_checking_enable" value="config.driver.sci_b_i2c.param_checking_enable.bsp"/>
+      <property id="config.driver.sci_b_i2c.dtc_enable" value="config.driver.sci_b_i2c.dtc_enable.disabled"/>
+      <property id="config.driver.sci_b_i2c.addr_mode_10_bit_enable" value="config.driver.sci_b_i2c.addr_mode_10_bit_enable.disabled"/>
     </config>
     <config id="config.awsfreertos.thread">
       <property id="config.awsfreertos.custom_freertosconfig" value=""/>
@@ -790,7 +815,7 @@
     <symbolicName propertyId="p312.symbolic_name" value="ARDUINO_D7"/>
     <symbolicName propertyId="p400.symbolic_name" value="I3C_SCL"/>
     <symbolicName propertyId="p401.symbolic_name" value="I3C_SDA"/>
-    <symbolicName propertyId="p402.symbolic_name" value="PMOD1_RST"/>
+    <symbolicName propertyId="p402.symbolic_name" value="None"/>
     <symbolicName propertyId="p403.symbolic_name" value="AUDIO_BCLK"/>
     <symbolicName propertyId="p404.symbolic_name" value="AUDIO_WCLK"/>
     <symbolicName propertyId="p405.symbolic_name" value="AUDIO_SSITX"/>
@@ -962,7 +987,7 @@
     <comment propertyId="p309.comment" value="Reference SW4 /  E23 in manual"/>
     <comment propertyId="p310.comment" value="Reference SW4 /  E22 in manual"/>
     <comment propertyId="p312.comment" value="Enable when connected"/>
-    <comment propertyId="p402.comment" value="Enable when connected"/>
+    <comment propertyId="p402.comment" value="None"/>
     <comment propertyId="p405.comment" value="See J41 in manual"/>
     <comment propertyId="p406.comment" value="See J41 in manual"/>
     <comment propertyId="p409.comment" value="Enable when connected"/>
@@ -1043,6 +1068,8 @@
       <configSetting altId="p208.gpio_mode.gpio_mode_peripheral" configurationId="p208.gpio_mode"/>
       <configSetting altId="p209.sci9.txd9" configurationId="p209"/>
       <configSetting altId="p209.gpio_mode.gpio_mode_peripheral" configurationId="p209.gpio_mode"/>
+      <configSetting altId="p310.sci3.txd3" configurationId="p310"/>
+      <configSetting altId="p310.gpio_mode.gpio_mode_peripheral" configurationId="p310.gpio_mode"/>
       <configSetting altId="p400.ceu.vio_d0" configurationId="p400"/>
       <configSetting altId="p400.gpio_mode.gpio_mode_peripheral" configurationId="p400.gpio_mode"/>
       <configSetting altId="p401.ceu.vio_d1" configurationId="p401"/>
@@ -1067,6 +1094,10 @@
       <configSetting altId="p600.output.high" configurationId="p600" secureAltId="p600.output.low"/>
       <configSetting altId="p600.gpio_speed.gpio_speed_h" configurationId="p600.gpio_drivecapacity" secureAltId="p600.output.low"/>
       <configSetting altId="p600.gpio_mode.gpio_mode_out.high" configurationId="p600.gpio_mode" secureAltId="p600.output.low"/>
+      <configSetting altId="p602.sci0.rxd0" configurationId="p602"/>
+      <configSetting altId="p602.gpio_mode.gpio_mode_peripheral" configurationId="p602.gpio_mode"/>
+      <configSetting altId="p603.sci0.txd0" configurationId="p603"/>
+      <configSetting altId="p603.gpio_mode.gpio_mode_peripheral" configurationId="p603.gpio_mode"/>
       <configSetting altId="p700.ceu.vio_d4" configurationId="p700"/>
       <configSetting altId="p700.gpio_mode.gpio_mode_peripheral" configurationId="p700.gpio_mode"/>
       <configSetting altId="p701.ceu.vio_d5" configurationId="p701"/>
@@ -1083,7 +1114,15 @@
       <configSetting altId="p715.gpio_mode.gpio_mode_peripheral" configurationId="p715.gpio_mode"/>
       <configSetting altId="p801.output.high" configurationId="p801"/>
       <configSetting altId="p801.gpio_mode.gpio_mode_out.high" configurationId="p801.gpio_mode"/>
+      <configSetting altId="p905.sci3.rxd3" configurationId="p905"/>
+      <configSetting altId="p905.gpio_mode.gpio_mode_peripheral" configurationId="p905.gpio_mode"/>
       <configSetting altId="pdm2.mode.custom.free" configurationId="pdm2.mode"/>
+      <configSetting altId="sci0.mode.simplei2c.free" configurationId="sci0.mode"/>
+      <configSetting altId="sci0.rxd0.p602" configurationId="sci0.rxd0"/>
+      <configSetting altId="sci0.txd0.p603" configurationId="sci0.txd0"/>
+      <configSetting altId="sci3.mode.simplei2c.free" configurationId="sci3.mode"/>
+      <configSetting altId="sci3.rxd3.p905" configurationId="sci3.rxd3"/>
+      <configSetting altId="sci3.txd3.p310" configurationId="sci3.txd3"/>
       <configSetting altId="sci4.mode.simplespi.free" configurationId="sci4.mode"/>
       <configSetting altId="sci4.rxd4.p715" configurationId="sci4.rxd4"/>
       <configSetting altId="sci4.sck4.p514" configurationId="sci4.sck4" secureAltId="p514.output.low"/>

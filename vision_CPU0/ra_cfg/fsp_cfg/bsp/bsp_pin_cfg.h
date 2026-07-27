@@ -64,7 +64,7 @@ FSP_HEADER
 #define ARDUINO_D7 (BSP_IO_PORT_03_PIN_12) /* Enable when connected */
 #define I3C_SCL (BSP_IO_PORT_04_PIN_00)
 #define I3C_SDA (BSP_IO_PORT_04_PIN_01)
-#define PMOD1_RST (BSP_IO_PORT_04_PIN_02) /* Enable when connected */
+#define None (BSP_IO_PORT_04_PIN_02) /* None */
 #define AUDIO_BCLK (BSP_IO_PORT_04_PIN_03)
 #define AUDIO_WCLK (BSP_IO_PORT_04_PIN_04)
 #define AUDIO_SSITX (BSP_IO_PORT_04_PIN_05) /* See J41 in manual */
