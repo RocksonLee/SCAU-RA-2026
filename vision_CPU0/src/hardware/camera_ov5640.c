@@ -16,7 +16,8 @@
 #define OV5640_PIN_RESET            BSP_IO_PORT_07_PIN_09
 #define OV5640_PIN_PWDN             BSP_IO_PORT_07_PIN_10
 #define OV5640_ENABLE_COLOR_BAR     (0)
-#define OV5640_CEU_FATAL_EVENTS     (CEU_EVENT_CRAM_OVERFLOW | CEU_EVENT_FIREWALL)
+#define OV5640_CEU_ABORT_EVENTS     (CEU_EVENT_CRAM_OVERFLOW | CEU_EVENT_VD_ERROR | \
+                                     CEU_EVENT_FIREWALL | CEU_EVENT_VD_MISSING)
 
 #define OV5640_STEP_NONE            (0U)
 #define OV5640_STEP_I2C_OPEN        (1U)
@@ -137,7 +138,12 @@ void g_ceu0_user_callback(capture_callback_args_t * p_args)
     }
 
     g_ceu_events |= p_args->event;
-    if (0U != (p_args->event & (CEU_EVENT_FRAME_END | OV5640_CEU_FATAL_EVENTS)))
+    /*
+     * With the OV5640 timing used here, NHD can be reported transiently before
+     * a later valid frame completes.  Keep recording it in g_ceu_events, but do
+     * not abort solely on NHD or the disabled timing-validation events.
+     */
+    if (0U != (p_args->event & (CEU_EVENT_FRAME_END | OV5640_CEU_ABORT_EVENTS)))
     {
         g_frame_done = true;
     }
@@ -446,7 +452,7 @@ camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
             return CAMERA_OV5640_ERR_CAPTURE;
         }
 
-        if (0U != (g_ceu_events & OV5640_CEU_FATAL_EVENTS))
+        if (0U != (g_ceu_events & OV5640_CEU_ABORT_EVENTS))
         {
             ov5640_save_ceu_debug(FSP_SUCCESS);
             (void) ov5640_recover_ceu();
@@ -456,7 +462,7 @@ camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
         vTaskDelay(1);
     }
 
-    if (0U != (g_ceu_events & OV5640_CEU_FATAL_EVENTS))
+    if (0U != (g_ceu_events & OV5640_CEU_ABORT_EVENTS))
     {
         ov5640_save_ceu_debug(FSP_SUCCESS);
         (void) ov5640_recover_ceu();

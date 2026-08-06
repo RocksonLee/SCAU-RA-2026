@@ -16,6 +16,8 @@
 #define CAMERA_AE_SETTLE_MS     (1500U)
 #define CAMERA_DISCARD_FRAMES   (5U)
 #define CAMERA_UART_LINE_BYTES  (192U)
+#define CAMERA_CAPTURE_ATTEMPTS (3U)
+#define CAMERA_CAPTURE_RETRY_MS (100U)
 
 static uint8_t g_camera_frame[CAMERA_OV5640_FRAME_BYTES] BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
 
@@ -215,6 +217,27 @@ static void camera_uart_send_ov5640_diagnostics(void)
     camera_uart_send_text("OV5640_DIAG_END\r\n");
 }
 
+static camera_ov5640_result_t camera_capture_frame_with_retry(uint8_t * p_frame)
+{
+    camera_ov5640_result_t result = CAMERA_OV5640_ERR_CAPTURE;
+
+    for (uint32_t attempt = 0U; attempt < CAMERA_CAPTURE_ATTEMPTS; attempt++)
+    {
+        result = camera_ov5640_capture_frame(p_frame);
+        if (CAMERA_OV5640_OK == result)
+        {
+            return result;
+        }
+
+        if ((attempt + 1U) < CAMERA_CAPTURE_ATTEMPTS)
+        {
+            vTaskDelay(pdMS_TO_TICKS(CAMERA_CAPTURE_RETRY_MS));
+        }
+    }
+
+    return result;
+}
+
 static bool camera_stream_send_frame(void)
 {
     return camera_uart_send_bytes(g_camera_frame, CAMERA_OV5640_FRAME_BYTES);
@@ -262,13 +285,13 @@ void camera_stream_task(void)
 
     for (uint32_t i = 0U; i < CAMERA_DISCARD_FRAMES; i++)
     {
-        (void) camera_ov5640_capture_frame(g_camera_frame);
+        (void) camera_capture_frame_with_retry(g_camera_frame);
         vTaskDelay(pdMS_TO_TICKS(100U));
     }
 
     while (!detection_sent)
     {
-        if (CAMERA_OV5640_OK != camera_ov5640_capture_frame(g_camera_frame))
+        if (CAMERA_OV5640_OK != camera_capture_frame_with_retry(g_camera_frame))
         {
             camera_uart_send_ceu_events_line();
             vTaskDelay(pdMS_TO_TICKS(10U));
@@ -291,6 +314,7 @@ void camera_stream_task(void)
 
         if (0U == result_count)
         {
+            camera_uart_send_text("FRAME_OK NO_DET\r\n");
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }
