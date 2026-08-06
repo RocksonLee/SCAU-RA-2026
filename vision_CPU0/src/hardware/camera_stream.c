@@ -138,14 +138,17 @@ static void camera_uart_send_ceu_events_line(void)
     int const count = snprintf(g_uart_line,
                                sizeof(g_uart_line),
                                "CEU_HW events=%08lX start=%lu caps=%08lX csts=%08lX "
-                               "flags=%08lX size=%08lX cam=%08lX\r\n",
+                               "flags=%08lX size=%08lX cam=%08lX cyc=%08lX written=%lu rows=%lu\r\n",
                                (unsigned long) events,
                                (unsigned long) debug.capture_start_error,
                                (unsigned long) debug.caps,
                                (unsigned long) debug.status,
                                (unsigned long) debug.events,
                                (unsigned long) debug.data_size,
-                               (unsigned long) debug.interface_control);
+                               (unsigned long) debug.interface_control,
+                               (unsigned long) debug.interface_cycle,
+                               (unsigned long) debug.written_bytes,
+                               (unsigned long) debug.written_rows);
     if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
     {
         camera_uart_send_text(g_uart_line);
@@ -157,9 +160,10 @@ static void camera_uart_send_camera_init_error(camera_ov5640_result_t result)
     uint16_t const chip_id = camera_ov5640_chip_id();
     int const count = snprintf(g_uart_line,
                                sizeof(g_uart_line),
-                               "CAMERA_INIT_ERR code=%lu step=%lu chip=0x%04X\r\n",
+                               "CAMERA_INIT_ERR code=%lu step=%lu reg=0x%04X chip=0x%04X\r\n",
                                (unsigned long) result,
                                (unsigned long) camera_ov5640_last_error_step(),
+                               (unsigned int) camera_ov5640_last_failed_reg(),
                                (unsigned int) chip_id);
 
     if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
@@ -199,7 +203,16 @@ static void camera_uart_send_ov5640_diagnostics(void)
     camera_uart_send_reg_line(0x3036U);
     camera_uart_send_reg_line(0x3820U);
     camera_uart_send_reg_line(0x3821U);
+    camera_uart_send_reg_line(0x3808U);
+    camera_uart_send_reg_line(0x3809U);
+    camera_uart_send_reg_line(0x380AU);
+    camera_uart_send_reg_line(0x380BU);
+    camera_uart_send_reg_line(0x380CU);
+    camera_uart_send_reg_line(0x380DU);
+    camera_uart_send_reg_line(0x380EU);
+    camera_uart_send_reg_line(0x380FU);
     camera_uart_send_reg_line(0x3824U);
+    camera_uart_send_reg_line(0x460CU);
     camera_uart_send_reg_line(0x4837U);
     camera_uart_send_reg_line(0x3406U);
     camera_uart_send_reg_line(0x5181U);

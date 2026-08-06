@@ -281,14 +281,14 @@ const ceu_extended_cfg_t g_ceu0_extended_cfg = { .capture_format =
 				| 0x2 | 0x4 | 0x0) >> 0x02 & 0x01, }, .burst_mode =
 				CEU_BURST_TRANSFER_MODE_X8, .scale_down_factor = 0x0U,
 		.h_output_size = 0, .v_output_size = 0,
-		.image_area_size = 320 * 240 * 2, .interrupts_enabled = 0
+		.image_area_size = 640 * 480 * 2, .interrupts_enabled = 0
 				| R_CEU_CEIER_CPEIE_Msk | 0 | R_CEU_CEIER_VDIE_Msk
 				| R_CEU_CEIER_CDTOFIE_Msk | 0 | 0 | R_CEU_CEIER_VBPIE_Msk
 				| R_CEU_CEIER_NHDIE_Msk | R_CEU_CEIER_NVDIE_Msk,
 		.ceu_ipl = (12), .ceu_irq = VECTOR_NUMBER_CEU_CEUI, };
 
-const capture_cfg_t g_ceu0_cfg = { .x_capture_pixels = 320, .y_capture_pixels =
-		240, .x_capture_start_pixel = 0, .y_capture_start_pixel = 0,
+const capture_cfg_t g_ceu0_cfg = { .x_capture_pixels = 640, .y_capture_pixels =
+		480, .x_capture_start_pixel = 0, .y_capture_start_pixel = 0,
 		.bytes_per_pixel = 2, .p_callback = g_ceu0_user_callback, .p_context =
 				(void*) NULL, .p_extend = &g_ceu0_extended_cfg, };
 

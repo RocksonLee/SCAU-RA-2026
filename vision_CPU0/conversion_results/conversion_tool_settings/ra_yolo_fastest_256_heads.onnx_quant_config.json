@@ -1,0 +1,25 @@
+{
+  "skip_preprocess": "False",
+  "num_calibrate_samples": -1,
+  "calibrate_method": "MinMax",
+  "percentile_value": 99.999,
+  "quant_options": "",
+  "drp_compiler_version": "100",
+  "cpu_data_type": "float16",
+  "nodes": [
+    {
+      "name": "images",
+      "calibrate_sample_dir": "D:\\ruisacup\\ModelZoo-YOLOFastest-for-ARM-U55-M85-master\\ModelZoo-YOLOFastest-for-ARM-U55-M85-master\\ra8p1_quant_calib_200",
+      "mean": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "std": [
+        255.0,
+        255.0,
+        255.0
+      ]
+    }
+  ]
+}

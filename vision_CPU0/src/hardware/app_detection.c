@@ -7,11 +7,11 @@
 #include "hal_data.h"
 #include "model.h"
 
-#define DET_INPUT_SIZE              (192U)
+#define DET_INPUT_SIZE              (256U)
 #define DET_NUM_ANCHORS             (3U)
 #define DET_NUM_VALUES              (8U)
-#define DET_P4_GRID                 (12U)
-#define DET_P5_GRID                 (6U)
+#define DET_P4_GRID                 (16U)
+#define DET_P5_GRID                 (8U)
 #define DET_P4_STRIDE               (16.0f)
 #define DET_P5_STRIDE               (32.0f)
 #define DET_ANCHOR_SCALE            ((float) DET_INPUT_SIZE / 256.0f)
@@ -323,8 +323,8 @@ bool app_detection_run_frame(uint8_t const                 * p_rgb565_frame,
     RunModel(true);
 
     uint32_t candidate_count = 0U;
-    det_decode_head(GetModelOutputPtr_p4_12x12_70454(), DET_P4_GRID, DET_P4_STRIDE, g_anchors_p4, &candidate_count);
-    det_decode_head(GetModelOutputPtr_p5_6x6_70436(), DET_P5_GRID, DET_P5_STRIDE, g_anchors_p5, &candidate_count);
+    det_decode_head(GetModelOutputPtr_p4_16x16_70454(), DET_P4_GRID, DET_P4_STRIDE, g_anchors_p4, &candidate_count);
+    det_decode_head(GetModelOutputPtr_p5_8x8_70436(), DET_P5_GRID, DET_P5_STRIDE, g_anchors_p5, &candidate_count);
 
     uint32_t const output_count = det_nms(candidate_count);
     uint32_t const result_count = (output_count < result_capacity) ? output_count : result_capacity;

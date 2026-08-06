@@ -49,8 +49,8 @@
  */
 
 #include <stddef.h>
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 // NPU unit addresses
 #include "sub_0001_tensors.h"
@@ -61,9 +61,9 @@ extern uint8_t sub_0001_arena[kArenaSize_sub_0001];
 extern uint8_t sub_0003_arena[kArenaSize_sub_0003];
 
 // Buffers
-extern float buf_images[110592];
-extern float buf_p4_12x12_70454[3456];
-extern float buf_p5_6x6_70436[864];
+extern float buf_images[196608];
+extern float buf_p4_16x16_70454[6144];
+extern float buf_p5_8x8_70436[1536];
 
 
 void RunModel(bool clean_outputs);
@@ -72,6 +72,6 @@ void RunModel(bool clean_outputs);
 float* GetModelInputPtr_images();
 
   // Model output pointers
-float* GetModelOutputPtr_p4_12x12_70454();
-float* GetModelOutputPtr_p5_6x6_70436();
+float* GetModelOutputPtr_p4_16x16_70454();
+float* GetModelOutputPtr_p5_8x8_70436();
 

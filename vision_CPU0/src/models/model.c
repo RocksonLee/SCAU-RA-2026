@@ -53,6 +53,7 @@
 #include <string.h>
 #include <stdbool.h>
 
+#include "common_data.h"
 #include "model.h"
 
 // CPU compute declarations
@@ -63,13 +64,14 @@
 #include "compute_sub_0004.h"
 
 // Buffers for CPU units
-float buf_images[110592];
-int8_t buf__843_70441_11067[13824];
-float buf_p4_12x12_70454[3456];
-float buf_p5_6x6_70436[864];
+float buf_images[196608]
+    BSP_PLACE_IN_SECTION(".sdram") BSP_ALIGN_VARIABLE(32);
+float buf_p4_16x16_70454[6144];
+float buf_p5_8x8_70436[1536];
 
 // Arenas for CPU units
-uint8_t compute_arena_sub_0000[kBufferSize_sub_0000];
+uint8_t compute_arena_sub_0000[kBufferSize_sub_0000]
+    BSP_PLACE_IN_SECTION(".sdram") BSP_ALIGN_VARIABLE(32);
 uint8_t compute_arena_sub_0002[kBufferSize_sub_0002];
 uint8_t compute_arena_sub_0004[kBufferSize_sub_0004];
 
@@ -80,38 +82,38 @@ float* GetModelInputPtr_images() {
 
 
   // Model output pointers
-float* GetModelOutputPtr_p4_12x12_70454() {
-  return buf_p4_12x12_70454;
+float* GetModelOutputPtr_p4_16x16_70454() {
+  return buf_p4_16x16_70454;
 }
 
-float* GetModelOutputPtr_p5_6x6_70436() {
-  return buf_p5_6x6_70436;
+float* GetModelOutputPtr_p5_8x8_70436() {
+  return buf_p5_8x8_70436;
 }
 
 
 void RunModel(bool clean_outputs) {
   // Buffers for NPU units
-  int8_t* npu_in_images = (int8_t*) (sub_0001_arena + sub_0001_address_images_70602_11151_70256);
+  int8_t* buf_images_70602_11151 = (int8_t*) (sub_0001_arena + sub_0001_address_images_70602_11151);
   int8_t* buf__737_70388_11119 = (int8_t*) (sub_0001_arena + sub_0001_address__737_70388_11119);
   int8_t* buf__837_70434_70603_11143 = (int8_t*) (sub_0001_arena + sub_0001_address__837_70434_70603_11143);
   int8_t* buf__838_70438_10737 = (int8_t*) (sub_0001_arena + sub_0001_address__838_70438_10737);
+  int8_t* buf__843_70441_11067 = (int8_t*) (sub_0003_arena + sub_0003_address__843_70441_11067);
   int8_t* buf__864_70452_70604_11147 = (int8_t*) (sub_0003_arena + sub_0003_address__864_70452_70604_11147);
 
   // CPU Unit
-  compute_sub_0000(compute_arena_sub_0000, buf_images, npu_in_images  );
+  compute_sub_0000(compute_arena_sub_0000, buf_images, buf_images_70602_11151  );
 
   // NPU Unit
   sub_0001_invoke(clean_outputs);
 
   // CPU Unit
-  compute_sub_0002(compute_arena_sub_0002, buf__837_70434_70603_11143, buf__838_70438_10737, buf__843_70441_11067, buf_p5_6x6_70436  );
+  compute_sub_0002(compute_arena_sub_0002, buf__837_70434_70603_11143, buf__838_70438_10737, buf__843_70441_11067, buf_p5_8x8_70436  );
 
-  memcpy((sub_0003_arena + sub_0003_address__737_70388_11119), buf__737_70388_11119, 3456);
-  memcpy((sub_0003_arena + sub_0003_address__843_70441_11067), buf__843_70441_11067, 13824);
+  memcpy((sub_0003_arena + sub_0003_address__737_70388_11119), buf__737_70388_11119, 6144);
   // NPU Unit
   sub_0003_invoke(clean_outputs);
 
   // CPU Unit
-  compute_sub_0004(compute_arena_sub_0004, buf__864_70452_70604_11147, buf_p4_12x12_70454  );
+  compute_sub_0004(compute_arena_sub_0004, buf__864_70452_70604_11147, buf_p4_16x16_70454  );
 
 }

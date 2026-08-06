@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<DrpAiTranslatorProjectSettings>
+    <ProjectSettingsInfo>
+        <framework>1</framework>
+        <modelfile>ra_yolo_fastest_256_heads.onnx</modelfile>
+        <output_directory>conversion_results</output_directory>
+        <product>RA8P1 (CPU+Ethos-U55)</product>
+        <tool_name>RUHMI Framework AI Compiler</tool_name>
+        <docker_image_name>Unused property</docker_image_name>
+        <PytorchSettingInfo>
+            <configuration_type>false</configuration_type>
+            <configuration_file/>
+            <modelname/>
+            <model_weight/>
+            <input_layer_shape/>
+        </PytorchSettingInfo>
+    </ProjectSettingsInfo>
+    <DRP-AI_TVMSettingInfo>
+        <TransSettingInfo>
+            <item key="ra_yolo_fastest_256_heads.onnx">conversion_results/conversion_tool_settings/ra_yolo_fastest_256_heads.onnx_trans_config.json</item>
+        </TransSettingInfo>
+        <QuantizationSetting>
+            <item key="ra_yolo_fastest_256_heads.onnx">conversion_results/conversion_tool_settings/ra_yolo_fastest_256_heads.onnx_quant_config.json</item>
+        </QuantizationSetting>
+    </DRP-AI_TVMSettingInfo>
+</DrpAiTranslatorProjectSettings>

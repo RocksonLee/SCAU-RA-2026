@@ -61,26 +61,26 @@
 
 void compute_sub_0002(
   // buffer for intermediate results
-  uint8_t* main_storage, // should provide at least 869 bytes of storage
+  uint8_t* main_storage, // should provide at least 1541 bytes of storage
 
   // inputs
   
-  const int8_t _837_70434_70603_11143[864], // 1,24,6,6
+  const int8_t _837_70434_70603_11143[1536], // 1,24,8,8
   
-  const int8_t _838_70438_10737[3456], // 1,6,6,96
+  const int8_t _838_70438_10737[6144], // 1,8,8,96
   
 
   // outputs
   
-  int8_t _843_70441_11067[13824] , // 1,12,12,96
+  int8_t _843_70441_11067[24576] , // 1,16,16,96
   
-  float p5_6x6_70436[864]  // 1,3,6,6,8
+  float p5_8x8_70436[1536]  // 1,3,8,8,8
   
 ) {
   // Buffers allocated on the main storage (note: depends on the execution order)
     
   
-  int8_t* p5_6x6_70436_11159 = (int8_t *) &main_storage[0]; // 1,3,6,6,8 == 864
+  int8_t* p5_8x8_70436_11159 = (int8_t *) &main_storage[0]; // 1,3,8,8,8 == 1536
   
   
 
@@ -96,8 +96,8 @@ void compute_sub_0002(
 //
 // Identity - bypassing _911_70435_10895 operation
 //
-// Input _837_70434_70603_11143: int8_t - 1,24,6,6
-// Output _911_70435_10895: int8_t - 1,3,8,6,6
+// Input _837_70434_70603_11143: int8_t - 1,24,8,8
+// Output _911_70435_10895: int8_t - 1,3,8,8,8
 
 
 const int8_t* _911_70435_10895 = _837_70434_70603_11143;
@@ -109,33 +109,33 @@ const int8_t* _911_70435_10895 = _837_70434_70603_11143;
 //
 // Transpose
 //
-// Input _911_70435_10895: int8_t - 1,3,8,6,6
-// Output p5_6x6_70436_11159: int8_t - 1,3,6,6,8
+// Input _911_70435_10895: int8_t - 1,3,8,8,8
+// Output p5_8x8_70436_11159: int8_t - 1,3,8,8,8
 // Perm: ( 0,  1,  3,  4,  2, )
 
-int32_t strides_p5_6x6_70436_11159[5] = { 864, 288, 6, 1, 36,  };
+int32_t strides_p5_8x8_70436_11159[5] = { 1536, 512, 8, 1, 64,  };
 
-int32_t next_dim_sizes_p5_6x6_70436_11159[5] = { 864, 864, 288, 48, 8,  };
+int32_t next_dim_sizes_p5_8x8_70436_11159[5] = { 1536, 1536, 512, 64, 8,  };
 
-int32_t dim_sizes_p5_6x6_70436_11159[5] = { 864, 288, 48, 8, 1,  };
+int32_t dim_sizes_p5_8x8_70436_11159[5] = { 1536, 512, 64, 8, 1,  };
 
 
 Transpose(
       _911_70435_10895
-    , p5_6x6_70436_11159
-    , 864
+    , p5_8x8_70436_11159
+    , 1536
     , 5
-    , strides_p5_6x6_70436_11159
-    , next_dim_sizes_p5_6x6_70436_11159
-    , dim_sizes_p5_6x6_70436_11159
+    , strides_p5_8x8_70436_11159
+    , next_dim_sizes_p5_8x8_70436_11159
+    , dim_sizes_p5_8x8_70436_11159
 );
 
 //
 // Dequantize
 //
-// Input  p5_6x6_70436_11159: int8_t - 1,3,6,6,8
-// Output p5_6x6_70436: float - 1,3,6,6,8
-AffineDequantizeInt8ToFloat(p5_6x6_70436_11159, p5_6x6_70436, 864, 0, 0.5002202391624451);
+// Input  p5_8x8_70436_11159: int8_t - 1,3,8,8,8
+// Output p5_8x8_70436: float - 1,3,8,8,8
+AffineDequantizeInt8ToFloat(p5_8x8_70436_11159, p5_8x8_70436, 1536, 0, 0.6846159100532532);
 
 
 
@@ -143,12 +143,12 @@ AffineDequantizeInt8ToFloat(p5_6x6_70436_11159, p5_6x6_70436, 864, 0, 0.50022023
 // Upsampling Nearest Neighbor
 //
 
-// Input _838_70438_10737: int8_t - 1,6,6,96
-// Output _843_70441_11067: int8_t - 1,12,12,96
+// Input _838_70438_10737: int8_t - 1,8,8,96
+// Output _843_70441_11067: int8_t - 1,16,16,96
 
-const int32_t in_shape__843_70441_11067[4] = { 1, 6, 6, 96,  };
+const int32_t in_shape__843_70441_11067[4] = { 1, 8, 8, 96,  };
 
-const int32_t out_shape__843_70441_11067[4] = { 1, 12, 12, 96,  };
+const int32_t out_shape__843_70441_11067[4] = { 1, 16, 16, 96,  };
 
 
 UpsamplingNearestNeighbor(

@@ -9,8 +9,8 @@
 extern "C" {
 #endif
 
-#define CAMERA_OV5640_WIDTH          (320U)
-#define CAMERA_OV5640_HEIGHT         (240U)
+#define CAMERA_OV5640_WIDTH          (640U)
+#define CAMERA_OV5640_HEIGHT         (480U)
 #define CAMERA_OV5640_BYTES_PER_PIXEL (2U)
 #define CAMERA_OV5640_FRAME_BYTES    (CAMERA_OV5640_WIDTH * CAMERA_OV5640_HEIGHT * CAMERA_OV5640_BYTES_PER_PIXEL)
 
@@ -30,6 +30,9 @@ typedef struct st_camera_ov5640_ceu_debug
     uint32_t events;
     uint32_t data_size;
     uint32_t interface_control;
+    uint32_t interface_cycle;
+    uint32_t written_bytes;
+    uint32_t written_rows;
 } camera_ov5640_ceu_debug_t;
 
 camera_ov5640_result_t camera_ov5640_init(void);
@@ -38,6 +41,7 @@ uint16_t camera_ov5640_chip_id(void);
 bool camera_ov5640_read_reg(uint16_t reg, uint8_t * p_val);
 uint32_t camera_ov5640_last_ceu_events(void);
 uint32_t camera_ov5640_last_error_step(void);
+uint16_t camera_ov5640_last_failed_reg(void);
 void camera_ov5640_get_ceu_debug(camera_ov5640_ceu_debug_t * p_debug);
 
 #ifdef __cplusplus

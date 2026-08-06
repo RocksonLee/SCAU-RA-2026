@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -12,6 +13,8 @@
 #define OV5640_REG_END              (0xFFFFU)
 #define OV5640_REG_DELAY            (0xFFFEU)
 #define OV5640_RESET_RETRIES        (3U)
+#define OV5640_REG_WRITE_RETRIES    (3U)
+#define OV5640_FRAME_SENTINEL       (0xA5U)
 
 #define OV5640_PIN_RESET            BSP_IO_PORT_07_PIN_09
 #define OV5640_PIN_PWDN             BSP_IO_PORT_07_PIN_10
@@ -24,10 +27,11 @@
 #define OV5640_STEP_SOFT_RESET      (2U)
 #define OV5640_STEP_CHIP_ID         (3U)
 #define OV5640_STEP_INIT_TABLE      (4U)
-#define OV5640_STEP_QVGA_TABLE      (5U)
+#define OV5640_STEP_VGA_TABLE       (5U)
 #define OV5640_STEP_AWB_TABLE       (6U)
 #define OV5640_STEP_COLOR_BAR       (7U)
 #define OV5640_STEP_CEU_OPEN        (8U)
+#define OV5640_STEP_STREAM_ON       (9U)
 
 typedef struct st_ov5640_reg
 {
@@ -40,6 +44,7 @@ static volatile bool g_i2c_error;
 static volatile bool g_frame_done;
 static volatile uint32_t g_ceu_events;
 static uint32_t g_last_error_step;
+static uint16_t g_last_failed_reg;
 static camera_ov5640_ceu_debug_t g_ceu_debug;
 
 static const ov5640_reg_t g_ov5640_init_regs[] =
@@ -79,26 +84,33 @@ static const ov5640_reg_t g_ov5640_init_regs[] =
     {0x558B, 0xF8}, {0x501D, 0x40}, {0x5300, 0x08}, {0x5301, 0x30},
     {0x5302, 0x10}, {0x5303, 0x00}, {0x5304, 0x08}, {0x5305, 0x30},
     {0x5306, 0x08}, {0x5307, 0x16}, {0x5309, 0x08}, {0x530A, 0x30},
-    {0x530B, 0x04}, {0x530C, 0x06}, {0x5025, 0x00}, {0x3008, 0x02},
+    /* Keep the sensor in software standby until every timing register is set. */
+    {0x530B, 0x04}, {0x530C, 0x06}, {0x5025, 0x00},
     {0x4740, 0x21},
     {OV5640_REG_END, 0x00},
 };
 
-static const ov5640_reg_t g_ov5640_qvga_rgb565_regs[] =
+static const ov5640_reg_t g_ov5640_vga_rgb565_regs[] =
 {
     {0x4300, 0x6F},
     {0x501F, 0x01},
-    {0x3035, 0x41}, {0x3036, 0x69}, {0x3C07, 0x07},
+    /*
+     * VGA needs twice the internal ISP/system clock used by the old QVGA
+     * mode.  Compensate with the DVP divider below so CEU sees essentially
+     * the same external PCLK rate while the sensor gets more processing time.
+     */
+    {0x3035, 0x21}, {0x3036, 0x69}, {0x3C07, 0x07},
     {0x3820, 0x46}, {0x3821, 0x00}, {0x3814, 0x31}, {0x3815, 0x31},
     {0x3800, 0x00}, {0x3801, 0x00}, {0x3802, 0x00}, {0x3803, 0x00},
     {0x3804, 0x0A}, {0x3805, 0x3F}, {0x3806, 0x06}, {0x3807, 0xA9},
-    {0x3808, 0x01}, {0x3809, 0x40}, {0x380A, 0x00}, {0x380B, 0xF0},
+    {0x3808, 0x02}, {0x3809, 0x80}, {0x380A, 0x01}, {0x380B, 0xE0},
     {0x380C, 0x05}, {0x380D, 0xF8}, {0x380E, 0x03}, {0x380F, 0x84},
     {0x3813, 0x04}, {0x3618, 0x00}, {0x3612, 0x29}, {0x3709, 0x52},
     {0x370C, 0x03}, {0x3A02, 0x02}, {0x3A03, 0xE0}, {0x3A14, 0x02},
     {0x3A15, 0xE0}, {0x4004, 0x02}, {0x3002, 0x1C}, {0x3006, 0xC3},
+    /* Keep DVP PCLK division in automatic mode for valid VGA line timing. */
     {0x4713, 0x03}, {0x4407, 0x04}, {0x460B, 0x37}, {0x460C, 0x20},
-    {0x4837, 0x16}, {0x3824, 0x04}, {0x5001, 0xA3}, {0x3503, 0x00},
+    {0x4837, 0x16}, {0x3824, 0x08}, {0x5001, 0xA3}, {0x3503, 0x00},
     {OV5640_REG_END, 0x00},
 };
 
@@ -223,9 +235,27 @@ static bool ov5640_write_table(ov5640_reg_t const * p_table)
         {
             vTaskDelay(pdMS_TO_TICKS(p_table[i].val));
         }
-        else if (!ov5640_write_reg(p_table[i].reg, p_table[i].val))
+        else
         {
-            return false;
+            bool written = false;
+
+            for (uint32_t attempt = 0U; attempt < OV5640_REG_WRITE_RETRIES; attempt++)
+            {
+                if (ov5640_write_reg(p_table[i].reg, p_table[i].val))
+                {
+                    written = true;
+                    break;
+                }
+
+                (void) g_i2c_camera.p_api->abort(g_i2c_camera.p_ctrl);
+                vTaskDelay(pdMS_TO_TICKS(2U));
+            }
+
+            if (!written)
+            {
+                g_last_failed_reg = p_table[i].reg;
+                return false;
+            }
         }
     }
 
@@ -257,6 +287,22 @@ static void ov5640_configure_parallel_pins(void)
     (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, BSP_IO_PORT_07_PIN_08, ceu_input);
 }
 
+static void ov5640_configure_control_pins(void)
+{
+    uint32_t const reset_output_low =
+        (uint32_t) IOPORT_CFG_DRIVE_MID |
+        (uint32_t) IOPORT_CFG_PORT_DIRECTION_OUTPUT |
+        (uint32_t) IOPORT_CFG_PORT_OUTPUT_LOW;
+    uint32_t const pwdn_output_high =
+        (uint32_t) IOPORT_CFG_DRIVE_MID |
+        (uint32_t) IOPORT_CFG_PORT_DIRECTION_OUTPUT |
+        (uint32_t) IOPORT_CFG_PORT_OUTPUT_HIGH;
+
+    /* P7.10 is not emitted in pin_data.c, so configure both controls here. */
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, OV5640_PIN_RESET, reset_output_low);
+    (void) g_ioport.p_api->pinCfg(g_ioport.p_ctrl, OV5640_PIN_PWDN, pwdn_output_high);
+}
+
 static void ov5640_save_ceu_debug(fsp_err_t capture_start_error)
 {
     g_ceu_debug.capture_start_error = (uint32_t) capture_start_error;
@@ -265,6 +311,33 @@ static void ov5640_save_ceu_debug(fsp_err_t capture_start_error)
     g_ceu_debug.events              = R_CEU->CETCR;
     g_ceu_debug.data_size           = R_CEU->CDSSR;
     g_ceu_debug.interface_control   = R_CEU->CAMCR;
+    g_ceu_debug.interface_cycle     = R_CEU->CMCYR;
+}
+
+static void ov5640_set_ceu_sync_period(void)
+{
+    /* Disable independent timing validation; CAPWR still controls frame size. */
+    R_CEU->CMCYR = 0U;
+    R_CEU->CETCR = 0U;
+}
+
+static void ov5640_save_frame_progress(uint8_t const * p_frame)
+{
+    uint32_t written = 0U;
+
+    for (uint32_t i = CAMERA_OV5640_FRAME_BYTES; i > 0U; i--)
+    {
+        if (OV5640_FRAME_SENTINEL != p_frame[i - 1U])
+        {
+            written = i;
+            break;
+        }
+    }
+
+    g_ceu_debug.written_bytes = written;
+    g_ceu_debug.written_rows =
+        (written + (CAMERA_OV5640_WIDTH * CAMERA_OV5640_BYTES_PER_PIXEL) - 1U) /
+        (CAMERA_OV5640_WIDTH * CAMERA_OV5640_BYTES_PER_PIXEL);
 }
 
 static void ov5640_pin_reset(void)
@@ -308,7 +381,13 @@ static bool ov5640_recover_ceu(void)
     vTaskDelay(1);
 
     err = g_ceu0.p_api->open(g_ceu0.p_ctrl, g_ceu0.p_cfg);
-    return (FSP_SUCCESS == err) || (FSP_ERR_ALREADY_OPEN == err);
+    if ((FSP_SUCCESS == err) || (FSP_ERR_ALREADY_OPEN == err))
+    {
+        ov5640_set_ceu_sync_period();
+        return true;
+    }
+
+    return false;
 }
 
 uint16_t camera_ov5640_chip_id(void)
@@ -344,6 +423,11 @@ uint32_t camera_ov5640_last_error_step(void)
     return g_last_error_step;
 }
 
+uint16_t camera_ov5640_last_failed_reg(void)
+{
+    return g_last_failed_reg;
+}
+
 void camera_ov5640_get_ceu_debug(camera_ov5640_ceu_debug_t * p_debug)
 {
     if (NULL != p_debug)
@@ -357,6 +441,8 @@ camera_ov5640_result_t camera_ov5640_init(void)
     fsp_err_t err;
 
     g_last_error_step = OV5640_STEP_NONE;
+    g_last_failed_reg = 0U;
+    ov5640_configure_control_pins();
     ov5640_configure_parallel_pins();
     ov5640_pin_reset();
 
@@ -385,9 +471,9 @@ camera_ov5640_result_t camera_ov5640_init(void)
         return CAMERA_OV5640_ERR_I2C;
     }
 
-    if (!ov5640_write_table(g_ov5640_qvga_rgb565_regs))
+    if (!ov5640_write_table(g_ov5640_vga_rgb565_regs))
     {
-        g_last_error_step = OV5640_STEP_QVGA_TABLE;
+        g_last_error_step = OV5640_STEP_VGA_TABLE;
         return CAMERA_OV5640_ERR_I2C;
     }
 
@@ -405,6 +491,16 @@ camera_ov5640_result_t camera_ov5640_init(void)
     }
 #endif
 
+    /* Apply PLL/window/DVP changes atomically by starting the stream last. */
+    if (!ov5640_write_reg(0x3008, 0x02))
+    {
+        g_last_error_step = OV5640_STEP_STREAM_ON;
+        g_last_failed_reg = 0x3008U;
+        return CAMERA_OV5640_ERR_I2C;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(300U));
+
     err = g_ceu0.p_api->open(g_ceu0.p_ctrl, g_ceu0.p_cfg);
     if ((FSP_SUCCESS != err) && (FSP_ERR_ALREADY_OPEN != err))
     {
@@ -412,12 +508,14 @@ camera_ov5640_result_t camera_ov5640_init(void)
         return CAMERA_OV5640_ERR_CAPTURE;
     }
 
+    ov5640_set_ceu_sync_period();
+
     return CAMERA_OV5640_OK;
 }
 
 camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
 {
-    TickType_t const start = xTaskGetTickCount();
+    TickType_t start;
     fsp_err_t capture_start_error;
 
     if (NULL == p_frame)
@@ -434,20 +532,28 @@ camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
     g_ceu_debug.events              = 0U;
     g_ceu_debug.data_size           = 0U;
     g_ceu_debug.interface_control   = 0U;
+    g_ceu_debug.interface_cycle     = 0U;
+    g_ceu_debug.written_bytes       = 0U;
+    g_ceu_debug.written_rows        = 0U;
+
+    memset(p_frame, OV5640_FRAME_SENTINEL, CAMERA_OV5640_FRAME_BYTES);
 
     capture_start_error = g_ceu0.p_api->captureStart(g_ceu0.p_ctrl, p_frame);
     if (FSP_SUCCESS != capture_start_error)
     {
         ov5640_save_ceu_debug(capture_start_error);
+        ov5640_save_frame_progress(p_frame);
         (void) ov5640_recover_ceu();
         return CAMERA_OV5640_ERR_CAPTURE;
     }
 
+    start = xTaskGetTickCount();
     while (!g_frame_done)
     {
         if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(OV5640_CAPTURE_TIMEOUT_MS))
         {
             ov5640_save_ceu_debug(FSP_SUCCESS);
+            ov5640_save_frame_progress(p_frame);
             (void) ov5640_recover_ceu();
             return CAMERA_OV5640_ERR_CAPTURE;
         }
@@ -455,6 +561,7 @@ camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
         if (0U != (g_ceu_events & OV5640_CEU_ABORT_EVENTS))
         {
             ov5640_save_ceu_debug(FSP_SUCCESS);
+            ov5640_save_frame_progress(p_frame);
             (void) ov5640_recover_ceu();
             return CAMERA_OV5640_ERR_CAPTURE;
         }
@@ -463,6 +570,20 @@ camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
     }
 
     if (0U != (g_ceu_events & OV5640_CEU_ABORT_EVENTS))
+    {
+        ov5640_save_ceu_debug(FSP_SUCCESS);
+        ov5640_save_frame_progress(p_frame);
+        (void) ov5640_recover_ceu();
+        return CAMERA_OV5640_ERR_CAPTURE;
+    }
+
+    /*
+     * A FRAME_END event is necessary but not sufficient: only expose a frame
+     * after CEU has actually overwritten all 480 RGB565 rows.  Partial frames
+     * are discarded and retried by camera_capture_frame_with_retry().
+     */
+    ov5640_save_frame_progress(p_frame);
+    if (CAMERA_OV5640_HEIGHT != g_ceu_debug.written_rows)
     {
         ov5640_save_ceu_debug(FSP_SUCCESS);
         (void) ov5640_recover_ceu();

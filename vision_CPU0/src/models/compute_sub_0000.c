@@ -61,22 +61,22 @@
 
 void compute_sub_0000(
   // buffer for intermediate results
-  uint8_t* main_storage, // should provide at least 110597 bytes of storage
+  uint8_t* main_storage, // should provide at least 196613 bytes of storage
 
   // inputs
   
-  const float images[110592], // 1,3,192,192
+  const float images[196608], // 1,3,256,256
   
 
   // outputs
   
-  int8_t images_70602_11151_70256[110592]  // 3,36864
+  int8_t images_70602_11151[196608]  // 1,256,256,3
   
 ) {
   // Buffers allocated on the main storage (note: depends on the execution order)
     
   
-  int8_t* images_11149 = (int8_t *) &main_storage[0]; // 1,3,192,192 == 110592
+  int8_t* images_11149 = (int8_t *) &main_storage[0]; // 1,3,256,256 == 196608
   
   
 
@@ -92,26 +92,37 @@ void compute_sub_0000(
 //
 // Quantize
 //
-// Input  : float - 1,3,192,192
-// Output : int8_t - 1,3,192,192
+// Input  : float - 1,3,256,256
+// Output : int8_t - 1,3,256,256
 AffineQuantizeFloatToInt8(
   images,   // input data
   images_11149,   // output data
-  110592,   // size
+  196608,   // size
   -1,   // output zeropoint
   0.007843137718737125);   // output scale
 
 //
-// Identity - bypassing images_70602_11151_70256 operation
+// Transpose
 //
-// Input images_11149: int8_t - 1,3,192,192
-// Output images_70602_11151_70256: int8_t - 3,36864
+// Input images_11149: int8_t - 1,3,256,256
+// Output images_70602_11151: int8_t - 1,256,256,3
+// Perm: ( 0,  2,  3,  1, )
+
+int32_t strides_images_70602_11151[4] = { 196608, 256, 1, 65536,  };
+
+int32_t next_dim_sizes_images_70602_11151[4] = { 196608, 196608, 768, 3,  };
+
+int32_t dim_sizes_images_70602_11151[4] = { 196608, 768, 3, 1,  };
 
 
-memcpy(images_70602_11151_70256, images_11149, 110592 * sizeof(int8_t));
-
-
-
-
+Transpose(
+      images_11149
+    , images_70602_11151
+    , 196608
+    , 4
+    , strides_images_70602_11151
+    , next_dim_sizes_images_70602_11151
+    , dim_sizes_images_70602_11151
+);
 
 }
