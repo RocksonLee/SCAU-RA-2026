@@ -15,8 +15,8 @@
 #define DET_P4_STRIDE               (16.0f)
 #define DET_P5_STRIDE               (32.0f)
 #define DET_ANCHOR_SCALE            ((float) DET_INPUT_SIZE / 256.0f)
-#define DET_CONF_THRESHOLD          (0.75f)
-#define DET_NMS_IOU_THRESHOLD       (0.45f)
+#define DET_CONF_THRESHOLD          (0.8f)
+#define DET_NMS_IOU_THRESHOLD       (0.20f)
 #define DET_MAX_CANDIDATES          (64U)
 #define DET_MAX_OUTPUTS             APP_DETECTION_MAX_RESULTS
 #define DET_UART_LINE_BYTES         (96U)
