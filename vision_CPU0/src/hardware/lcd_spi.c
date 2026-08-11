@@ -5,6 +5,8 @@
 #define LCD_SPI_MAX_PIXELS_PER_TRANSFER (480U * 20U)
 #define LCD_SPI_BYTES_PER_PIXEL         (3U)
 #define LCD_SPI_WAIT_TIMEOUT_MS         (1000U)
+/* MX + MV + BGR: landscape orientation, rotated 180 degrees from 0xA8. */
+#define LCD_MADCTL_LANDSCAPE_180         (0x68U)
 
 static uint8_t g_lcd_spi_tx_buffer[LCD_SPI_MAX_PIXELS_PER_TRANSFER *
                                     LCD_SPI_BYTES_PER_PIXEL] BSP_ALIGN_VARIABLE(32);
@@ -252,7 +254,7 @@ void lcd_init(void)
       dc_high(); cs_low(); for (int i=0;i<15;i++) spi_write_byte(g[i]); cs_high(); }
 
     lcd_cmd(0xF4); lcd_data(0x00); lcd_data(0x00); lcd_data(0x0F);
-    lcd_cmd(0x36); lcd_data(0xA8);
+    lcd_cmd(0x36); lcd_data(LCD_MADCTL_LANDSCAPE_180);
     lcd_cmd(0x3A); lcd_data(0x66);
     lcd_cmd(0x21);
     lcd_cmd(0x11); R_BSP_SoftwareDelay(120, BSP_DELAY_UNITS_MILLISECONDS);
