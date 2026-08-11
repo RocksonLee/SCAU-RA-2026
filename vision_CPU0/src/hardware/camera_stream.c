@@ -20,6 +20,10 @@
 #define CAMERA_CAPTURE_ATTEMPTS (3U)
 #define CAMERA_CAPTURE_RETRY_MS (100U)
 
+#if APP_DETECTION_MAX_RESULTS != FRUIT_UI_MAX_DETECTIONS
+ #error "Detection result capacity does not match the UI capacity."
+#endif
+
 static uint8_t g_camera_frame[CAMERA_OV5640_FRAME_BYTES] BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
 
 static volatile bool g_uart_tx_busy;
@@ -344,18 +348,31 @@ void camera_stream_task(void)
             continue;
         }
 
+        fruit_ui_detection_t ui_detections[FRUIT_UI_MAX_DETECTIONS];
+        uint32_t ui_detection_count = 0U;
+
+        for (uint32_t i = 0U; i < result_count; i++)
+        {
+            fruit_ui_target_t const target = camera_stream_target_from_class(g_detection_results[i].class_id);
+
+            if (target != FRUIT_UI_TARGET_NONE)
+            {
+                ui_detections[ui_detection_count].target = target;
+                ui_detections[ui_detection_count].x = g_detection_results[i].x;
+                ui_detections[ui_detection_count].y = g_detection_results[i].y;
+                ui_detections[ui_detection_count].z = 0;
+                ui_detection_count++;
+            }
+        }
+
+        fruit_ui_set_detections(ui_detections, ui_detection_count);
+
         if (0U == result_count)
         {
-            fruit_ui_set_target(FRUIT_UI_TARGET_NONE, 0, 0, 0);
             camera_uart_send_text("FRAME_OK NO_DET\r\n");
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }
-
-        fruit_ui_set_target(camera_stream_target_from_class(g_detection_results[0].class_id),
-                            g_detection_results[0].x,
-                            g_detection_results[0].y,
-                            0);
 
         if (ipc_detection_send_results(g_detection_results, result_count))
         {
