@@ -10,7 +10,7 @@ extern "C" {
 
 typedef void (*app_detection_text_writer_t)(char const * p_text);
 
-#define APP_DETECTION_MAX_RESULTS (16U)
+#define APP_DETECTION_MAX_RESULTS (3U)
 
 typedef struct st_app_detection_result
 {

@@ -20,6 +20,12 @@
 #define DET_MAX_CANDIDATES          (64U)
 #define DET_MAX_OUTPUTS             APP_DETECTION_MAX_RESULTS
 #define DET_UART_LINE_BYTES         (96U)
+#define DET_CLASS_GREEN_GRAPE       (1U)
+#define DET_CLASS_PURPLE_GRAPE      (2U)
+#define DET_GREEN_R_MARGIN          (12U)
+#define DET_GREEN_B_MARGIN          (20U)
+#define DET_GREEN_EXCESS_MIN        (45)
+#define DET_GREEN_PIXEL_PERCENT_MIN (8U)
 
 typedef struct st_detection_box
 {
@@ -288,6 +294,67 @@ static void det_to_camera_coords(detection_box_t const * p_model_box,
     *p_y2 = (int32_t) (p_model_box->y2 * scale);
 }
 
+static uint32_t det_refine_grape_class(uint8_t const * p_rgb565_frame,
+                                       detection_box_t const * p_model_box)
+{
+    if (DET_CLASS_GREEN_GRAPE != p_model_box->class_id)
+    {
+        return p_model_box->class_id;
+    }
+
+    int32_t box_x1;
+    int32_t box_y1;
+    int32_t box_x2;
+    int32_t box_y2;
+    det_to_camera_coords(p_model_box, &box_x1, &box_y1, &box_x2, &box_y2);
+
+    int32_t const margin_x = (box_x2 - box_x1) / 4;
+    int32_t const margin_y = (box_y2 - box_y1) / 4;
+    int32_t const roi_x1 = box_x1 + margin_x;
+    int32_t const roi_y1 = box_y1 + margin_y;
+    int32_t const roi_x2 = box_x2 - margin_x;
+    int32_t const roi_y2 = box_y2 - margin_y;
+
+    if ((roi_x2 <= roi_x1) || (roi_y2 <= roi_y1))
+    {
+        return p_model_box->class_id;
+    }
+
+    uint32_t green_pixels = 0U;
+    uint32_t total_pixels = 0U;
+
+    for (int32_t y = roi_y1; y < roi_y2; y++)
+    {
+        for (int32_t x = roi_x1; x < roi_x2; x++)
+        {
+            uint32_t const pixel_index = (((uint32_t) y * CAMERA_OV5640_WIDTH) + (uint32_t) x) *
+                                         CAMERA_OV5640_BYTES_PER_PIXEL;
+            uint16_t const pixel = (uint16_t) (p_rgb565_frame[pixel_index] |
+                                               ((uint16_t) p_rgb565_frame[pixel_index + 1U] << 8));
+            uint32_t const r = det_rgb565_r(pixel);
+            uint32_t const g = det_rgb565_g(pixel);
+            uint32_t const b = det_rgb565_b(pixel);
+            int32_t const green_excess = (int32_t) (2U * g) - (int32_t) r - (int32_t) b;
+
+            if ((g >= (r + DET_GREEN_R_MARGIN)) &&
+                (g >= (b + DET_GREEN_B_MARGIN)) &&
+                (green_excess >= DET_GREEN_EXCESS_MIN))
+            {
+                green_pixels++;
+            }
+
+            total_pixels++;
+        }
+    }
+
+    if ((green_pixels * 100U) < (total_pixels * DET_GREEN_PIXEL_PERCENT_MIN))
+    {
+        return DET_CLASS_PURPLE_GRAPE;
+    }
+
+    return DET_CLASS_GREEN_GRAPE;
+}
+
 bool app_detection_init(void)
 {
     fsp_err_t const err = g_rm_ethosu0.p_api->open(g_rm_ethosu0.p_ctrl, g_rm_ethosu0.p_cfg);
@@ -339,7 +406,7 @@ bool app_detection_run_frame(uint8_t const                 * p_rgb565_frame,
         int32_t const center_x = (x1 + x2) / 2;
         int32_t const center_y = (y1 + y2) / 2;
 
-        p_results[i].class_id = g_outputs[i].class_id;
+        p_results[i].class_id = det_refine_grape_class(p_rgb565_frame, &g_outputs[i]);
         p_results[i].x        = center_x;
         p_results[i].y        = center_y;
 

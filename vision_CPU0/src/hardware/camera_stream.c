@@ -259,7 +259,7 @@ static bool camera_stream_send_frame(void)
 void camera_stream_task(void)
 {
     fsp_err_t err;
-    bool detection_sent = false;
+    bool detection_sent = true;
 
     err = g_uart9.p_api->open(g_uart9.p_ctrl, g_uart9.p_cfg);
     if ((FSP_SUCCESS == err) || (FSP_ERR_ALREADY_OPEN == err))
@@ -302,7 +302,7 @@ void camera_stream_task(void)
         vTaskDelay(pdMS_TO_TICKS(100U));
     }
 
-    while (!detection_sent)
+    while (detection_sent)
     {
         if (CAMERA_OV5640_OK != camera_capture_frame_with_retry(g_camera_frame))
         {
