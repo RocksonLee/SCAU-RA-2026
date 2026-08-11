@@ -26,6 +26,7 @@ void Screen_Thread_entry(void *pvParameters)
 
 	while (1)
 	{
+		fruit_ui_process();
 		lv_tick_inc(5U);
 		(void) lv_timer_handler();
 

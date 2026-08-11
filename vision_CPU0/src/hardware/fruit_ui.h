@@ -16,6 +16,7 @@ typedef enum e_fruit_ui_target
 } fruit_ui_target_t;
 
 void fruit_ui_create(void);
+void fruit_ui_process(void);
 void fruit_ui_set_target(fruit_ui_target_t target, int32_t x, int32_t y, int32_t z);
 
 #ifdef __cplusplus

@@ -11,6 +11,9 @@ extern "C" {
 typedef void (*app_detection_text_writer_t)(char const * p_text);
 
 #define APP_DETECTION_MAX_RESULTS (3U)
+#define APP_DETECTION_CLASS_TOMATO       (0U)
+#define APP_DETECTION_CLASS_GREEN_GRAPE  (1U)
+#define APP_DETECTION_CLASS_PURPLE_GRAPE (2U)
 
 typedef struct st_app_detection_result
 {

@@ -3,6 +3,9 @@
 #include <stddef.h>
 #include <stdio.h>
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #include "lvgl.h"
@@ -22,6 +25,12 @@ typedef struct st_target_view
     int32_t z;
 } target_view_t;
 
+typedef enum e_ui_page
+{
+    UI_PAGE_HOME = 0,
+    UI_PAGE_DETAIL,
+} ui_page_t;
+
 static target_view_t g_targets[] =
 {
     {FRUIT_UI_TARGET_NONE,         "None",         "no target",    LV_COLOR_MAKE(119, 129, 140), 0,   0,   0},
@@ -31,6 +40,16 @@ static target_view_t g_targets[] =
 };
 
 static fruit_ui_target_t g_selected = FRUIT_UI_TARGET_NONE;
+static volatile fruit_ui_target_t g_pending_target = FRUIT_UI_TARGET_NONE;
+static volatile int32_t g_pending_x;
+static volatile int32_t g_pending_y;
+static volatile int32_t g_pending_z;
+static volatile bool g_target_update_pending;
+static ui_page_t g_current_page = UI_PAGE_HOME;
+static lv_obj_t * g_home_detected_label;
+static lv_obj_t * g_home_start_button;
+static lv_obj_t * g_detail_type_label;
+static lv_obj_t * g_detail_coordinate_label;
 static bool g_style_ready;
 static lv_style_t g_style_screen;
 static lv_style_t g_style_card;
@@ -39,7 +58,6 @@ static lv_style_t g_style_button_alt;
 static lv_style_t g_style_chip;
 
 static void show_home(void);
-static void show_select(void);
 static void show_detail(fruit_ui_target_t target);
 
 static target_view_t * get_target(fruit_ui_target_t target)
@@ -109,6 +127,10 @@ static void prepare_screen(void)
     lv_obj_t * scr = lv_screen_active();
 
     init_styles();
+    g_home_detected_label = NULL;
+    g_home_start_button = NULL;
+    g_detail_type_label = NULL;
+    g_detail_coordinate_label = NULL;
     lv_obj_clean(scr);
     lv_obj_add_style(scr, &g_style_screen, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
@@ -193,48 +215,11 @@ static lv_obj_t * add_card(lv_obj_t * parent, int32_t x, int32_t y, int32_t w, i
     return card;
 }
 
-static void add_circle(lv_obj_t * parent, int32_t x, int32_t y, int32_t size, lv_color_t color)
-{
-    lv_obj_t * obj = lv_obj_create(parent);
-
-    lv_obj_remove_style_all(obj);
-    lv_obj_set_pos(obj, x, y);
-    lv_obj_set_size(obj, size, size);
-    lv_obj_set_style_radius(obj, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(obj, color, 0);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(obj, 0, 0);
-}
-
-static void add_circle_center(lv_obj_t * parent, int32_t cx, int32_t cy, int32_t size, lv_color_t color)
-{
-    add_circle(parent, cx - (size / 2), cy - (size / 2), size, color);
-}
-
-static void add_tomato_icon(lv_obj_t * parent, int32_t cx, int32_t cy)
-{
-    add_circle_center(parent, cx - 16, cy, 52, lv_color_hex(0xD83B35));
-    add_circle_center(parent, cx + 16, cy + 2, 50, lv_color_hex(0xE85048));
-    add_circle_center(parent, cx - 12, cy - 34, 13, lv_color_hex(0x3F8A3E));
-    add_circle_center(parent, cx + 5, cy - 36, 11, lv_color_hex(0x5AA24D));
-}
-
-static void add_grape_icon(lv_obj_t * parent, int32_t cx, int32_t cy, lv_color_t color)
-{
-    add_circle_center(parent, cx - 12, cy - 26, 22, color);
-    add_circle_center(parent, cx + 12, cy - 26, 22, color);
-    add_circle_center(parent, cx - 24, cy - 6, 22, color);
-    add_circle_center(parent, cx,      cy - 6, 22, color);
-    add_circle_center(parent, cx + 24, cy - 6, 22, color);
-    add_circle_center(parent, cx - 12, cy + 15, 22, color);
-    add_circle_center(parent, cx + 12, cy + 15, 22, color);
-    add_circle_center(parent, cx,      cy - 48, 10, lv_color_hex(0x4D8C3D));
-}
-
 static void on_home_start(lv_event_t * e)
 {
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        show_select();
+    if ((lv_event_get_code(e) == LV_EVENT_CLICKED) &&
+        (g_selected != FRUIT_UI_TARGET_NONE)) {
+        show_detail(g_selected);
     }
 }
 
@@ -248,16 +233,7 @@ static void on_back_home(lv_event_t * e)
 static void on_back_select(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        show_select();
-    }
-}
-
-static void on_pick(lv_event_t * e)
-{
-    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        fruit_ui_target_t target = (fruit_ui_target_t) (uintptr_t) lv_event_get_user_data(e);
-        g_selected = target;
-        show_detail(target);
+        show_home();
     }
 }
 
@@ -268,6 +244,7 @@ static void show_home(void)
     target_view_t * target = get_target(g_selected);
 
     prepare_screen();
+    g_current_page = UI_PAGE_HOME;
 
     add_label(lv_screen_active(), "RENESAS CUP", lv_color_hex(0x1F7A5A),
               &lv_font_montserrat_16, LV_ALIGN_TOP_LEFT, 20, 14);
@@ -293,49 +270,13 @@ static void show_home(void)
     card = add_card(lv_screen_active(), 310, 104, 150, 150);
     add_label(card, "Detected", lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
-    add_label(card, target->name, target->color,
-              &lv_font_montserrat_16, LV_ALIGN_CENTER, 0, 8);
+    g_home_detected_label = add_label(card, target->name, target->color,
+                                      &lv_font_montserrat_16, LV_ALIGN_CENTER, 0, 8);
 
-    add_button(lv_screen_active(), "START", 138, 274, 204, 36, on_home_start, NULL);
-}
-
-static void add_fruit_column(fruit_ui_target_t target, int32_t x)
-{
-    lv_obj_t * card = add_card(lv_screen_active(), x, 78, 138, 198);
-    target_view_t * info = get_target(target);
-
-    lv_obj_set_style_pad_all(card, 0, 0);
-
-    add_label(card, info->name, lv_color_hex(0x20303F),
-              &lv_font_montserrat_12, LV_ALIGN_TOP_MID, 0, 14);
-
-    if (target == FRUIT_UI_TARGET_TOMATO) {
-        add_tomato_icon(card, 69, 90);
-    } else {
-        add_grape_icon(card, 69, 88, info->color);
+    g_home_start_button = add_button(lv_screen_active(), "START", 138, 274, 204, 36, on_home_start, NULL);
+    if (g_selected == FRUIT_UI_TARGET_NONE) {
+        lv_obj_add_state(g_home_start_button, LV_STATE_DISABLED);
     }
-
-    add_label(card, info->vision_name, lv_color_hex(0x687685),
-              &lv_font_montserrat_10, LV_ALIGN_TOP_MID, 0, 132);
-    add_button(card, "PICK", 22, 154, 94, 32, on_pick, (void *) (uintptr_t) target);
-}
-
-static void show_select(void)
-{
-    prepare_screen();
-
-    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_back_home, NULL);
-    add_label(lv_screen_active(), "Select Fruit Target", lv_color_hex(0x20303F),
-              &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 16);
-    add_label(lv_screen_active(), "Tap PICK below the fruit for robot-arm planning",
-              lv_color_hex(0x687685), &lv_font_montserrat_12, LV_ALIGN_TOP_MID, 0, 46);
-
-    add_fruit_column(FRUIT_UI_TARGET_TOMATO, 14);
-    add_fruit_column(FRUIT_UI_TARGET_PURPLE_GRAPE, 171);
-    add_fruit_column(FRUIT_UI_TARGET_GREEN_GRAPE, 328);
-
-    add_label(lv_screen_active(), "Camera -> target class + coordinate -> IK solve -> grip",
-              lv_color_hex(0x77818C), &lv_font_montserrat_10, LV_ALIGN_BOTTOM_MID, 0, -12);
 }
 
 static void show_detail(fruit_ui_target_t target)
@@ -345,6 +286,7 @@ static void show_detail(fruit_ui_target_t target)
     target_view_t * info = get_target(target);
 
     prepare_screen();
+    g_current_page = UI_PAGE_DETAIL;
 
     add_small_button(lv_screen_active(), "BACK", 12, 12, 68, 30, on_back_select, NULL);
     add_label(lv_screen_active(), "Target Detail", lv_color_hex(0x20303F),
@@ -353,16 +295,16 @@ static void show_detail(fruit_ui_target_t target)
     card = add_card(lv_screen_active(), 20, 62, 150, 82);
     add_label(card, "Fruit Type", lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
-    add_label(card, info->name, info->color,
-              &lv_font_montserrat_18, LV_ALIGN_CENTER, 0, 12);
+    g_detail_type_label = add_label(card, info->name, info->color,
+                                    &lv_font_montserrat_18, LV_ALIGN_CENTER, 0, 12);
 
     card = add_card(lv_screen_active(), 188, 62, 272, 82);
     add_label(card, "Actual Coordinate", lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
     (void) snprintf(buf, sizeof(buf), "X: %ld mm   Y: %ld mm\nZ: %ld mm",
                     (long) info->x, (long) info->y, (long) info->z);
-    add_label(card, buf, lv_color_hex(0x20303F),
-              &lv_font_montserrat_16, LV_ALIGN_CENTER, 0, 14);
+    g_detail_coordinate_label = add_label(card, buf, lv_color_hex(0x20303F),
+                                          &lv_font_montserrat_16, LV_ALIGN_CENTER, 0, 14);
 
     card = add_card(lv_screen_active(), 20, 164, 440, 86);
     add_label(card, "Robot Plan", lv_color_hex(0x77818C),
@@ -379,11 +321,75 @@ void fruit_ui_create(void)
     show_home();
 }
 
+void fruit_ui_process(void)
+{
+    fruit_ui_target_t pending_target = FRUIT_UI_TARGET_NONE;
+    int32_t pending_x = 0;
+    int32_t pending_y = 0;
+    int32_t pending_z = 0;
+    bool has_update = false;
+
+    taskENTER_CRITICAL();
+    if (g_target_update_pending) {
+        pending_target = g_pending_target;
+        pending_x = g_pending_x;
+        pending_y = g_pending_y;
+        pending_z = g_pending_z;
+        g_target_update_pending = false;
+        has_update = true;
+    }
+    taskEXIT_CRITICAL();
+
+    if (!has_update) {
+        return;
+    }
+
+    target_view_t * info = get_target(pending_target);
+    char coordinate_text[96];
+
+    info->x = pending_x;
+    info->y = pending_y;
+    info->z = pending_z;
+    g_selected = info->type;
+
+    if ((g_current_page == UI_PAGE_HOME) && (g_home_detected_label != NULL)) {
+        lv_label_set_text(g_home_detected_label, info->name);
+        lv_obj_set_style_text_color(g_home_detected_label, info->color, 0);
+
+        if (g_home_start_button != NULL) {
+            if (g_selected == FRUIT_UI_TARGET_NONE) {
+                lv_obj_add_state(g_home_start_button, LV_STATE_DISABLED);
+            } else {
+                lv_obj_remove_state(g_home_start_button, LV_STATE_DISABLED);
+            }
+        }
+    } else if (g_current_page == UI_PAGE_DETAIL) {
+        if (g_detail_type_label != NULL) {
+            lv_label_set_text(g_detail_type_label, info->name);
+            lv_obj_set_style_text_color(g_detail_type_label, info->color, 0);
+        }
+
+        if (g_detail_coordinate_label != NULL) {
+            (void) snprintf(coordinate_text,
+                            sizeof(coordinate_text),
+                            "X: %ld mm   Y: %ld mm\nZ: %ld mm",
+                            (long) info->x,
+                            (long) info->y,
+                            (long) info->z);
+            lv_label_set_text(g_detail_coordinate_label, coordinate_text);
+        }
+    }
+}
+
 void fruit_ui_set_target(fruit_ui_target_t target, int32_t x, int32_t y, int32_t z)
 {
-    target_view_t * info = get_target(target);
+    fruit_ui_target_t const valid_target = get_target(target)->type;
 
-    info->x = x;
-    info->y = y;
-    info->z = z;
+    taskENTER_CRITICAL();
+    g_pending_target = valid_target;
+    g_pending_x = x;
+    g_pending_y = y;
+    g_pending_z = z;
+    g_target_update_pending = true;
+    taskEXIT_CRITICAL();
 }

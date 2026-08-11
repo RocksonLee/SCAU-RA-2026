@@ -9,6 +9,7 @@
 #include "task.h"
 #include "app_detection.h"
 #include "camera_ov5640.h"
+#include "fruit_ui.h"
 #include "hal_data.h"
 #include "ipc_detection_tx.h"
 
@@ -25,6 +26,24 @@ static volatile bool g_uart_tx_busy;
 static uart_callback_args_t g_uart_callback_memory;
 static char g_uart_line[CAMERA_UART_LINE_BYTES];
 static app_detection_result_t g_detection_results[APP_DETECTION_MAX_RESULTS];
+
+static fruit_ui_target_t camera_stream_target_from_class(uint32_t class_id)
+{
+    switch (class_id)
+    {
+        case APP_DETECTION_CLASS_TOMATO:
+            return FRUIT_UI_TARGET_TOMATO;
+
+        case APP_DETECTION_CLASS_GREEN_GRAPE:
+            return FRUIT_UI_TARGET_GREEN_GRAPE;
+
+        case APP_DETECTION_CLASS_PURPLE_GRAPE:
+            return FRUIT_UI_TARGET_PURPLE_GRAPE;
+
+        default:
+            return FRUIT_UI_TARGET_NONE;
+    }
+}
 
 static void camera_uart_callback(uart_callback_args_t * p_args)
 {
@@ -327,10 +346,16 @@ void camera_stream_task(void)
 
         if (0U == result_count)
         {
+            fruit_ui_set_target(FRUIT_UI_TARGET_NONE, 0, 0, 0);
             camera_uart_send_text("FRAME_OK NO_DET\r\n");
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }
+
+        fruit_ui_set_target(camera_stream_target_from_class(g_detection_results[0].class_id),
+                            g_detection_results[0].x,
+                            g_detection_results[0].y,
+                            0);
 
         if (ipc_detection_send_results(g_detection_results, result_count))
         {

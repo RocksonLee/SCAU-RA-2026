@@ -20,8 +20,6 @@
 #define DET_MAX_CANDIDATES          (64U)
 #define DET_MAX_OUTPUTS             APP_DETECTION_MAX_RESULTS
 #define DET_UART_LINE_BYTES         (96U)
-#define DET_CLASS_GREEN_GRAPE       (1U)
-#define DET_CLASS_PURPLE_GRAPE      (2U)
 #define DET_GREEN_R_MARGIN          (12U)
 #define DET_GREEN_B_MARGIN          (20U)
 #define DET_GREEN_EXCESS_MIN        (45)
@@ -297,7 +295,7 @@ static void det_to_camera_coords(detection_box_t const * p_model_box,
 static uint32_t det_refine_grape_class(uint8_t const * p_rgb565_frame,
                                        detection_box_t const * p_model_box)
 {
-    if (DET_CLASS_GREEN_GRAPE != p_model_box->class_id)
+    if (APP_DETECTION_CLASS_GREEN_GRAPE != p_model_box->class_id)
     {
         return p_model_box->class_id;
     }
@@ -349,10 +347,10 @@ static uint32_t det_refine_grape_class(uint8_t const * p_rgb565_frame,
 
     if ((green_pixels * 100U) < (total_pixels * DET_GREEN_PIXEL_PERCENT_MIN))
     {
-        return DET_CLASS_PURPLE_GRAPE;
+        return APP_DETECTION_CLASS_PURPLE_GRAPE;
     }
 
-    return DET_CLASS_GREEN_GRAPE;
+    return APP_DETECTION_CLASS_GREEN_GRAPE;
 }
 
 bool app_detection_init(void)
