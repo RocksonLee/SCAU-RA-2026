@@ -649,6 +649,15 @@
       <property id="rtos.awsfreertos.thread.allocation" value="rtos.awsfreertos.thread.allocation.static"/>
       <property id="rtos.awsfreertos.thread.secure_context" value="rtos.awsfreertos.thread.secure_context.enable"/>
     </context>
+    <context id="rtos.awsfreertos.thread.2015689858">
+      <property id="_symbol" value="Weight_Thread"/>
+      <property id="rtos.awsfreertos.thread.name" value="Weight_Thread"/>
+      <property id="rtos.awsfreertos.thread.stack" value="1024"/>
+      <property id="rtos.awsfreertos.thread.priority" value="1"/>
+      <property id="rtos.awsfreertos.thread.context" value="NULL"/>
+      <property id="rtos.awsfreertos.thread.allocation" value="rtos.awsfreertos.thread.allocation.static"/>
+      <property id="rtos.awsfreertos.thread.secure_context" value="rtos.awsfreertos.thread.secure_context.enable"/>
+    </context>
     <config id="config.driver.sci_b_uart">
       <property id="config.driver.sci_b_uart.param_checking_enable" value="config.driver.sci_b_uart.param_checking_enable.bsp"/>
       <property id="config.driver.sci_b_uart.fifo_support" value="config.driver.sci_b_uart.fifo_support.disabled"/>
@@ -866,7 +875,8 @@
     <symbolicName propertyId="p702.symbolic_name" value="DCAM_D6"/>
     <symbolicName propertyId="p703.symbolic_name" value="DCAM_D7"/>
     <symbolicName propertyId="p704.symbolic_name" value="PMOD2_GPIO2"/>
-    <symbolicName propertyId="p707.symbolic_name" value="PARLCD_D18R2"/>
+    <symbolicName propertyId="p706.symbolic_name" value="HX711_DT"/>
+    <symbolicName propertyId="p707.symbolic_name" value="HX711_SCK"/>
     <symbolicName propertyId="p709.symbolic_name" value="CAMERA_RESET"/>
     <symbolicName propertyId="p710.symbolic_name" value="CAMERA_PWDN"/>
     <symbolicName propertyId="p711.symbolic_name" value="PARLCD_D19R3"/>
@@ -1106,6 +1116,10 @@
       <configSetting altId="p702.gpio_mode.gpio_mode_peripheral" configurationId="p702.gpio_mode"/>
       <configSetting altId="p703.ceu.vio_d7" configurationId="p703"/>
       <configSetting altId="p703.gpio_mode.gpio_mode_peripheral" configurationId="p703.gpio_mode"/>
+      <configSetting altId="p706.input" configurationId="p706"/>
+      <configSetting altId="p706.gpio_mode.gpio_mode_in" configurationId="p706.gpio_mode"/>
+      <configSetting altId="p707.output.low" configurationId="p707"/>
+      <configSetting altId="p707.gpio_mode.gpio_mode_out.low" configurationId="p707.gpio_mode"/>
       <configSetting altId="p708.ceu.vio_vd" configurationId="p708"/>
       <configSetting altId="p708.gpio_mode.gpio_mode_peripheral" configurationId="p708.gpio_mode"/>
       <configSetting altId="p710.output.high" configurationId="p710"/>

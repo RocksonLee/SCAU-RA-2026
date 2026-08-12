@@ -187,6 +187,8 @@
             <slot name="P701.CPU0" secure="true"/>
             <slot name="P702.CPU0" secure="true"/>
             <slot name="P703.CPU0" secure="true"/>
+            <slot name="P706.CPU0" secure="true"/>
+            <slot name="P707.CPU0" secure="true"/>
             <slot name="P708.CPU0" secure="true"/>
             <slot name="P709.CPU0" secure="true"/>
             <slot name="P710.CPU0" secure="true"/>
