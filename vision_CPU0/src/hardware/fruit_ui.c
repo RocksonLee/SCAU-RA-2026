@@ -46,7 +46,13 @@ static uint32_t g_detection_count;
 static volatile fruit_ui_detection_t g_pending_detections[FRUIT_UI_MAX_DETECTIONS];
 static volatile uint32_t g_pending_detection_count;
 static volatile bool g_target_update_pending;
+static volatile int32_t g_pending_weight_0p1g;
+static volatile bool g_pending_weight_valid;
+static volatile bool g_weight_update_pending;
+static int32_t g_weight_0p1g;
+static bool g_weight_valid;
 static ui_page_t g_current_page = UI_PAGE_HOME;
+static lv_obj_t * g_home_weight_label;
 static lv_obj_t * g_home_detected_label;
 static lv_obj_t * g_home_start_button;
 static lv_obj_t * g_detail_type_label;
@@ -56,7 +62,6 @@ static lv_style_t g_style_screen;
 static lv_style_t g_style_card;
 static lv_style_t g_style_button;
 static lv_style_t g_style_button_alt;
-static lv_style_t g_style_chip;
 
 static void show_home(void);
 static void show_select(void);
@@ -133,16 +138,6 @@ static void init_styles(void)
     lv_style_set_text_color(&g_style_button_alt, lv_color_white());
     lv_style_set_text_font(&g_style_button_alt, &lv_font_montserrat_14);
 
-    lv_style_init(&g_style_chip);
-    lv_style_set_bg_color(&g_style_chip, lv_color_hex(0xE8EEF2));
-    lv_style_set_bg_opa(&g_style_chip, LV_OPA_COVER);
-    lv_style_set_radius(&g_style_chip, 8);
-    lv_style_set_border_width(&g_style_chip, 0);
-    lv_style_set_pad_left(&g_style_chip, 8);
-    lv_style_set_pad_right(&g_style_chip, 8);
-    lv_style_set_pad_top(&g_style_chip, 4);
-    lv_style_set_pad_bottom(&g_style_chip, 4);
-
     g_style_ready = true;
 }
 
@@ -151,6 +146,7 @@ static void prepare_screen(void)
     lv_obj_t * scr = lv_screen_active();
 
     init_styles();
+    g_home_weight_label = NULL;
     g_home_detected_label = NULL;
     g_home_start_button = NULL;
     g_detail_type_label = NULL;
@@ -318,6 +314,32 @@ static void update_home_detection_widgets(void)
     }
 }
 
+static void update_home_weight_widget(void)
+{
+    char weight_text[32];
+
+    if (g_weight_valid) {
+        int32_t const weight_abs = (g_weight_0p1g < 0) ? -g_weight_0p1g : g_weight_0p1g;
+        char const * const sign = (g_weight_0p1g < 0) ? "-" : "";
+
+        (void) snprintf(weight_text,
+                        sizeof(weight_text),
+                        "%s%ld.%ld g",
+                        sign,
+                        (long) (weight_abs / 10),
+                        (long) (weight_abs % 10));
+    } else {
+        (void) snprintf(weight_text, sizeof(weight_text), "--.- g");
+    }
+
+    if (g_home_weight_label != NULL) {
+        lv_label_set_text(g_home_weight_label, weight_text);
+        lv_obj_set_style_text_color(g_home_weight_label,
+                                    g_weight_valid ? lv_color_hex(0x1F7A5A) : lv_color_hex(0x77818C),
+                                    0);
+    }
+}
+
 static void on_home_start(lv_event_t * e)
 {
     if ((lv_event_get_code(e) == LV_EVENT_CLICKED) &&
@@ -355,7 +377,6 @@ static void on_pick(lv_event_t * e)
 static void show_home(void)
 {
     lv_obj_t * card;
-    lv_obj_t * chip;
 
     prepare_screen();
     g_current_page = UI_PAGE_HOME;
@@ -367,21 +388,20 @@ static void show_home(void)
     add_label(lv_screen_active(), "Vision target recognition and robot arm picking control",
               lv_color_hex(0x687685), &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 20, 74);
 
-    card = add_card(lv_screen_active(), 20, 104, 270, 150);
-    add_label(card, "System Overview", lv_color_hex(0x20303F),
-              &lv_font_montserrat_18, LV_ALIGN_TOP_LEFT, 0, 0);
-    add_label(card, "Vision: online\nTouch: ready\nArm link: standby\nMode: target select,weight detect",
-              lv_color_hex(0x435466), &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 36);
+    card = add_card(lv_screen_active(), 20, 104, 140, 150);
+    add_label(card, "Overview", lv_color_hex(0x20303F),
+              &lv_font_montserrat_16, LV_ALIGN_TOP_LEFT, 0, 0);
+    add_label(card, "Vision  online\nTouch   ready\nArm     standby",
+              lv_color_hex(0x435466), &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 38);
 
-    chip = lv_obj_create(card);
-    lv_obj_remove_style_all(chip);
-    lv_obj_add_style(chip, &g_style_chip, 0);
-    lv_obj_set_size(chip, 124, 28);
-    lv_obj_align(chip, LV_ALIGN_BOTTOM_LEFT, 0, 0);
-    add_label(chip, "RA8P1 + LVGL", lv_color_hex(0x31445A),
-              &lv_font_montserrat_12, LV_ALIGN_CENTER, 0, 0);
+    card = add_card(lv_screen_active(), 170, 104, 140, 150);
+    add_label(card, "Weight", lv_color_hex(0x77818C),
+              &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
+    g_home_weight_label = add_label(card, "--.- g", lv_color_hex(0x77818C),
+                                    &lv_font_montserrat_18, LV_ALIGN_CENTER, 0, 8);
+    update_home_weight_widget();
 
-    card = add_card(lv_screen_active(), 310, 104, 150, 150);
+    card = add_card(lv_screen_active(), 320, 104, 140, 150);
     add_label(card, "Detected", lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
     g_home_detected_label = add_label(card, "None", get_target(FRUIT_UI_TARGET_NONE)->color,
@@ -490,6 +510,9 @@ void fruit_ui_process(void)
     fruit_ui_detection_t pending_detections[FRUIT_UI_MAX_DETECTIONS];
     uint32_t pending_detection_count = 0U;
     bool has_update = false;
+    int32_t pending_weight_0p1g = 0;
+    bool pending_weight_valid = false;
+    bool has_weight_update = false;
 
     taskENTER_CRITICAL();
     if (g_target_update_pending) {
@@ -503,7 +526,22 @@ void fruit_ui_process(void)
         g_target_update_pending = false;
         has_update = true;
     }
+    if (g_weight_update_pending) {
+        pending_weight_0p1g = g_pending_weight_0p1g;
+        pending_weight_valid = g_pending_weight_valid;
+        g_weight_update_pending = false;
+        has_weight_update = true;
+    }
     taskEXIT_CRITICAL();
+
+    if (has_weight_update) {
+        g_weight_0p1g = pending_weight_0p1g;
+        g_weight_valid = pending_weight_valid;
+
+        if (g_current_page == UI_PAGE_HOME) {
+            update_home_weight_widget();
+        }
+    }
 
     if (!has_update) {
         return;
@@ -571,5 +609,14 @@ void fruit_ui_set_detections(fruit_ui_detection_t const * p_detections, uint32_t
     }
     g_pending_detection_count = detection_count;
     g_target_update_pending = true;
+    taskEXIT_CRITICAL();
+}
+
+void fruit_ui_set_weight(int32_t weight_0p1g, bool valid)
+{
+    taskENTER_CRITICAL();
+    g_pending_weight_0p1g = weight_0p1g;
+    g_pending_weight_valid = valid;
+    g_weight_update_pending = true;
     taskEXIT_CRITICAL();
 }
