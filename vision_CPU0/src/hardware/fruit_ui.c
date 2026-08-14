@@ -429,7 +429,7 @@ static void add_fruit_column(fruit_ui_target_t target, int32_t x)
 
     add_label(card, info->vision_name, lv_color_hex(0x687685),
               &lv_font_montserrat_10, LV_ALIGN_TOP_MID, 0, 132);
-    add_button(card, "PICK", 22, 154, 94, 32, on_pick, (void *) (uintptr_t) target);
+    add_button(card, "SELECT", 22, 154, 94, 32, on_pick, (void *) (uintptr_t) target);
 }
 
 static void show_select(void)
