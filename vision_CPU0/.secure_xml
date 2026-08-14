@@ -204,6 +204,8 @@
       <configSetting altId="p801.output.high" configurationId="p801"/>
       <configSetting altId="p801.gpio_mode.gpio_mode_out.high" configurationId="p801.gpio_mode"/>
       <configSetting altId="p905.gpio_mode.gpio_mode_peripheral" configurationId="p905.gpio_mode"/>
+      <configSetting altId="pb00.output.high" configurationId="pb00"/>
+      <configSetting altId="pb00.gpio_mode.gpio_mode_out.high" configurationId="pb00.gpio_mode"/>
       <configSetting altId="sci0.rxd0.p602" configurationId="sci0.rxd0" peripheral="SCI0"/>
       <configSetting altId="sci0.txd0.p603" configurationId="sci0.txd0" peripheral="SCI0"/>
       <configSetting altId="sci3.rxd3.p905" configurationId="sci3.rxd3" isUsedByDriver="true" peripheral="SCI3"/>

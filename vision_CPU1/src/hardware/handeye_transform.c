@@ -6,6 +6,10 @@
 #define HANDEYE_CAMERA_HEIGHT_PX      (480)
 #define HANDEYE_FIXED_HEIGHT_MM       (280.0)
 #define HANDEYE_DENOMINATOR_EPSILON   (1.0e-9)
+#define HANDEYE_SIDE_Y_MIN_PX         (92)
+#define HANDEYE_SIDE_Y_MAX_PX         (338)
+#define HANDEYE_SIDE_Z_SLOPE_MM_PX    (0.5631433347759307)
+#define HANDEYE_SIDE_Z_OFFSET_MM      (278.6319722003004)
 
 /*
  * Homography returned by:
@@ -50,6 +54,40 @@ bool handeye_pixel_to_arm(int32_t camera_x_px,
                          (g_camera_to_arm_homography[1][1] * v) +
                           g_camera_to_arm_homography[1][2]) / denominator;
     p_arm_point->z_mm = HANDEYE_FIXED_HEIGHT_MM;
+
+    return true;
+}
+
+bool handeye_side_pixel_to_arm_z(int32_t side_y_px, double * p_z_mm)
+{
+    if ((NULL == p_z_mm) ||
+        (side_y_px < HANDEYE_SIDE_Y_MIN_PX) ||
+        (side_y_px > HANDEYE_SIDE_Y_MAX_PX))
+    {
+        return false;
+    }
+
+    *p_z_mm = (HANDEYE_SIDE_Z_SLOPE_MM_PX * (double) side_y_px) +
+               HANDEYE_SIDE_Z_OFFSET_MM;
+
+    return true;
+}
+
+bool handeye_pixels_to_arm_3d(int32_t top_x_px,
+                              int32_t top_y_px,
+                              int32_t side_y_px,
+                              handeye_arm_point_t * p_arm_point)
+{
+    double z_mm;
+
+    if ((NULL == p_arm_point) ||
+        !handeye_pixel_to_arm(top_x_px, top_y_px, p_arm_point) ||
+        !handeye_side_pixel_to_arm_z(side_y_px, &z_mm))
+    {
+        return false;
+    }
+
+    p_arm_point->z_mm = z_mm;
 
     return true;
 }

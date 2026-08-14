@@ -6,7 +6,7 @@
 #include "camera_ov5640.h"
 #include "hal_data.h"
 #include "model.h"
-
+// 【34cm，112】，【36.5，146】[33,92] [37.5,172] [44,283] [47,338] [44.5,300] [40,219]
 #define DET_INPUT_SIZE              (256U)
 #define DET_NUM_ANCHORS             (3U)
 #define DET_NUM_VALUES              (8U)

@@ -223,6 +223,9 @@
             <slot name="PA14.CPU0" secure="true"/>
             <slot name="PA15.CPU0" secure="true"/>
         </peripheral>
+        <peripheral name="PORTB.CPU0" group="PORT">
+            <slot name="PB00.CPU0" secure="true"/>
+        </peripheral>
         <peripheral name="PORTC.CPU0" group="PORT">
             <slot name="PC00.CPU0" secure="true"/>
             <slot name="PC01.CPU0" secure="true"/>

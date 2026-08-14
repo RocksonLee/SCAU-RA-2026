@@ -930,7 +930,7 @@
     <symbolicName propertyId="pa13.symbolic_name" value="SDRAM_DQ10"/>
     <symbolicName propertyId="pa14.symbolic_name" value="SDRAM_DQ11"/>
     <symbolicName propertyId="pa15.symbolic_name" value="SDRAM_CLK"/>
-    <symbolicName propertyId="pb00.symbolic_name" value="PARLCD_D17R1"/>
+    <symbolicName propertyId="pb00.symbolic_name" value="CAMERA_MUX_SEL"/>
     <symbolicName propertyId="pb01.symbolic_name" value="PARLCD_D13G5"/>
     <symbolicName propertyId="pb02.symbolic_name" value="PARLCD_D16R0_PARCAM_VSYNC"/>
     <symbolicName propertyId="pb03.symbolic_name" value="PARLCD_D15G7_PARCAM_HSYNC"/>
@@ -1132,6 +1132,8 @@
       <configSetting altId="p801.gpio_mode.gpio_mode_out.high" configurationId="p801.gpio_mode"/>
       <configSetting altId="p905.sci3.rxd3" configurationId="p905"/>
       <configSetting altId="p905.gpio_mode.gpio_mode_peripheral" configurationId="p905.gpio_mode"/>
+      <configSetting altId="pb00.output.high" configurationId="pb00"/>
+      <configSetting altId="pb00.gpio_mode.gpio_mode_out.high" configurationId="pb00.gpio_mode"/>
       <configSetting altId="pdm2.mode.custom.free" configurationId="pdm2.mode"/>
       <configSetting altId="sci0.mode.simplei2c.free" configurationId="sci0.mode"/>
       <configSetting altId="sci0.rxd0.p602" configurationId="sci0.rxd0"/>
