@@ -7,6 +7,7 @@
 #include "hardware/hx711.h"
 
 #define HX711_REPORT_PERIOD_MS   (200U)
+#define HX711_TARE_RETRY_MS      (1000U)
 
 /* Weight_Thread entry function */
 /* pvParameters contains TaskHandle_t */
@@ -16,21 +17,36 @@ void Weight_Thread_entry(void *pvParameters)
 
     char line[96];
     int32_t offset = 0;
+    hx711_prepare_status_t prepare_status = HX711_PREPARE_NOT_READY;
 
-    if (!hx711_prepare(&offset))
+    (void) camera_debug_send_text("HX711_INIT start\r\n");
+
+    while (HX711_PREPARE_OK != prepare_status)
     {
-        (void) camera_debug_send_text("HX711_ERR not_ready\r\n");
-    }
-    else
-    {
-        int const count = snprintf(line, sizeof(line),
-                                   "HX711_TARE offset=%ld\r\n", (long) offset);
-        if ((count > 0) && ((size_t) count < sizeof(line)))
+        prepare_status = hx711_prepare(&offset);
+
+        if (HX711_PREPARE_ZERO_UNSTABLE == prepare_status)
         {
-            (void) camera_debug_send_text(line);
+            (void) camera_debug_send_text("HX711_ERR zero_unstable\r\n");
+        }
+        else if (HX711_PREPARE_NOT_READY == prepare_status)
+        {
+            (void) camera_debug_send_text("HX711_ERR not_ready\r\n");
+        }
+
+        if (HX711_PREPARE_OK != prepare_status)
+        {
+            vTaskDelay(pdMS_TO_TICKS(HX711_TARE_RETRY_MS));
+            (void) camera_debug_send_text("HX711_TARE retry\r\n");
         }
     }
 
+    int const tare_count = snprintf(line, sizeof(line),
+                                    "HX711_TARE offset=%ld\r\n", (long) offset);
+    if ((tare_count > 0) && ((size_t) tare_count < sizeof(line)))
+    {
+        (void) camera_debug_send_text(line);
+    }
 
     while (1)
     {

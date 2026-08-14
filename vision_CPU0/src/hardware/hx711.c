@@ -8,14 +8,14 @@
 #define HX711_BITS             (24U)
 #define HX711_SIGN_BIT         (0x00800000UL)
 #define HX711_SIGN_EXTENSION   (0xFF000000UL)
-#define HX711_WARMUP_MS        (3000U)
-#define HX711_DISCARD_SAMPLES  (16U)
-#define HX711_TARE_SAMPLES     (64U)
+#define HX711_WARMUP_MS        (750U)
+#define HX711_TARE_WINDOW_SAMPLES (16U)
+#define HX711_TARE_TIMEOUT_MS  (5000U)
+#define HX711_TARE_MAX_SPAN    (600L) /* About 0.83 g peak-to-peak at the current calibration. */
 #define HX711_FILTER_SAMPLES   (16U)
 #define HX711_READY_POLL_MS    (5U)
-#define HX711_PREP_TIMEOUT_MS  (15000U)
 #define HX711_FILTER_TIMEOUT_MS (5000U)
-#define HX711_COUNTS_PER_10G   (7204L) /* 720.4 counts/g, calibrated with 500 g. */
+#define HX711_COUNTS_PER_10G   (7192L) /* 719.2 counts/g: net ~= 359600 at 500 g. */
 #define HX711_ZERO_DEADBAND    (40L)
 
 static void hx711_delay_1us(void)
@@ -120,24 +120,67 @@ static bool hx711_average(uint32_t sample_count, uint32_t timeout_ms, int32_t * 
     return true;
 }
 
-bool hx711_prepare(int32_t * p_offset)
+hx711_prepare_status_t hx711_prepare(int32_t * p_offset)
 {
-    int32_t discarded_average = 0;
+    int32_t window[HX711_TARE_WINDOW_SAMPLES] = {0};
+    uint32_t sample_count = 0U;
+    uint32_t next_sample = 0U;
+    bool window_was_filled = false;
 
     if (NULL == p_offset)
     {
-        return false;
+        return HX711_PREPARE_NOT_READY;
     }
 
     hx711_init();
     vTaskDelay(pdMS_TO_TICKS(HX711_WARMUP_MS));
 
-    if (!hx711_average(HX711_DISCARD_SAMPLES, HX711_PREP_TIMEOUT_MS, &discarded_average))
+    TickType_t const deadline = xTaskGetTickCount() + pdMS_TO_TICKS(HX711_TARE_TIMEOUT_MS);
+
+    while ((int32_t) (deadline - xTaskGetTickCount()) > 0)
     {
-        return false;
+        int32_t raw = 0;
+
+        if (!hx711_read(&raw))
+        {
+            vTaskDelay(pdMS_TO_TICKS(HX711_READY_POLL_MS));
+            continue;
+        }
+
+        window[next_sample] = raw;
+        next_sample = (next_sample + 1U) % HX711_TARE_WINDOW_SAMPLES;
+
+        if (sample_count < HX711_TARE_WINDOW_SAMPLES)
+        {
+            sample_count++;
+        }
+
+        if (sample_count == HX711_TARE_WINDOW_SAMPLES)
+        {
+            int32_t minimum = window[0];
+            int32_t maximum = window[0];
+            int64_t sum = 0;
+
+            window_was_filled = true;
+
+            for (uint32_t i = 0U; i < HX711_TARE_WINDOW_SAMPLES; i++)
+            {
+                int32_t const sample = window[i];
+
+                sum += sample;
+                minimum = (sample < minimum) ? sample : minimum;
+                maximum = (sample > maximum) ? sample : maximum;
+            }
+
+            if ((maximum - minimum) <= HX711_TARE_MAX_SPAN)
+            {
+                *p_offset = (int32_t) (sum / (int64_t) HX711_TARE_WINDOW_SAMPLES);
+                return HX711_PREPARE_OK;
+            }
+        }
     }
 
-    return hx711_average(HX711_TARE_SAMPLES, HX711_PREP_TIMEOUT_MS, p_offset);
+    return window_was_filled ? HX711_PREPARE_ZERO_UNSTABLE : HX711_PREPARE_NOT_READY;
 }
 
 bool hx711_read_filtered(int32_t * p_raw)
