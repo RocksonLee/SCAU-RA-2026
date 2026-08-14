@@ -115,7 +115,8 @@ FSP_HEADER
 #define DCAM_D6 (BSP_IO_PORT_07_PIN_02) /* See SW4 in manual */
 #define DCAM_D7 (BSP_IO_PORT_07_PIN_03) /* See SW4 in manual */
 #define PMOD2_GPIO2 (BSP_IO_PORT_07_PIN_04) /* Enable when connected */
-#define PARLCD_D18R2 (BSP_IO_PORT_07_PIN_07)
+#define HX711_DT (BSP_IO_PORT_07_PIN_06)
+#define HX711_SCK (BSP_IO_PORT_07_PIN_07)
 #define CAMERA_RESET (BSP_IO_PORT_07_PIN_09)
 #define CAMERA_PWDN (BSP_IO_PORT_07_PIN_10)
 #define PARLCD_D19R3 (BSP_IO_PORT_07_PIN_11)

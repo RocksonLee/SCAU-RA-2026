@@ -61,8 +61,23 @@ static bool camera_uart_write(uint8_t const * p_data, uint32_t bytes)
 {
     TickType_t const start = xTaskGetTickCount();
 
-    while (g_uart_tx_busy)
+    while (1)
     {
+        bool acquired = false;
+
+        taskENTER_CRITICAL();
+        if (!g_uart_tx_busy)
+        {
+            g_uart_tx_busy = true;
+            acquired = true;
+        }
+        taskEXIT_CRITICAL();
+
+        if (acquired)
+        {
+            break;
+        }
+
         if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(1000U))
         {
             return false;
@@ -71,7 +86,6 @@ static bool camera_uart_write(uint8_t const * p_data, uint32_t bytes)
         vTaskDelay(1);
     }
 
-    g_uart_tx_busy = true;
     if (FSP_SUCCESS != g_uart9.p_api->write(g_uart9.p_ctrl, p_data, bytes))
     {
         g_uart_tx_busy = false;
@@ -112,14 +126,34 @@ static bool camera_uart_send_bytes(uint8_t const * p_data, uint32_t bytes)
     return true;
 }
 
-static void camera_uart_send_text(char const * p_text)
+bool camera_debug_send_text(char const * p_text)
 {
     if (NULL == p_text)
     {
-        return;
+        return false;
     }
 
-    (void) camera_uart_write((uint8_t const *) p_text, (uint32_t) strlen(p_text));
+    return camera_uart_write((uint8_t const *) p_text, (uint32_t) strlen(p_text));
+}
+
+bool camera_debug_uart_init(void)
+{
+    fsp_err_t const err = g_uart9.p_api->open(g_uart9.p_ctrl, g_uart9.p_cfg);
+
+    if ((FSP_SUCCESS != err) && (FSP_ERR_ALREADY_OPEN != err))
+    {
+        return false;
+    }
+
+    return (FSP_SUCCESS == g_uart9.p_api->callbackSet(g_uart9.p_ctrl,
+                                                       camera_uart_callback,
+                                                       NULL,
+                                                       &g_uart_callback_memory));
+}
+
+static void camera_uart_send_text(char const * p_text)
+{
+    (void) camera_debug_send_text(p_text);
 }
 
 static uint32_t camera_crc32(uint8_t const * p_data, uint32_t bytes)
@@ -281,16 +315,10 @@ static bool camera_stream_send_frame(void)
 
 void camera_stream_task(void)
 {
-    fsp_err_t err;
     bool detection_sent = true;
 
-    err = g_uart9.p_api->open(g_uart9.p_ctrl, g_uart9.p_cfg);
-    if ((FSP_SUCCESS == err) || (FSP_ERR_ALREADY_OPEN == err))
+    if (camera_debug_uart_init())
     {
-        (void) g_uart9.p_api->callbackSet(g_uart9.p_ctrl,
-                                          camera_uart_callback,
-                                          NULL,
-                                          &g_uart_callback_memory);
         camera_uart_send_text("FW=CPU0_CEU_V3\r\n");
     }
 

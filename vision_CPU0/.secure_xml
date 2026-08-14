@@ -192,6 +192,10 @@
       <configSetting altId="p701.gpio_mode.gpio_mode_peripheral" configurationId="p701.gpio_mode"/>
       <configSetting altId="p702.gpio_mode.gpio_mode_peripheral" configurationId="p702.gpio_mode"/>
       <configSetting altId="p703.gpio_mode.gpio_mode_peripheral" configurationId="p703.gpio_mode"/>
+      <configSetting altId="p706.input" configurationId="p706"/>
+      <configSetting altId="p706.gpio_mode.gpio_mode_in" configurationId="p706.gpio_mode"/>
+      <configSetting altId="p707.output.low" configurationId="p707"/>
+      <configSetting altId="p707.gpio_mode.gpio_mode_out.low" configurationId="p707.gpio_mode"/>
       <configSetting altId="p708.gpio_mode.gpio_mode_peripheral" configurationId="p708.gpio_mode"/>
       <configSetting altId="p710.output.high" configurationId="p710"/>
       <configSetting altId="p710.gpio_mode.gpio_mode_out.high" configurationId="p710.gpio_mode"/>
