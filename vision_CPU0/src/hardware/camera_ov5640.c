@@ -513,6 +513,23 @@ camera_ov5640_result_t camera_ov5640_init(void)
     return CAMERA_OV5640_OK;
 }
 
+camera_ov5640_result_t camera_ov5640_stop(void)
+{
+    fsp_err_t const ceu_close_error = g_ceu0.p_api->close(g_ceu0.p_ctrl);
+    bool const stream_stopped = ov5640_write_reg(0x3008U, 0x42U);
+
+    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_RESET, BSP_IO_LEVEL_LOW);
+    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_PWDN, BSP_IO_LEVEL_HIGH);
+    vTaskDelay(pdMS_TO_TICKS(10U));
+
+    if ((FSP_SUCCESS != ceu_close_error) && (FSP_ERR_NOT_OPEN != ceu_close_error))
+    {
+        return CAMERA_OV5640_ERR_CAPTURE;
+    }
+
+    return stream_stopped ? CAMERA_OV5640_OK : CAMERA_OV5640_ERR_I2C;
+}
+
 camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
 {
     TickType_t start;

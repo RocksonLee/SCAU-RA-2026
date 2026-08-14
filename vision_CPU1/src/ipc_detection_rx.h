@@ -4,25 +4,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "hardware/handeye_transform.h"
 #include "ipc_detection_protocol.h"
 
-typedef struct st_ipc_detection_result
-{
-    uint32_t class_id;
-    int32_t  x;
-    int32_t  y;
-} ipc_detection_result_t;
+bool ipc_coordinate_pair_take(ipc_camera_coordinate_pair_t * p_pair);
 
-/*
- * Copies the latest complete detection packet into p_results. The packet is
- * retained when result_capacity is too small; in that case p_result_count is
- * set to the required capacity and the function returns false.
- *
- * This function is intended to be called from a FreeRTOS task, not from an
- * interrupt. It returns false when no new complete packet is available.
- */
-bool ipc_detection_take_results(ipc_detection_result_t * p_results,
-                                uint32_t                   result_capacity,
-                                uint32_t                 * p_result_count);
+bool ipc_arm_point_take(handeye_arm_point_t * p_arm_point,
+                        uint32_t            * p_pair_id,
+                        uint32_t            * p_class_id);
 
 #endif /* IPC_DETECTION_RX_H */

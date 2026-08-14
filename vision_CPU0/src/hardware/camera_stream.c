@@ -19,6 +19,23 @@
 #define CAMERA_UART_LINE_BYTES  (192U)
 #define CAMERA_CAPTURE_ATTEMPTS (3U)
 #define CAMERA_CAPTURE_RETRY_MS (100U)
+#define CAMERA_MUX_SETTLE_MS     (5U)
+#define CAMERA_SWITCH_SETTLE_MS  (1000U)
+#define CAMERA_SIDE_SAMPLES      (5U)
+#define CAMERA_SIDE_MAX_FRAMES   (30U)
+#define CAMERA_SIDE_X_MIN_PX     (92)
+#define CAMERA_SIDE_X_MAX_PX     (338)
+#define CAMERA_SIDE_Z_SLOPE      (0.5631433347759307)
+#define CAMERA_SIDE_Z_OFFSET     (278.6319722003004)
+#define CAMERA_HOMOGRAPHY_EPSILON (1.0e-9)
+
+/* Keep these coefficients synchronized with CPU1 handeye_transform.c. */
+static double const g_camera_to_arm_homography[3][3] =
+{
+    {0.038658,  0.386610, 54.505698},
+    {0.548603, -0.045075, 62.271670},
+    {0.000383, -0.000106,  1.000000},
+};
 
 #if APP_DETECTION_MAX_RESULTS != FRUIT_UI_MAX_DETECTIONS
  #error "Detection result capacity does not match the UI capacity."
@@ -30,6 +47,9 @@ static volatile bool g_uart_tx_busy;
 static uart_callback_args_t g_uart_callback_memory;
 static char g_uart_line[CAMERA_UART_LINE_BYTES];
 static app_detection_result_t g_detection_results[APP_DETECTION_MAX_RESULTS];
+
+static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_pair,
+                                        fruit_ui_detection_t                * p_detection);
 
 static fruit_ui_target_t camera_stream_target_from_class(uint32_t class_id)
 {
@@ -308,6 +328,167 @@ static camera_ov5640_result_t camera_capture_frame_with_retry(uint8_t * p_frame)
     return result;
 }
 
+static int32_t camera_median_5(int32_t const samples[CAMERA_SIDE_SAMPLES])
+{
+    int32_t sorted[CAMERA_SIDE_SAMPLES];
+
+    for (uint32_t i = 0U; i < CAMERA_SIDE_SAMPLES; i++)
+    {
+        sorted[i] = samples[i];
+    }
+
+    for (uint32_t i = 1U; i < CAMERA_SIDE_SAMPLES; i++)
+    {
+        int32_t const value = sorted[i];
+        uint32_t j = i;
+
+        while ((j > 0U) && (sorted[j - 1U] > value))
+        {
+            sorted[j] = sorted[j - 1U];
+            j--;
+        }
+
+        sorted[j] = value;
+    }
+
+    return sorted[CAMERA_SIDE_SAMPLES / 2U];
+}
+
+static void camera_discard_settle_frames(void)
+{
+    vTaskDelay(pdMS_TO_TICKS(CAMERA_SWITCH_SETTLE_MS));
+
+    for (uint32_t i = 0U; i < CAMERA_DISCARD_FRAMES; i++)
+    {
+        (void) camera_capture_frame_with_retry(g_camera_frame);
+        vTaskDelay(pdMS_TO_TICKS(100U));
+    }
+}
+
+static bool camera_switch_to(bool side_camera)
+{
+    camera_ov5640_result_t const stop_result = camera_ov5640_stop();
+
+    if (CAMERA_OV5640_OK != stop_result)
+    {
+        camera_uart_send_text("CAM_SWITCH_ERR stop\r\n");
+    }
+
+    if (FSP_SUCCESS != g_ioport.p_api->pinWrite(g_ioport.p_ctrl,
+                                                 CAMERA_MUX_SEL,
+                                                 side_camera ? BSP_IO_LEVEL_LOW : BSP_IO_LEVEL_HIGH))
+    {
+        camera_uart_send_text("CAM_SWITCH_ERR select\r\n");
+        return false;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(CAMERA_MUX_SETTLE_MS));
+
+    camera_ov5640_result_t const init_result = camera_ov5640_init();
+    if (CAMERA_OV5640_OK != init_result)
+    {
+        camera_uart_send_camera_init_error(init_result);
+        return false;
+    }
+
+    camera_discard_settle_frames();
+    camera_uart_send_text(side_camera ? "CAM_ACTIVE SIDE\r\n" : "CAM_ACTIVE TOP\r\n");
+    return true;
+}
+
+static void camera_collect_side_samples(app_detection_result_t const * p_top_results,
+                                        uint32_t                       target_count,
+                                        int32_t                      * p_side_x,
+                                        int32_t                      * p_side_y,
+                                        bool                         * p_side_valid)
+{
+    int32_t x_samples[APP_DETECTION_MAX_RESULTS][CAMERA_SIDE_SAMPLES];
+    int32_t y_samples[APP_DETECTION_MAX_RESULTS][CAMERA_SIDE_SAMPLES];
+    uint32_t sample_count[APP_DETECTION_MAX_RESULTS] = {0U};
+
+    for (uint32_t target = 0U; target < target_count; target++)
+    {
+        p_side_valid[target] = false;
+    }
+
+    for (uint32_t frame = 0U; frame < CAMERA_SIDE_MAX_FRAMES; frame++)
+    {
+        bool all_complete = true;
+        for (uint32_t target = 0U; target < target_count; target++)
+        {
+            if (sample_count[target] < CAMERA_SIDE_SAMPLES)
+            {
+                all_complete = false;
+                break;
+            }
+        }
+
+        if (all_complete)
+        {
+            break;
+        }
+
+        if (CAMERA_OV5640_OK != camera_capture_frame_with_retry(g_camera_frame))
+        {
+            camera_uart_send_ceu_events_line();
+            continue;
+        }
+
+        uint32_t result_count = 0U;
+        if (!app_detection_run_frame(g_camera_frame,
+                                     g_detection_results,
+                                     APP_DETECTION_MAX_RESULTS,
+                                     &result_count,
+                                     camera_uart_send_text))
+        {
+            camera_uart_send_text("SIDE_DET_ERR run\r\n");
+            continue;
+        }
+
+        bool sampled_this_frame[APP_DETECTION_MAX_RESULTS] = {false};
+        for (uint32_t i = 0U; i < result_count; i++)
+        {
+            for (uint32_t target = 0U; target < target_count; target++)
+            {
+                if (!sampled_this_frame[target] &&
+                    (sample_count[target] < CAMERA_SIDE_SAMPLES) &&
+                    (g_detection_results[i].class_id == p_top_results[target].class_id))
+                {
+                    uint32_t const sample = sample_count[target];
+                    x_samples[target][sample] = g_detection_results[i].x;
+                    y_samples[target][sample] = g_detection_results[i].y;
+                    sample_count[target]++;
+                    sampled_this_frame[target] = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    for (uint32_t target = 0U; target < target_count; target++)
+    {
+        if (CAMERA_SIDE_SAMPLES == sample_count[target])
+        {
+            p_side_x[target] = camera_median_5(x_samples[target]);
+            p_side_y[target] = camera_median_5(y_samples[target]);
+            p_side_valid[target] = true;
+        }
+        else
+        {
+            int const count = snprintf(g_uart_line,
+                                       sizeof(g_uart_line),
+                                       "SIDE_DET_ERR class=%lu samples=%lu\r\n",
+                                       (unsigned long) p_top_results[target].class_id,
+                                       (unsigned long) sample_count[target]);
+
+            if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
+            {
+                camera_uart_send_text(g_uart_line);
+            }
+        }
+    }
+}
+
 static bool camera_stream_send_frame(void)
 {
     return camera_uart_send_bytes(g_camera_frame, CAMERA_OV5640_FRAME_BYTES);
@@ -315,12 +496,15 @@ static bool camera_stream_send_frame(void)
 
 void camera_stream_task(void)
 {
-    bool detection_sent = true;
+    uint32_t batch_id = 0U;
 
     if (camera_debug_uart_init())
     {
         camera_uart_send_text("FW=CPU0_CEU_V3\r\n");
     }
+
+    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, CAMERA_MUX_SEL, BSP_IO_LEVEL_HIGH);
+    vTaskDelay(pdMS_TO_TICKS(CAMERA_MUX_SETTLE_MS));
 
     camera_ov5640_result_t const camera_init_result = camera_ov5640_init();
     if (CAMERA_OV5640_OK != camera_init_result)
@@ -353,7 +537,7 @@ void camera_stream_task(void)
         vTaskDelay(pdMS_TO_TICKS(100U));
     }
 
-    while (detection_sent)
+    while (1)
     {
         if (CAMERA_OV5640_OK != camera_capture_frame_with_retry(g_camera_frame))
         {
@@ -376,25 +560,6 @@ void camera_stream_task(void)
             continue;
         }
 
-        fruit_ui_detection_t ui_detections[FRUIT_UI_MAX_DETECTIONS];
-        uint32_t ui_detection_count = 0U;
-
-        for (uint32_t i = 0U; i < result_count; i++)
-        {
-            fruit_ui_target_t const target = camera_stream_target_from_class(g_detection_results[i].class_id);
-
-            if (target != FRUIT_UI_TARGET_NONE)
-            {
-                ui_detections[ui_detection_count].target = target;
-                ui_detections[ui_detection_count].x = g_detection_results[i].x;
-                ui_detections[ui_detection_count].y = g_detection_results[i].y;
-                ui_detections[ui_detection_count].z = 0;
-                ui_detection_count++;
-            }
-        }
-
-        fruit_ui_set_detections(ui_detections, ui_detection_count);
-
         if (0U == result_count)
         {
             camera_uart_send_text("FRAME_OK NO_DET\r\n");
@@ -402,29 +567,205 @@ void camera_stream_task(void)
             continue;
         }
 
-        if (ipc_detection_send_results(g_detection_results, result_count))
-        {
-            detection_sent = true;
+        app_detection_result_t top_results[APP_DETECTION_MAX_RESULTS];
+        uint32_t top_result_count = 0U;
 
+        for (uint32_t i = 0U; i < result_count; i++)
+        {
+            if (FRUIT_UI_TARGET_NONE == camera_stream_target_from_class(g_detection_results[i].class_id))
+            {
+                continue;
+            }
+
+            bool class_already_added = false;
+            for (uint32_t saved = 0U; saved < top_result_count; saved++)
+            {
+                if (top_results[saved].class_id == g_detection_results[i].class_id)
+                {
+                    class_already_added = true;
+                    break;
+                }
+            }
+
+            if (!class_already_added)
+            {
+                top_results[top_result_count] = g_detection_results[i];
+                top_result_count++;
+            }
+        }
+
+        if (0U == top_result_count)
+        {
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
+
+        int32_t side_x[APP_DETECTION_MAX_RESULTS] = {0};
+        int32_t side_y[APP_DETECTION_MAX_RESULTS] = {0};
+        bool side_valid[APP_DETECTION_MAX_RESULTS] = {false};
+        bool batch_sent = false;
+        fruit_ui_detection_t paired_detections[FRUIT_UI_MAX_DETECTIONS];
+        uint32_t paired_detection_count = 0U;
+
+        if (!camera_switch_to(true))
+        {
+            camera_uart_send_text("CAM_SWITCH_ERR side\r\n");
+            (void) camera_switch_to(false);
+            continue;
+        }
+
+        camera_collect_side_samples(top_results,
+                                    top_result_count,
+                                    side_x,
+                                    side_y,
+                                    side_valid);
+
+        ipc_camera_coordinate_batch_t batch =
+        {
+            .batch_id = batch_id + 1U,
+            .count = 0U,
+        };
+
+        for (uint32_t target = 0U; target < top_result_count; target++)
+        {
+            if (!side_valid[target])
+            {
+                continue;
+            }
+
+            ipc_camera_coordinate_item_t * p_item = &batch.items[batch.count];
+            p_item->class_id = top_results[target].class_id;
+            p_item->top_x = top_results[target].x;
+            p_item->top_y = top_results[target].y;
+            p_item->side_x = side_x[target];
+            p_item->side_y = side_y[target];
+            batch.count++;
+        }
+
+        if (batch.count > 0U)
+        {
+            if (ipc_detection_send_coordinate_batch(&batch))
+            {
+                batch_id = batch.batch_id;
+                batch_sent = true;
+
+                for (uint32_t i = 0U; i < batch.count; i++)
+                {
+                    ipc_camera_coordinate_item_t const * p_item = &batch.items[i];
+                    ipc_camera_coordinate_pair_t const pair =
+                    {
+                        .pair_id = batch.batch_id,
+                        .class_id = p_item->class_id,
+                        .top_x = p_item->top_x,
+                        .top_y = p_item->top_y,
+                        .side_x = p_item->side_x,
+                        .side_y = p_item->side_y,
+                    };
+
+                    if ((paired_detection_count < FRUIT_UI_MAX_DETECTIONS) &&
+                        camera_pair_to_ui_detection(&pair, &paired_detections[paired_detection_count]))
+                    {
+                        paired_detection_count++;
+                    }
+                    else
+                    {
+                        camera_uart_send_text("UI_COORD_ERR transform\r\n");
+                    }
+                }
+
+                int const count = snprintf(g_uart_line,
+                                           sizeof(g_uart_line),
+                                           "BATCH_IPC_SENT id=%lu count=%lu\r\n",
+                                           (unsigned long) batch.batch_id,
+                                           (unsigned long) batch.count);
+                if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
+                {
+                    camera_uart_send_text(g_uart_line);
+                }
+            }
+            else
+            {
+                camera_uart_send_text("BATCH_ERR ipc_send\r\n");
+            }
+        }
+
+        if (paired_detection_count > 0U)
+        {
+            fruit_ui_set_detections(paired_detections, paired_detection_count);
+        }
+
+        if (!camera_switch_to(false))
+        {
+            camera_uart_send_text("CAM_SWITCH_ERR top\r\n");
+
+            while (!camera_switch_to(false))
+            {
+                vTaskDelay(pdMS_TO_TICKS(1000U));
+            }
+        }
+
+        if (batch_sent)
+        {
             int const count = snprintf(g_uart_line,
                                        sizeof(g_uart_line),
-                                       "DET_IPC_SENT count=%lu\r\n",
-                                       (unsigned long) result_count);
-
+                                       "PAIR_BATCH_COMPLETE count=%lu stop\r\n",
+                                       (unsigned long) paired_detection_count);
             if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
             {
                 camera_uart_send_text(g_uart_line);
             }
+            vTaskDelete(NULL);
         }
-        else
-        {
-            camera_uart_send_text("DET_ERR ipc_send\r\n");
-            vTaskDelay(pdMS_TO_TICKS(10U));
-        }
+    }
+}
+
+static int32_t camera_round_mm(double value)
+{
+    return (int32_t) (value >= 0.0 ? value + 0.5 : value - 0.5);
+}
+
+static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_pair,
+                                        fruit_ui_detection_t                * p_detection)
+{
+    if ((NULL == p_pair) || (NULL == p_detection) ||
+        (p_pair->top_x < 0) || (p_pair->top_x >= (int32_t) CAMERA_OV5640_WIDTH) ||
+        (p_pair->top_y < 0) || (p_pair->top_y >= (int32_t) CAMERA_OV5640_HEIGHT) ||
+        (p_pair->side_x < CAMERA_SIDE_X_MIN_PX) ||
+        (p_pair->side_x > CAMERA_SIDE_X_MAX_PX))
+    {
+        return false;
     }
 
-    while (1)
+    fruit_ui_target_t const target = camera_stream_target_from_class(p_pair->class_id);
+    if (FRUIT_UI_TARGET_NONE == target)
     {
-        vTaskDelay(pdMS_TO_TICKS(1000U));
+        return false;
     }
+
+    double const u = (double) p_pair->top_x;
+    double const v = (double) p_pair->top_y;
+    double const denominator = (g_camera_to_arm_homography[2][0] * u) +
+                               (g_camera_to_arm_homography[2][1] * v) +
+                                g_camera_to_arm_homography[2][2];
+
+    if ((denominator > -CAMERA_HOMOGRAPHY_EPSILON) &&
+        (denominator < CAMERA_HOMOGRAPHY_EPSILON))
+    {
+        return false;
+    }
+
+    double const x_mm = ((g_camera_to_arm_homography[0][0] * u) +
+                         (g_camera_to_arm_homography[0][1] * v) +
+                          g_camera_to_arm_homography[0][2]) / denominator;
+    double const y_mm = ((g_camera_to_arm_homography[1][0] * u) +
+                         (g_camera_to_arm_homography[1][1] * v) +
+                          g_camera_to_arm_homography[1][2]) / denominator;
+    double const z_mm = (CAMERA_SIDE_Z_SLOPE * (double) p_pair->side_x) +
+                         CAMERA_SIDE_Z_OFFSET;
+
+    p_detection->target = target;
+    p_detection->x = camera_round_mm(x_mm);
+    p_detection->y = camera_round_mm(y_mm);
+    p_detection->z = camera_round_mm(z_mm);
+    return true;
 }

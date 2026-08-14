@@ -2,11 +2,9 @@
 #define IPC_DETECTION_TX_H
 
 #include <stdbool.h>
-#include <stdint.h>
 
-#include "app_detection.h"
+#include "ipc_detection_protocol.h"
 
-bool ipc_detection_send_results(app_detection_result_t const * p_results,
-                                uint32_t                         result_count);
+bool ipc_detection_send_coordinate_batch(ipc_camera_coordinate_batch_t const * p_batch);
 
 #endif /* IPC_DETECTION_TX_H */

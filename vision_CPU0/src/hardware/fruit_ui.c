@@ -362,6 +362,27 @@ static void on_back_select(lv_event_t * e)
     }
 }
 
+static void on_confirm_pick(lv_event_t * e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    for (uint32_t i = 0U; i < g_detection_count; i++) {
+        if (g_detections[i].target == g_selected) {
+            for (uint32_t remaining = i + 1U; remaining < g_detection_count; remaining++) {
+                g_detections[remaining - 1U] = g_detections[remaining];
+            }
+
+            g_detection_count--;
+            break;
+        }
+    }
+
+    g_selected = FRUIT_UI_TARGET_NONE;
+    show_home();
+}
+
 static void on_pick(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
@@ -496,7 +517,7 @@ static void show_detail(fruit_ui_target_t target)
     add_label(card, "1.lock target 2.solve arm pose 3.close gripper 4.detect weight",
               lv_color_hex(0x435466), &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 30);
 
-    add_button(lv_screen_active(), "CONFIRM PICK", 138, 270, 204, 36, on_back_home, NULL);
+    add_button(lv_screen_active(), "CONFIRM PICK", 138, 270, 204, 36, on_confirm_pick, NULL);
 }
 
 void fruit_ui_create(void)

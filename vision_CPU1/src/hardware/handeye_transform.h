@@ -33,23 +33,23 @@ bool handeye_pixel_to_arm(int32_t camera_x_px,
                           handeye_arm_point_t * p_arm_point);
 
 /**
- * Convert the side-camera vertical pixel coordinate to robot Z height.
+ * Convert the side-camera horizontal pixel coordinate to robot Z height.
  *
  * The conversion is valid over the calibrated side-camera range only.
  *
- * @param[in]  side_y_px Side-camera vertical pixel coordinate.
+ * @param[in]  side_x_px Side-camera horizontal pixel coordinate.
  * @param[out] p_z_mm    Converted robot Z coordinate in millimetres.
  *
  * @return true when the pixel is inside the calibrated range; otherwise false.
  */
-bool handeye_side_pixel_to_arm_z(int32_t side_y_px, double * p_z_mm);
+bool handeye_side_pixel_to_arm_z(int32_t side_x_px, double * p_z_mm);
 
 /**
  * Fuse the top-camera XY conversion with the side-camera Z conversion.
  */
 bool handeye_pixels_to_arm_3d(int32_t top_x_px,
                               int32_t top_y_px,
-                              int32_t side_y_px,
+                              int32_t side_x_px,
                               handeye_arm_point_t * p_arm_point);
 
 #ifdef __cplusplus
