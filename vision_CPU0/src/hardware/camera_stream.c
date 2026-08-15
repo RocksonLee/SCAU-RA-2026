@@ -29,7 +29,7 @@
 #define CAMERA_PREVIEW_PERIOD_MS (500U)
 #define CAMERA_SIDE_SAMPLES      (5U)
 #define CAMERA_SIDE_MAX_FRAMES   (90U)
-#define CAMERA_SIDE_X_MIN_PX     (92)
+#define CAMERA_SIDE_X_MIN_PX     (150)
 #define CAMERA_SIDE_X_MAX_PX     (338)
 #define CAMERA_SIDE_Z_SLOPE      (0.5631433347759307)
 #define CAMERA_SIDE_Z_OFFSET     (278.6319722003004)
@@ -537,6 +537,11 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
         bool sampled_this_frame[APP_DETECTION_MAX_RESULTS] = {false};
         for (uint32_t i = 0U; i < result_count; i++)
         {
+            if (g_detection_results[i].x < CAMERA_SIDE_X_MIN_PX)
+            {
+                continue;
+            }
+
             for (uint32_t target = 0U; target < target_count; target++)
             {
                 if (!sampled_this_frame[target] &&
