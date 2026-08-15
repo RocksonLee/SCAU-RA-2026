@@ -46,6 +46,8 @@ static uint32_t g_detection_count;
 static volatile fruit_ui_detection_t g_pending_detections[FRUIT_UI_MAX_DETECTIONS];
 static volatile uint32_t g_pending_detection_count;
 static volatile bool g_target_update_pending;
+static volatile fruit_ui_target_t g_pending_pick_target;
+static volatile bool g_pick_request_pending;
 static volatile int32_t g_pending_weight_0p1g;
 static volatile bool g_pending_weight_valid;
 static volatile bool g_weight_update_pending;
@@ -368,15 +370,27 @@ static void on_confirm_pick(lv_event_t * e)
         return;
     }
 
+    bool selected_found = false;
+
     for (uint32_t i = 0U; i < g_detection_count; i++) {
         if (g_detections[i].target == g_selected) {
+            taskENTER_CRITICAL();
+            g_pending_pick_target = g_selected;
+            g_pick_request_pending = true;
+            taskEXIT_CRITICAL();
+
             for (uint32_t remaining = i + 1U; remaining < g_detection_count; remaining++) {
                 g_detections[remaining - 1U] = g_detections[remaining];
             }
 
             g_detection_count--;
+            selected_found = true;
             break;
         }
+    }
+
+    if (!selected_found) {
+        return;
     }
 
     g_selected = FRUIT_UI_TARGET_NONE;
@@ -631,6 +645,24 @@ void fruit_ui_set_detections(fruit_ui_detection_t const * p_detections, uint32_t
     g_pending_detection_count = detection_count;
     g_target_update_pending = true;
     taskEXIT_CRITICAL();
+}
+
+bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target)
+{
+    if (p_target == NULL) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    if (!g_pick_request_pending) {
+        taskEXIT_CRITICAL();
+        return false;
+    }
+
+    *p_target = g_pending_pick_target;
+    g_pick_request_pending = false;
+    taskEXIT_CRITICAL();
+    return true;
 }
 
 void fruit_ui_set_weight(int32_t weight_0p1g, bool valid)

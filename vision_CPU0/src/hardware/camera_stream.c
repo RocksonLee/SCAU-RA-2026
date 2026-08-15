@@ -603,8 +603,8 @@ void camera_stream_task(void)
         int32_t side_x[APP_DETECTION_MAX_RESULTS] = {0};
         int32_t side_y[APP_DETECTION_MAX_RESULTS] = {0};
         bool side_valid[APP_DETECTION_MAX_RESULTS] = {false};
-        bool batch_sent = false;
         fruit_ui_detection_t paired_detections[FRUIT_UI_MAX_DETECTIONS];
+        ipc_camera_coordinate_item_t selectable_items[FRUIT_UI_MAX_DETECTIONS];
         uint32_t paired_detection_count = 0U;
 
         if (!camera_switch_to(true))
@@ -642,50 +642,28 @@ void camera_stream_task(void)
             batch.count++;
         }
 
-        if (batch.count > 0U)
+        for (uint32_t i = 0U; i < batch.count; i++)
         {
-            if (ipc_detection_send_coordinate_batch(&batch))
+            ipc_camera_coordinate_item_t const * p_item = &batch.items[i];
+            ipc_camera_coordinate_pair_t const pair =
             {
-                batch_id = batch.batch_id;
-                batch_sent = true;
+                .pair_id = batch.batch_id,
+                .class_id = p_item->class_id,
+                .top_x = p_item->top_x,
+                .top_y = p_item->top_y,
+                .side_x = p_item->side_x,
+                .side_y = p_item->side_y,
+            };
 
-                for (uint32_t i = 0U; i < batch.count; i++)
-                {
-                    ipc_camera_coordinate_item_t const * p_item = &batch.items[i];
-                    ipc_camera_coordinate_pair_t const pair =
-                    {
-                        .pair_id = batch.batch_id,
-                        .class_id = p_item->class_id,
-                        .top_x = p_item->top_x,
-                        .top_y = p_item->top_y,
-                        .side_x = p_item->side_x,
-                        .side_y = p_item->side_y,
-                    };
-
-                    if ((paired_detection_count < FRUIT_UI_MAX_DETECTIONS) &&
-                        camera_pair_to_ui_detection(&pair, &paired_detections[paired_detection_count]))
-                    {
-                        paired_detection_count++;
-                    }
-                    else
-                    {
-                        camera_uart_send_text("UI_COORD_ERR transform\r\n");
-                    }
-                }
-
-                int const count = snprintf(g_uart_line,
-                                           sizeof(g_uart_line),
-                                           "BATCH_IPC_SENT id=%lu count=%lu\r\n",
-                                           (unsigned long) batch.batch_id,
-                                           (unsigned long) batch.count);
-                if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
-                {
-                    camera_uart_send_text(g_uart_line);
-                }
+            if ((paired_detection_count < FRUIT_UI_MAX_DETECTIONS) &&
+                camera_pair_to_ui_detection(&pair, &paired_detections[paired_detection_count]))
+            {
+                selectable_items[paired_detection_count] = *p_item;
+                paired_detection_count++;
             }
             else
             {
-                camera_uart_send_text("BATCH_ERR ipc_send\r\n");
+                camera_uart_send_text("UI_COORD_ERR transform\r\n");
             }
         }
 
@@ -704,16 +682,71 @@ void camera_stream_task(void)
             }
         }
 
-        if (batch_sent)
+        if (paired_detection_count > 0U)
         {
-            int const count = snprintf(g_uart_line,
-                                       sizeof(g_uart_line),
-                                       "PAIR_BATCH_COMPLETE count=%lu stop\r\n",
-                                       (unsigned long) paired_detection_count);
-            if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
+            bool item_sent[FRUIT_UI_MAX_DETECTIONS] = {false};
+            uint32_t remaining_count = paired_detection_count;
+
+            while (remaining_count > 0U)
             {
-                camera_uart_send_text(g_uart_line);
+                fruit_ui_target_t requested_target;
+
+                if (!fruit_ui_take_pick_request(&requested_target))
+                {
+                    vTaskDelay(pdMS_TO_TICKS(10U));
+                    continue;
+                }
+
+                uint32_t selected_index = paired_detection_count;
+                for (uint32_t i = 0U; i < paired_detection_count; i++)
+                {
+                    if (!item_sent[i] &&
+                        (camera_stream_target_from_class(selectable_items[i].class_id) == requested_target))
+                    {
+                        selected_index = i;
+                        break;
+                    }
+                }
+
+                if (selected_index == paired_detection_count)
+                {
+                    camera_uart_send_text("PICK_ERR target_not_found\r\n");
+                    continue;
+                }
+
+                ipc_camera_coordinate_batch_t selected_batch =
+                {
+                    .batch_id = batch_id + 1U,
+                    .count = 1U,
+                    .items = {selectable_items[selected_index]},
+                };
+
+                while (!ipc_detection_send_coordinate_batch(&selected_batch))
+                {
+                    camera_uart_send_text("PICK_ERR ipc_send_retry\r\n");
+                    vTaskDelay(pdMS_TO_TICKS(1000U));
+                }
+
+                batch_id = selected_batch.batch_id;
+                item_sent[selected_index] = true;
+                remaining_count--;
+
+                int const count = snprintf(g_uart_line,
+                                           sizeof(g_uart_line),
+                                           "PICK_IPC_SENT id=%lu class=%lu top=(%ld,%ld) side=(%ld,%ld)\r\n",
+                                           (unsigned long) selected_batch.batch_id,
+                                           (unsigned long) selectable_items[selected_index].class_id,
+                                           (long) selectable_items[selected_index].top_x,
+                                           (long) selectable_items[selected_index].top_y,
+                                           (long) selectable_items[selected_index].side_x,
+                                           (long) selectable_items[selected_index].side_y);
+                if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
+                {
+                    camera_uart_send_text(g_uart_line);
+                }
             }
+
+            camera_uart_send_text("PICK_BATCH_COMPLETE stop\r\n");
             vTaskDelete(NULL);
         }
     }

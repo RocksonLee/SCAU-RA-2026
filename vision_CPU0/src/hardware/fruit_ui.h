@@ -29,6 +29,7 @@ typedef struct st_fruit_ui_detection
 void fruit_ui_create(void);
 void fruit_ui_process(void);
 void fruit_ui_set_detections(fruit_ui_detection_t const * p_detections, uint32_t detection_count);
+bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target);
 void fruit_ui_set_weight(int32_t weight_0p1g, bool valid);
 
 #ifdef __cplusplus
