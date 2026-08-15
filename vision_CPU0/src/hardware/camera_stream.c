@@ -632,6 +632,7 @@ void camera_stream_task(void)
 {
     uint32_t batch_id = 0U;
     TickType_t last_preview_tick = 0U;
+    bool recognition_complete = false;
 
     if (camera_debug_uart_init())
     {
@@ -674,6 +675,19 @@ void camera_stream_task(void)
 
     while (1)
     {
+        /*
+         * A production recognition batch is single-shot.  After every item
+         * from the first batch has been picked, keep the normal camera flow
+         * idle instead of discovering the scene again.  Settings debug mode
+         * may still capture and publish preview frames; leaving Settings
+         * returns here and remains idle.
+         */
+        if (recognition_complete && !fruit_ui_is_debug_mode_active())
+        {
+            vTaskDelay(pdMS_TO_TICKS(100U));
+            continue;
+        }
+
         if (CAMERA_OV5640_OK != camera_capture_frame_with_retry(g_camera_frame))
         {
             camera_uart_send_ceu_events_line();
@@ -925,7 +939,8 @@ void camera_stream_task(void)
                 continue;
             }
 
-            camera_uart_send_text("PICK_BATCH_COMPLETE resume_top_camera\r\n");
+            recognition_complete = true;
+            camera_uart_send_text("PICK_BATCH_COMPLETE detection_stopped\r\n");
         }
     }
 }
