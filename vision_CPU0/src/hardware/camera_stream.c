@@ -23,9 +23,12 @@
 #define CAMERA_CAPTURE_RETRY_MS (100U)
 #define CAMERA_MUX_SETTLE_MS     (5U)
 #define CAMERA_SWITCH_SETTLE_MS  (1000U)
+#define CAMERA_SIDE_MUX_SETTLE_MS (50U)
+#define CAMERA_SIDE_SWITCH_SETTLE_MS (2500U)
+#define CAMERA_SIDE_WARMUP_FRAMES (5U)
 #define CAMERA_PREVIEW_PERIOD_MS (500U)
 #define CAMERA_SIDE_SAMPLES      (5U)
-#define CAMERA_SIDE_MAX_FRAMES   (30U)
+#define CAMERA_SIDE_MAX_FRAMES   (90U)
 #define CAMERA_SIDE_X_MIN_PX     (92)
 #define CAMERA_SIDE_X_MAX_PX     (338)
 #define CAMERA_SIDE_Z_SLOPE      (0.5631433347759307)
@@ -382,6 +385,17 @@ static void camera_discard_settle_frames(void)
     }
 }
 
+static void camera_warmup_side_camera(void)
+{
+    vTaskDelay(pdMS_TO_TICKS(CAMERA_SIDE_SWITCH_SETTLE_MS));
+
+    for (uint32_t frame = 0U; frame < CAMERA_SIDE_WARMUP_FRAMES; frame++)
+    {
+        (void) camera_capture_frame_with_retry(g_camera_frame);
+        vTaskDelay(pdMS_TO_TICKS(CAMERA_CAPTURE_RETRY_MS));
+    }
+}
+
 static bool camera_switch_to(bool side_camera)
 {
     camera_ov5640_result_t const stop_result = camera_ov5640_stop();
@@ -399,8 +413,23 @@ static bool camera_switch_to(bool side_camera)
         return false;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(CAMERA_MUX_SETTLE_MS));
+    vTaskDelay(pdMS_TO_TICKS(side_camera ? CAMERA_SIDE_MUX_SETTLE_MS : CAMERA_MUX_SETTLE_MS));
 
+    if (!side_camera)
+    {
+        camera_ov5640_result_t const init_result = camera_ov5640_init();
+        if (CAMERA_OV5640_OK != init_result)
+        {
+            camera_uart_send_camera_init_error(init_result);
+            return false;
+        }
+
+        camera_discard_settle_frames();
+        camera_uart_send_text("CAM_ACTIVE TOP\r\n");
+        return true;
+    }
+
+    /* Preserve the 508cd09 power-cycle -> mux -> full OV5640 init order. */
     camera_ov5640_result_t const init_result = camera_ov5640_init();
     if (CAMERA_OV5640_OK != init_result)
     {
@@ -408,8 +437,9 @@ static bool camera_switch_to(bool side_camera)
         return false;
     }
 
-    camera_discard_settle_frames();
-    camera_uart_send_text(side_camera ? "CAM_ACTIVE SIDE\r\n" : "CAM_ACTIVE TOP\r\n");
+    /* Bad warm-up frames are discarded, but they do not block recognition. */
+    camera_warmup_side_camera();
+    camera_uart_send_text("CAM_ACTIVE SIDE\r\n");
     return true;
 }
 
@@ -455,6 +485,8 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
     int32_t x_samples[APP_DETECTION_MAX_RESULTS][CAMERA_SIDE_SAMPLES];
     int32_t y_samples[APP_DETECTION_MAX_RESULTS][CAMERA_SIDE_SAMPLES];
     uint32_t sample_count[APP_DETECTION_MAX_RESULTS] = {0U};
+    uint32_t valid_frame_count = 0U;
+    uint32_t dropped_frame_count = 0U;
 
     for (uint32_t target = 0U; target < target_count; target++)
     {
@@ -485,9 +517,11 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
 
         if (CAMERA_OV5640_OK != camera_capture_frame_with_retry(g_camera_frame))
         {
-            camera_uart_send_ceu_events_line();
+            dropped_frame_count++;
             continue;
         }
+
+        valid_frame_count++;
 
         uint32_t result_count = 0U;
         if (!app_detection_run_frame(g_camera_frame,
@@ -517,6 +551,19 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
                     break;
                 }
             }
+        }
+    }
+
+    if (dropped_frame_count > 0U)
+    {
+        int const count = snprintf(g_uart_line,
+                                   sizeof(g_uart_line),
+                                   "SIDE_CAPTURE valid=%lu dropped=%lu\r\n",
+                                   (unsigned long) valid_frame_count,
+                                   (unsigned long) dropped_frame_count);
+        if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
+        {
+            camera_uart_send_text(g_uart_line);
         }
     }
 
