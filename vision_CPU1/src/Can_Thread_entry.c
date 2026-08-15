@@ -4,6 +4,7 @@
 #include "hardware/jiesuan.h"
 #include "ipc_detection_protocol.h"
 #include "ipc_detection_rx.h"
+#include "uart_coordinate_protocol.h"
 
 typedef enum e_ipc_coordinate_rx_state
 {
@@ -20,7 +21,6 @@ typedef enum e_ipc_coordinate_rx_state
 
 #define IPC_RESULT_QUEUE_LENGTH (4U)
 #define ARM_IK_ELBOW_DIRECTION  (1)
-#define ARM_JOINT_4_LOCK_DEG    (0)
 
 typedef struct st_ipc_arm_result
 {
@@ -37,6 +37,11 @@ static ipc_arm_result_t g_arm_queue[IPC_RESULT_QUEUE_LENGTH];
 static volatile uint32_t g_arm_queue_write;
 static volatile uint32_t g_arm_queue_read;
 
+#if DM_COORDINATE_UART_ENABLE
+extern TaskHandle_t Uart_dm_thread;
+#endif
+
+#if !DM_COORDINATE_UART_ENABLE
 static bool arm_move_to_point(handeye_arm_point_t const * p_point)
 {
     double q1;
@@ -58,18 +63,47 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
     }
 
     /*
-     * Each position command uses sync flag 1.  Queue the five absolute
+     * Each position command uses sync flag 1.  Queue the four active absolute
      * joint targets first, then trigger them together with run().
-     * Joint 4 is fixed at zero by the current kinematic model.
+     * Joint 4 is mechanically locked and receives no CAN command.
      */
     CANFD0_Operation_1((int32_t) q1);
     CANFD0_Operation_2((int32_t) q2);
     CANFD0_Operation_3((int32_t) q3);
-    CANFD0_Operation_4(ARM_JOINT_4_LOCK_DEG);
     CANFD0_Operation_5((int32_t) q5);
     run();
     return true;
 }
+#endif
+
+#if DM_COORDINATE_UART_ENABLE
+static bool ipc_arm_point_publish(handeye_arm_point_t const * p_arm_point,
+                                  uint32_t                    pair_id,
+                                  uint32_t                    class_id)
+{
+    bool published = false;
+
+    if (NULL == p_arm_point)
+    {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+
+    uint32_t const next = (g_arm_queue_write + 1U) % IPC_RESULT_QUEUE_LENGTH;
+    if (next != g_arm_queue_read)
+    {
+        g_arm_queue[g_arm_queue_write].point = *p_arm_point;
+        g_arm_queue[g_arm_queue_write].pair_id = pair_id;
+        g_arm_queue[g_arm_queue_write].class_id = class_id;
+        g_arm_queue_write = next;
+        published = true;
+    }
+
+    taskEXIT_CRITICAL();
+    return published;
+}
+#endif
 
 static void ipc_coordinate_rx_reset(ipc_coordinate_rx_state_t * p_state)
 {
@@ -265,7 +299,9 @@ void Can_Thread_entry(void *pvParameters) {
 		vTaskDelete(NULL);
 	}
 
+#if !DM_COORDINATE_UART_ENABLE
 	CANFD0_Init();
+#endif
 	while (1)
 	{
         ipc_camera_coordinate_pair_t pair;
@@ -279,18 +315,14 @@ void Can_Thread_entry(void *pvParameters) {
                                          pair.side_x,
                                          &arm_point))
             {
-                taskENTER_CRITICAL();
-                uint32_t const next = (g_arm_queue_write + 1U) % IPC_RESULT_QUEUE_LENGTH;
-                if (next != g_arm_queue_read)
+#if DM_COORDINATE_UART_ENABLE
+                if (ipc_arm_point_publish(&arm_point, pair.pair_id, pair.class_id))
                 {
-                    g_arm_queue[g_arm_queue_write].point = arm_point;
-                    g_arm_queue[g_arm_queue_write].pair_id = pair.pair_id;
-                    g_arm_queue[g_arm_queue_write].class_id = pair.class_id;
-                    g_arm_queue_write = next;
+                    xTaskNotifyGive(Uart_dm_thread);
                 }
-                taskEXIT_CRITICAL();
-
+#else
                 (void) arm_move_to_point(&arm_point);
+#endif
             }
         }
 

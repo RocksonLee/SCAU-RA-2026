@@ -169,8 +169,6 @@
         </peripheral>
         <peripheral name="PORT6.CPU0" group="PORT">
             <slot name="P600.CPU0" secure="true"/>
-            <slot name="P602.CPU0" secure="true"/>
-            <slot name="P603.CPU0" secure="true"/>
             <slot name="P606.CPU0" secure="true"/>
             <slot name="P607.CPU0" secure="true"/>
             <slot name="P608.CPU0" secure="true"/>

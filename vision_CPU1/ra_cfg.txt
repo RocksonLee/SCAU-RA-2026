@@ -935,6 +935,12 @@ FSP Configuration
   Module "IPC (r_ipc)"
     Parameter Checking: Default (BSP)
     
+  Module "UART (r_sci_b_uart)"
+    Parameter Checking: Default (BSP)
+    FIFO Support: Disable
+    DTC Support: Disable
+    Flow Control Support: Disable
+    
   FreeRTOS
     General: Custom FreeRTOSConfig.h: 
     General: Use Preemption: Enabled
@@ -1070,6 +1076,33 @@ FSP Configuration
       Callback: ipc0_callback
       Interrupt Priority: Priority 10
       
+    Instance "g_uart0 UART (r_sci_b_uart)"
+      General: Name: g_uart0
+      General: Channel: 0
+      General: Data Bits: 8bits
+      General: Parity: None
+      General: Stop Bits: 1bit
+      Baud: Baud Rate: 921600
+      Baud: Baud Rate Modulation: Enabled
+      Baud: Max Error (%): 5
+      Flow Control: CTS/RTS Selection: Hardware RTS
+      Flow Control: Software RTS Port: Disabled
+      Flow Control: Software RTS Pin: Disabled
+      Extra: Clock Source: Internal Clock
+      Extra: Start bit detection: Falling Edge
+      Extra: Noise Filter: Disable
+      Extra: Receive FIFO Trigger Level: Max
+      Extra: RS-485: DE Pin: Disable
+      Extra: RS-485: DE Pin Polarity: Active High
+      Extra: RS-485: DE Pin Assertion Time: 1
+      Extra: RS-485: DE Pin Negation Time: 1
+      Extra: TXI/TEI Synchronization Delay Cycles: 0
+      Interrupts: Callback: uart0_callback
+      Interrupts: Receive Interrupt Priority: Priority 12
+      Interrupts: Transmit Data Empty Interrupt Priority: Priority 12
+      Interrupts: Transmit End Interrupt Priority: Priority 12
+      Interrupts: Error Interrupt Priority: Priority 12
+      
   Thread "Can_Thread"
     Symbol: Can_Thread
     Name: Can_Thread
@@ -1080,3 +1113,12 @@ FSP Configuration
     Allocate Secure Context: Enable
     
     Instance "FreeRTOS Heap 4"
+  Thread "Uart_dm_thread"
+    Symbol: Uart_dm_thread
+    Name: Uart_dm_thread
+    Stack size (bytes): 2048
+    Priority: 3
+    Thread Context: NULL
+    Memory Allocation: Static
+    Allocate Secure Context: Enable
+    

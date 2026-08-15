@@ -1104,10 +1104,6 @@
       <configSetting altId="p600.output.high" configurationId="p600" secureAltId="p600.output.low"/>
       <configSetting altId="p600.gpio_speed.gpio_speed_h" configurationId="p600.gpio_drivecapacity" secureAltId="p600.output.low"/>
       <configSetting altId="p600.gpio_mode.gpio_mode_out.high" configurationId="p600.gpio_mode" secureAltId="p600.output.low"/>
-      <configSetting altId="p602.sci0.rxd0" configurationId="p602"/>
-      <configSetting altId="p602.gpio_mode.gpio_mode_peripheral" configurationId="p602.gpio_mode"/>
-      <configSetting altId="p603.sci0.txd0" configurationId="p603"/>
-      <configSetting altId="p603.gpio_mode.gpio_mode_peripheral" configurationId="p603.gpio_mode"/>
       <configSetting altId="p700.ceu.vio_d4" configurationId="p700"/>
       <configSetting altId="p700.gpio_mode.gpio_mode_peripheral" configurationId="p700.gpio_mode"/>
       <configSetting altId="p701.ceu.vio_d5" configurationId="p701"/>
@@ -1135,9 +1131,6 @@
       <configSetting altId="pb00.output.high" configurationId="pb00"/>
       <configSetting altId="pb00.gpio_mode.gpio_mode_out.high" configurationId="pb00.gpio_mode"/>
       <configSetting altId="pdm2.mode.custom.free" configurationId="pdm2.mode"/>
-      <configSetting altId="sci0.mode.simplei2c.free" configurationId="sci0.mode"/>
-      <configSetting altId="sci0.rxd0.p602" configurationId="sci0.rxd0"/>
-      <configSetting altId="sci0.txd0.p603" configurationId="sci0.txd0"/>
       <configSetting altId="sci3.mode.simplei2c.free" configurationId="sci3.mode"/>
       <configSetting altId="sci3.rxd3.p905" configurationId="sci3.rxd3"/>
       <configSetting altId="sci3.txd3.p310" configurationId="sci3.txd3"/>
