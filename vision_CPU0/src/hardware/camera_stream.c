@@ -14,6 +14,8 @@
 #include "ipc_detection_tx.h"
 
 #define CAMERA_UART_CHUNK_BYTES (1024U)
+#define CAMERA_FRAME_HEADER_BYTES (24U)
+#define CAMERA_FRAME_FORMAT_RGB565_LE (1U)
 #define CAMERA_AE_SETTLE_MS     (1500U)
 #define CAMERA_DISCARD_FRAMES   (5U)
 #define CAMERA_UART_LINE_BYTES  (192U)
@@ -21,6 +23,7 @@
 #define CAMERA_CAPTURE_RETRY_MS (100U)
 #define CAMERA_MUX_SETTLE_MS     (5U)
 #define CAMERA_SWITCH_SETTLE_MS  (1000U)
+#define CAMERA_PREVIEW_PERIOD_MS (500U)
 #define CAMERA_SIDE_SAMPLES      (5U)
 #define CAMERA_SIDE_MAX_FRAMES   (30U)
 #define CAMERA_SIDE_X_MIN_PX     (92)
@@ -191,6 +194,20 @@ static uint32_t camera_crc32(uint8_t const * p_data, uint32_t bytes)
     }
 
     return ~crc;
+}
+
+static void camera_store_u16_le(uint8_t * p_dst, uint16_t value)
+{
+    p_dst[0] = (uint8_t) value;
+    p_dst[1] = (uint8_t) (value >> 8U);
+}
+
+static void camera_store_u32_le(uint8_t * p_dst, uint32_t value)
+{
+    p_dst[0] = (uint8_t) value;
+    p_dst[1] = (uint8_t) (value >> 8U);
+    p_dst[2] = (uint8_t) (value >> 16U);
+    p_dst[3] = (uint8_t) (value >> 24U);
 }
 
 static void camera_uart_send_crc_line(char const * p_label, uint32_t crc)
@@ -396,7 +413,40 @@ static bool camera_switch_to(bool side_camera)
     return true;
 }
 
-static void camera_collect_side_samples(app_detection_result_t const * p_top_results,
+static bool camera_publish_debug_snapshot(uint8_t const                 * p_rgb565_frame,
+                                          app_detection_result_t const * p_results,
+                                          uint32_t                       result_count)
+{
+    fruit_ui_detection_t detections[FRUIT_UI_MAX_DETECTIONS];
+    uint32_t detection_count = 0U;
+
+    for (uint32_t i = 0U; (i < result_count) && (detection_count < FRUIT_UI_MAX_DETECTIONS); i++)
+    {
+        fruit_ui_target_t const target = camera_stream_target_from_class(p_results[i].class_id);
+        if (FRUIT_UI_TARGET_NONE == target)
+        {
+            continue;
+        }
+
+        detections[detection_count].target = target;
+        detections[detection_count].x = p_results[i].x;
+        detections[detection_count].y = p_results[i].y;
+        detections[detection_count].z = 0;
+        detections[detection_count].x1 = p_results[i].x1;
+        detections[detection_count].y1 = p_results[i].y1;
+        detections[detection_count].x2 = p_results[i].x2;
+        detections[detection_count].y2 = p_results[i].y2;
+        detections[detection_count].mean_r = p_results[i].mean_r;
+        detections[detection_count].mean_g = p_results[i].mean_g;
+        detections[detection_count].mean_b = p_results[i].mean_b;
+        detections[detection_count].green_ratio_0p1 = p_results[i].green_ratio_0p1;
+        detection_count++;
+    }
+
+    return fruit_ui_publish_debug_snapshot(p_rgb565_frame, detections, detection_count);
+}
+
+static bool camera_collect_side_samples(app_detection_result_t const * p_top_results,
                                         uint32_t                       target_count,
                                         int32_t                      * p_side_x,
                                         int32_t                      * p_side_y,
@@ -413,6 +463,11 @@ static void camera_collect_side_samples(app_detection_result_t const * p_top_res
 
     for (uint32_t frame = 0U; frame < CAMERA_SIDE_MAX_FRAMES; frame++)
     {
+        if (fruit_ui_is_debug_mode_active())
+        {
+            return false;
+        }
+
         bool all_complete = true;
         for (uint32_t target = 0U; target < target_count; target++)
         {
@@ -487,6 +542,8 @@ static void camera_collect_side_samples(app_detection_result_t const * p_top_res
             }
         }
     }
+
+    return true;
 }
 
 static bool camera_stream_send_frame(void)
@@ -494,9 +551,35 @@ static bool camera_stream_send_frame(void)
     return camera_uart_send_bytes(g_camera_frame, CAMERA_OV5640_FRAME_BYTES);
 }
 
+static bool camera_stream_send_frame_dump(void)
+{
+    static uint8_t const magic[8] = {'C', 'E', 'U', '5', '6', '5', '0', '1'};
+    uint8_t header[CAMERA_FRAME_HEADER_BYTES];
+    uint32_t const crc = camera_crc32(g_camera_frame, CAMERA_OV5640_FRAME_BYTES);
+
+    memcpy(header, magic, sizeof(magic));
+    camera_store_u16_le(&header[8], (uint16_t) CAMERA_OV5640_WIDTH);
+    camera_store_u16_le(&header[10], (uint16_t) CAMERA_OV5640_HEIGHT);
+    camera_store_u32_le(&header[12], CAMERA_FRAME_FORMAT_RGB565_LE);
+    camera_store_u32_le(&header[16], CAMERA_OV5640_FRAME_BYTES);
+    camera_store_u32_le(&header[20], crc);
+
+    camera_uart_send_text("FRAME_DUMP_BEGIN RGB565LE 640x480 wait_about_55s\r\n");
+
+    if (!camera_uart_send_bytes(header, sizeof(header)) || !camera_stream_send_frame())
+    {
+        camera_uart_send_text("FRAME_DUMP_ERROR\r\n");
+        return false;
+    }
+
+    camera_uart_send_crc_line("FRAME_DUMP_END", crc);
+    return true;
+}
+
 void camera_stream_task(void)
 {
     uint32_t batch_id = 0U;
+    TickType_t last_preview_tick = 0U;
 
     if (camera_debug_uart_init())
     {
@@ -560,6 +643,26 @@ void camera_stream_task(void)
             continue;
         }
 
+        if (fruit_ui_is_debug_mode_active())
+        {
+            TickType_t const now = xTaskGetTickCount();
+            if ((now - last_preview_tick) >= pdMS_TO_TICKS(CAMERA_PREVIEW_PERIOD_MS))
+            {
+                if (camera_publish_debug_snapshot(g_camera_frame,
+                                                  g_detection_results,
+                                                  result_count))
+                {
+                    last_preview_tick = now;
+                }
+            }
+            if (fruit_ui_take_frame_dump_request())
+            {
+                (void) camera_stream_send_frame_dump();
+            }
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
+
         if (0U == result_count)
         {
             camera_uart_send_text("FRAME_OK NO_DET\r\n");
@@ -607,6 +710,11 @@ void camera_stream_task(void)
         ipc_camera_coordinate_item_t selectable_items[FRUIT_UI_MAX_DETECTIONS];
         uint32_t paired_detection_count = 0U;
 
+        if (fruit_ui_is_debug_mode_active())
+        {
+            continue;
+        }
+
         if (!camera_switch_to(true))
         {
             camera_uart_send_text("CAM_SWITCH_ERR side\r\n");
@@ -614,11 +722,18 @@ void camera_stream_task(void)
             continue;
         }
 
-        camera_collect_side_samples(top_results,
-                                    top_result_count,
-                                    side_x,
-                                    side_y,
-                                    side_valid);
+        if (!camera_collect_side_samples(top_results,
+                                         top_result_count,
+                                         side_x,
+                                         side_y,
+                                         side_valid))
+        {
+            while (!camera_switch_to(false))
+            {
+                vTaskDelay(pdMS_TO_TICKS(1000U));
+            }
+            continue;
+        }
 
         ipc_camera_coordinate_batch_t batch =
         {
@@ -686,9 +801,16 @@ void camera_stream_task(void)
         {
             bool item_sent[FRUIT_UI_MAX_DETECTIONS] = {false};
             uint32_t remaining_count = paired_detection_count;
+            bool debug_interrupted = false;
 
             while (remaining_count > 0U)
             {
+                if (fruit_ui_is_debug_mode_active())
+                {
+                    debug_interrupted = true;
+                    break;
+                }
+
                 fruit_ui_target_t requested_target;
 
                 if (!fruit_ui_take_pick_request(&requested_target))
@@ -746,8 +868,12 @@ void camera_stream_task(void)
                 }
             }
 
-            camera_uart_send_text("PICK_BATCH_COMPLETE stop\r\n");
-            vTaskDelete(NULL);
+            if (debug_interrupted)
+            {
+                continue;
+            }
+
+            camera_uart_send_text("PICK_BATCH_COMPLETE resume_top_camera\r\n");
         }
     }
 }
@@ -800,5 +926,13 @@ static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_p
     p_detection->x = camera_round_mm(x_mm);
     p_detection->y = camera_round_mm(y_mm);
     p_detection->z = camera_round_mm(z_mm);
+    p_detection->x1 = -1;
+    p_detection->y1 = -1;
+    p_detection->x2 = -1;
+    p_detection->y2 = -1;
+    p_detection->mean_r = -1;
+    p_detection->mean_g = -1;
+    p_detection->mean_b = -1;
+    p_detection->green_ratio_0p1 = -1;
     return true;
 }

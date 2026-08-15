@@ -2,9 +2,12 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "app_detection.h"
+#include "camera_ov5640.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -13,6 +16,9 @@
 
 #define UI_W 480
 #define UI_H 320
+#define UI_PREVIEW_W (320U)
+#define UI_PREVIEW_H (240U)
+#define UI_PREVIEW_PIXELS (UI_PREVIEW_W * UI_PREVIEW_H)
 
 typedef struct st_target_view
 {
@@ -30,6 +36,7 @@ typedef enum e_ui_page
     UI_PAGE_HOME = 0,
     UI_PAGE_SELECT,
     UI_PAGE_DETAIL,
+    UI_PAGE_DEBUG,
 } ui_page_t;
 
 static target_view_t g_targets[] =
@@ -46,6 +53,19 @@ static uint32_t g_detection_count;
 static volatile fruit_ui_detection_t g_pending_detections[FRUIT_UI_MAX_DETECTIONS];
 static volatile uint32_t g_pending_detection_count;
 static volatile bool g_target_update_pending;
+static fruit_ui_detection_t g_debug_detections[FRUIT_UI_MAX_DETECTIONS];
+static uint32_t g_debug_detection_count;
+static volatile fruit_ui_detection_t g_pending_debug_detections[FRUIT_UI_MAX_DETECTIONS];
+static volatile uint32_t g_pending_debug_detection_count;
+static volatile bool g_debug_detection_update_pending;
+static volatile bool g_debug_mode_active;
+static volatile bool g_frame_dump_request_pending;
+static uint16_t g_debug_preview_pixels[2][UI_PREVIEW_PIXELS]
+    BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
+static lv_image_dsc_t g_debug_preview_dsc[2];
+static volatile uint32_t g_debug_preview_display_index;
+static volatile uint32_t g_debug_preview_ready_index;
+static volatile bool g_debug_preview_ready;
 static volatile fruit_ui_target_t g_pending_pick_target;
 static volatile bool g_pick_request_pending;
 static volatile int32_t g_pending_weight_0p1g;
@@ -59,6 +79,13 @@ static lv_obj_t * g_home_detected_label;
 static lv_obj_t * g_home_start_button;
 static lv_obj_t * g_detail_type_label;
 static lv_obj_t * g_detail_coordinate_label;
+static lv_obj_t * g_debug_threshold_label;
+static lv_obj_t * g_debug_save_label;
+static lv_obj_t * g_debug_results_label;
+static lv_obj_t * g_debug_slider;
+static lv_obj_t * g_debug_preview_image;
+static lv_obj_t * g_debug_boxes[FRUIT_UI_MAX_DETECTIONS];
+static lv_obj_t * g_debug_box_labels[FRUIT_UI_MAX_DETECTIONS];
 static bool g_style_ready;
 static lv_style_t g_style_screen;
 static lv_style_t g_style_card;
@@ -68,6 +95,21 @@ static lv_style_t g_style_button_alt;
 static void show_home(void);
 static void show_select(void);
 static void show_detail(fruit_ui_target_t target);
+static void show_debug(void);
+
+static void init_debug_preview(void)
+{
+    for (uint32_t i = 0U; i < 2U; i++) {
+        memset(&g_debug_preview_dsc[i], 0, sizeof(g_debug_preview_dsc[i]));
+        g_debug_preview_dsc[i].header.magic = LV_IMAGE_HEADER_MAGIC;
+        g_debug_preview_dsc[i].header.cf = LV_COLOR_FORMAT_RGB565;
+        g_debug_preview_dsc[i].header.w = UI_PREVIEW_W;
+        g_debug_preview_dsc[i].header.h = UI_PREVIEW_H;
+        g_debug_preview_dsc[i].header.stride = UI_PREVIEW_W * sizeof(uint16_t);
+        g_debug_preview_dsc[i].data_size = UI_PREVIEW_PIXELS * sizeof(uint16_t);
+        g_debug_preview_dsc[i].data = (uint8_t const *) g_debug_preview_pixels[i];
+    }
+}
 
 static target_view_t * get_target(fruit_ui_target_t target)
 {
@@ -153,6 +195,15 @@ static void prepare_screen(void)
     g_home_start_button = NULL;
     g_detail_type_label = NULL;
     g_detail_coordinate_label = NULL;
+    g_debug_threshold_label = NULL;
+    g_debug_save_label = NULL;
+    g_debug_results_label = NULL;
+    g_debug_slider = NULL;
+    g_debug_preview_image = NULL;
+    for (uint32_t i = 0U; i < FRUIT_UI_MAX_DETECTIONS; i++) {
+        g_debug_boxes[i] = NULL;
+        g_debug_box_labels[i] = NULL;
+    }
     lv_obj_clean(scr);
     lv_obj_add_style(scr, &g_style_screen, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
@@ -342,11 +393,187 @@ static void update_home_weight_widget(void)
     }
 }
 
+static int32_t clamp_i32(int32_t value, int32_t low, int32_t high)
+{
+    return (value < low) ? low : ((value > high) ? high : value);
+}
+
+static void update_debug_boxes(void)
+{
+    for (uint32_t i = 0U; i < FRUIT_UI_MAX_DETECTIONS; i++) {
+        if ((g_debug_boxes[i] == NULL) || (g_debug_box_labels[i] == NULL)) {
+            continue;
+        }
+
+        if ((i >= g_debug_detection_count) ||
+            (g_debug_detections[i].x2 <= g_debug_detections[i].x1) ||
+            (g_debug_detections[i].y2 <= g_debug_detections[i].y1)) {
+            lv_obj_add_flag(g_debug_boxes[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+
+        int32_t const x1 = clamp_i32(g_debug_detections[i].x1, 0, (int32_t) CAMERA_OV5640_WIDTH - 1);
+        int32_t const y1 = clamp_i32(g_debug_detections[i].y1, 0, (int32_t) CAMERA_OV5640_HEIGHT - 1);
+        int32_t const x2 = clamp_i32(g_debug_detections[i].x2, x1 + 1, (int32_t) CAMERA_OV5640_WIDTH);
+        int32_t const y2 = clamp_i32(g_debug_detections[i].y2, y1 + 1, (int32_t) CAMERA_OV5640_HEIGHT);
+        int32_t const preview_x = 4 + ((x1 * (int32_t) UI_PREVIEW_W) / (int32_t) CAMERA_OV5640_WIDTH);
+        int32_t const preview_y = 52 + ((y1 * (int32_t) UI_PREVIEW_H) / (int32_t) CAMERA_OV5640_HEIGHT);
+        int32_t const preview_w = ((x2 - x1) * (int32_t) UI_PREVIEW_W) / (int32_t) CAMERA_OV5640_WIDTH;
+        int32_t const preview_h = ((y2 - y1) * (int32_t) UI_PREVIEW_H) / (int32_t) CAMERA_OV5640_HEIGHT;
+        target_view_t const * info = get_target(g_debug_detections[i].target);
+        char const * short_name = (g_debug_detections[i].target == FRUIT_UI_TARGET_GREEN_GRAPE) ? "GREEN" :
+                                  (g_debug_detections[i].target == FRUIT_UI_TARGET_PURPLE_GRAPE) ? "PURPLE" :
+                                  (g_debug_detections[i].target == FRUIT_UI_TARGET_TOMATO) ? "TOMATO" : "?";
+
+        lv_obj_set_pos(g_debug_boxes[i], preview_x, preview_y);
+        lv_obj_set_size(g_debug_boxes[i], (preview_w > 2) ? preview_w : 2,
+                                           (preview_h > 2) ? preview_h : 2);
+        lv_obj_set_style_border_color(g_debug_boxes[i], info->color, 0);
+        lv_obj_set_style_bg_color(g_debug_box_labels[i], info->color, 0);
+        lv_label_set_text(g_debug_box_labels[i], short_name);
+        lv_obj_remove_flag(g_debug_boxes[i], LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void update_debug_results_widget(void)
+{
+    char text[320] = "No fruit detected";
+    size_t used = 0U;
+
+    if (g_debug_detection_count > 0U) {
+        text[0] = '\0';
+
+        for (uint32_t i = 0U; i < g_debug_detection_count; i++) {
+            target_view_t const * info = get_target(g_debug_detections[i].target);
+            char const * short_name = (g_debug_detections[i].target == FRUIT_UI_TARGET_GREEN_GRAPE) ? "Green" :
+                                      (g_debug_detections[i].target == FRUIT_UI_TARGET_PURPLE_GRAPE) ? "Purple" :
+                                      (g_debug_detections[i].target == FRUIT_UI_TARGET_TOMATO) ? "Tomato" :
+                                                                                                 info->name;
+            int const count = (g_debug_detections[i].mean_r >= 0) ?
+                snprintf(&text[used],
+                         sizeof(text) - used,
+                         "%s%s (%ld,%ld)\nR%ld G%ld B%ld  %ld.%ld%%",
+                         (used > 0U) ? "\n" : "",
+                         short_name,
+                         (long) g_debug_detections[i].x,
+                         (long) g_debug_detections[i].y,
+                         (long) g_debug_detections[i].mean_r,
+                         (long) g_debug_detections[i].mean_g,
+                         (long) g_debug_detections[i].mean_b,
+                         (long) (g_debug_detections[i].green_ratio_0p1 / 10),
+                         (long) (g_debug_detections[i].green_ratio_0p1 % 10)) :
+                snprintf(&text[used],
+                         sizeof(text) - used,
+                         "%s%s (%ld,%ld)  RGB:--",
+                         (used > 0U) ? "\n" : "",
+                         short_name,
+                         (long) g_debug_detections[i].x,
+                         (long) g_debug_detections[i].y);
+
+            if ((count < 0) || ((size_t) count >= (sizeof(text) - used))) {
+                break;
+            }
+
+            used += (size_t) count;
+        }
+    }
+
+    if (g_debug_results_label != NULL) {
+        lv_label_set_text(g_debug_results_label, text);
+        lv_obj_set_style_text_color(g_debug_results_label,
+                                    (g_debug_detection_count > 0U) ? lv_color_hex(0x20303F) :
+                                                                    lv_color_hex(0x77818C),
+                                    0);
+    }
+
+    update_debug_boxes();
+}
+
+static void set_debug_threshold(uint32_t percent)
+{
+    char text[24];
+    bool const saved = app_detection_set_green_ratio_threshold(percent);
+
+    if (g_debug_slider != NULL) {
+        lv_slider_set_value(g_debug_slider, (int32_t) percent, LV_ANIM_OFF);
+    }
+
+    if (g_debug_threshold_label != NULL) {
+        (void) snprintf(text, sizeof(text), "%lu%%", (unsigned long) percent);
+        lv_label_set_text(g_debug_threshold_label, text);
+    }
+
+    if (g_debug_save_label != NULL) {
+        lv_label_set_text(g_debug_save_label, saved ? "Saved immediately" : "Save failed");
+        lv_obj_set_style_text_color(g_debug_save_label,
+                                    saved ? lv_color_hex(0x1F7A5A) : lv_color_hex(0xD83B35),
+                                    0);
+    }
+}
+
 static void on_home_start(lv_event_t * e)
 {
     if ((lv_event_get_code(e) == LV_EVENT_CLICKED) &&
         (g_detection_count > 0U)) {
         show_select();
+    }
+}
+
+static void on_settings(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        g_debug_mode_active = true;
+        show_debug();
+    }
+}
+
+static void on_back_debug(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        g_debug_mode_active = false;
+        show_home();
+    }
+}
+
+static void on_debug_slider(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_VALUE_CHANGED) {
+        lv_obj_t * slider = lv_event_get_target_obj(e);
+        set_debug_threshold((uint32_t) lv_slider_get_value(slider));
+    }
+}
+
+static void on_debug_minus(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        uint32_t const value = app_detection_get_green_ratio_threshold();
+        if (value > APP_DETECTION_GREEN_RATIO_MIN) {
+            set_debug_threshold(value - 1U);
+        }
+    }
+}
+
+static void on_debug_plus(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        uint32_t const value = app_detection_get_green_ratio_threshold();
+        if (value < APP_DETECTION_GREEN_RATIO_MAX) {
+            set_debug_threshold(value + 1U);
+        }
+    }
+}
+
+static void on_debug_uart_dump(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        taskENTER_CRITICAL();
+        g_frame_dump_request_pending = true;
+        taskEXIT_CRITICAL();
+
+        if (g_debug_save_label != NULL) {
+            lv_label_set_text(g_debug_save_label, "UART queued");
+            lv_obj_set_style_text_color(g_debug_save_label, lv_color_hex(0x31445A), 0);
+        }
     }
 }
 
@@ -418,6 +645,7 @@ static void show_home(void)
 
     add_label(lv_screen_active(), "RENESAS CUP", lv_color_hex(0x1F7A5A),
               &lv_font_montserrat_16, LV_ALIGN_TOP_LEFT, 20, 14);
+    add_small_button(lv_screen_active(), "SETTINGS", 392, 12, 76, 30, on_settings, NULL);
     add_label(lv_screen_active(), "Fruit Harvest Robot", lv_color_hex(0x20303F),
               &lv_font_montserrat_22, LV_ALIGN_TOP_LEFT, 20, 42);
     add_label(lv_screen_active(), "Vision target recognition and robot arm picking control",
@@ -444,6 +672,78 @@ static void show_home(void)
 
     g_home_start_button = add_button(lv_screen_active(), "START", 138, 274, 204, 36, on_home_start, NULL);
     update_home_detection_widgets();
+}
+
+static void show_debug(void)
+{
+    lv_obj_t * card;
+    uint32_t const percent = app_detection_get_green_ratio_threshold();
+    char threshold_text[24];
+
+    prepare_screen();
+    g_current_page = UI_PAGE_DEBUG;
+
+    add_small_button(lv_screen_active(), "BACK", 12, 12, 68, 30, on_back_debug, NULL);
+    add_label(lv_screen_active(), "TOP CAMERA DEBUG", lv_color_hex(0x20303F),
+              &lv_font_montserrat_16, LV_ALIGN_TOP_MID, 0, 15);
+    add_label(lv_screen_active(), "2 FPS", lv_color_hex(0x1F7A5A),
+              &lv_font_montserrat_10, LV_ALIGN_TOP_RIGHT, -14, 18);
+
+    g_debug_preview_image = lv_image_create(lv_screen_active());
+    lv_image_set_src(g_debug_preview_image, &g_debug_preview_dsc[g_debug_preview_display_index]);
+    lv_obj_set_pos(g_debug_preview_image, 4, 52);
+    lv_obj_set_style_border_width(g_debug_preview_image, 1, 0);
+    lv_obj_set_style_border_color(g_debug_preview_image, lv_color_hex(0x31445A), 0);
+
+    for (uint32_t i = 0U; i < FRUIT_UI_MAX_DETECTIONS; i++) {
+        g_debug_boxes[i] = lv_obj_create(lv_screen_active());
+        lv_obj_remove_style_all(g_debug_boxes[i]);
+        lv_obj_set_style_bg_opa(g_debug_boxes[i], LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(g_debug_boxes[i], 2, 0);
+        lv_obj_set_style_radius(g_debug_boxes[i], 0, 0);
+        lv_obj_remove_flag(g_debug_boxes[i], LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(g_debug_boxes[i], LV_OBJ_FLAG_SCROLLABLE);
+
+        g_debug_box_labels[i] = lv_label_create(g_debug_boxes[i]);
+        lv_obj_remove_style_all(g_debug_box_labels[i]);
+        lv_obj_set_style_text_color(g_debug_box_labels[i], lv_color_white(), 0);
+        lv_obj_set_style_text_font(g_debug_box_labels[i], &lv_font_montserrat_10, 0);
+        lv_obj_set_style_bg_opa(g_debug_box_labels[i], LV_OPA_COVER, 0);
+        lv_obj_set_style_pad_all(g_debug_box_labels[i], 2, 0);
+        lv_obj_set_pos(g_debug_box_labels[i], 1, 1);
+        lv_obj_add_flag(g_debug_boxes[i], LV_OBJ_FLAG_HIDDEN);
+    }
+
+    card = add_card(lv_screen_active(), 328, 52, 148, 240);
+    lv_obj_set_style_pad_all(card, 6, 0);
+    add_label(card, "G ratio threshold", lv_color_hex(0x687685),
+              &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 0);
+    (void) snprintf(threshold_text, sizeof(threshold_text), "%lu%%", (unsigned long) percent);
+    g_debug_threshold_label = add_label(card, threshold_text, lv_color_hex(0x1F7A5A),
+                                        &lv_font_montserrat_16, LV_ALIGN_TOP_RIGHT, 0, -3);
+
+    add_small_button(card, "-", 0, 25, 50, 28, on_debug_minus, NULL);
+    add_small_button(card, "+", 84, 25, 50, 28, on_debug_plus, NULL);
+    g_debug_slider = lv_slider_create(card);
+    lv_obj_set_pos(g_debug_slider, 4, 61);
+    lv_obj_set_size(g_debug_slider, 126, 14);
+    lv_slider_set_range(g_debug_slider,
+                        (int32_t) APP_DETECTION_GREEN_RATIO_MIN,
+                        (int32_t) APP_DETECTION_GREEN_RATIO_MAX);
+    lv_slider_set_value(g_debug_slider, (int32_t) percent, LV_ANIM_OFF);
+    lv_obj_add_event_cb(g_debug_slider, on_debug_slider, LV_EVENT_VALUE_CHANGED, NULL);
+
+    g_debug_save_label = add_label(card, "Saved", lv_color_hex(0x1F7A5A),
+                                   &lv_font_montserrat_10, LV_ALIGN_TOP_MID, 0, 80);
+
+    add_label(card, "Detections / ROI", lv_color_hex(0x687685),
+              &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 100);
+    g_debug_results_label = add_label(card, "No fruit detected", lv_color_hex(0x77818C),
+                                      &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 116);
+    lv_obj_set_width(g_debug_results_label, 134);
+
+    add_small_button(card, "UART DUMP", 20, 194, 94, 26, on_debug_uart_dump, NULL);
+    update_debug_results_widget();
 }
 
 static void add_fruit_column(fruit_ui_target_t target, int32_t x)
@@ -536,6 +836,8 @@ static void show_detail(fruit_ui_target_t target)
 
 void fruit_ui_create(void)
 {
+    app_detection_settings_init();
+    init_debug_preview();
     init_styles();
     show_home();
 }
@@ -548,6 +850,11 @@ void fruit_ui_process(void)
     int32_t pending_weight_0p1g = 0;
     bool pending_weight_valid = false;
     bool has_weight_update = false;
+    fruit_ui_detection_t pending_debug_detections[FRUIT_UI_MAX_DETECTIONS];
+    uint32_t pending_debug_detection_count = 0U;
+    bool has_debug_update = false;
+    uint32_t preview_index = 0U;
+    bool has_preview_update = false;
 
     taskENTER_CRITICAL();
     if (g_target_update_pending) {
@@ -557,6 +864,14 @@ void fruit_ui_process(void)
             pending_detections[i].x = g_pending_detections[i].x;
             pending_detections[i].y = g_pending_detections[i].y;
             pending_detections[i].z = g_pending_detections[i].z;
+            pending_detections[i].x1 = g_pending_detections[i].x1;
+            pending_detections[i].y1 = g_pending_detections[i].y1;
+            pending_detections[i].x2 = g_pending_detections[i].x2;
+            pending_detections[i].y2 = g_pending_detections[i].y2;
+            pending_detections[i].mean_r = g_pending_detections[i].mean_r;
+            pending_detections[i].mean_g = g_pending_detections[i].mean_g;
+            pending_detections[i].mean_b = g_pending_detections[i].mean_b;
+            pending_detections[i].green_ratio_0p1 = g_pending_detections[i].green_ratio_0p1;
         }
         g_target_update_pending = false;
         has_update = true;
@@ -567,6 +882,32 @@ void fruit_ui_process(void)
         g_weight_update_pending = false;
         has_weight_update = true;
     }
+    if (g_debug_detection_update_pending) {
+        pending_debug_detection_count = g_pending_debug_detection_count;
+        for (uint32_t i = 0U; i < pending_debug_detection_count; i++) {
+            pending_debug_detections[i].target = g_pending_debug_detections[i].target;
+            pending_debug_detections[i].x = g_pending_debug_detections[i].x;
+            pending_debug_detections[i].y = g_pending_debug_detections[i].y;
+            pending_debug_detections[i].z = g_pending_debug_detections[i].z;
+            pending_debug_detections[i].x1 = g_pending_debug_detections[i].x1;
+            pending_debug_detections[i].y1 = g_pending_debug_detections[i].y1;
+            pending_debug_detections[i].x2 = g_pending_debug_detections[i].x2;
+            pending_debug_detections[i].y2 = g_pending_debug_detections[i].y2;
+            pending_debug_detections[i].mean_r = g_pending_debug_detections[i].mean_r;
+            pending_debug_detections[i].mean_g = g_pending_debug_detections[i].mean_g;
+            pending_debug_detections[i].mean_b = g_pending_debug_detections[i].mean_b;
+            pending_debug_detections[i].green_ratio_0p1 =
+                g_pending_debug_detections[i].green_ratio_0p1;
+        }
+        g_debug_detection_update_pending = false;
+        has_debug_update = true;
+    }
+    if (g_debug_preview_ready) {
+        preview_index = g_debug_preview_ready_index;
+        g_debug_preview_display_index = preview_index;
+        g_debug_preview_ready = false;
+        has_preview_update = true;
+    }
     taskEXIT_CRITICAL();
 
     if (has_weight_update) {
@@ -576,6 +917,23 @@ void fruit_ui_process(void)
         if (g_current_page == UI_PAGE_HOME) {
             update_home_weight_widget();
         }
+    }
+
+    if (has_debug_update) {
+        g_debug_detection_count = pending_debug_detection_count;
+        for (uint32_t i = 0U; i < pending_debug_detection_count; i++) {
+            g_debug_detections[i] = pending_debug_detections[i];
+        }
+
+        if (g_current_page == UI_PAGE_DEBUG) {
+            update_debug_results_widget();
+        }
+    }
+
+    if (has_preview_update && (g_current_page == UI_PAGE_DEBUG) &&
+        (g_debug_preview_image != NULL)) {
+        lv_image_set_src(g_debug_preview_image, &g_debug_preview_dsc[preview_index]);
+        lv_obj_invalidate(g_debug_preview_image);
     }
 
     if (!has_update) {
@@ -641,10 +999,84 @@ void fruit_ui_set_detections(fruit_ui_detection_t const * p_detections, uint32_t
         g_pending_detections[i].x = p_detections[i].x;
         g_pending_detections[i].y = p_detections[i].y;
         g_pending_detections[i].z = p_detections[i].z;
+        g_pending_detections[i].x1 = p_detections[i].x1;
+        g_pending_detections[i].y1 = p_detections[i].y1;
+        g_pending_detections[i].x2 = p_detections[i].x2;
+        g_pending_detections[i].y2 = p_detections[i].y2;
+        g_pending_detections[i].mean_r = p_detections[i].mean_r;
+        g_pending_detections[i].mean_g = p_detections[i].mean_g;
+        g_pending_detections[i].mean_b = p_detections[i].mean_b;
+        g_pending_detections[i].green_ratio_0p1 = p_detections[i].green_ratio_0p1;
     }
     g_pending_detection_count = detection_count;
     g_target_update_pending = true;
     taskEXIT_CRITICAL();
+}
+
+bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame,
+                                     fruit_ui_detection_t const * p_detections,
+                                     uint32_t                     detection_count)
+{
+    uint32_t write_index;
+
+    if ((p_rgb565_frame == NULL) ||
+        (detection_count > FRUIT_UI_MAX_DETECTIONS) ||
+        ((detection_count > 0U) && (p_detections == NULL)) ||
+        !g_debug_mode_active) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    if (g_debug_preview_ready) {
+        taskEXIT_CRITICAL();
+        return false;
+    }
+    write_index = 1U - g_debug_preview_display_index;
+    taskEXIT_CRITICAL();
+
+    for (uint32_t y = 0U; y < UI_PREVIEW_H; y++) {
+        uint32_t const src_y = y * 2U;
+
+        for (uint32_t x = 0U; x < UI_PREVIEW_W; x++) {
+            uint32_t const src_x = x * 2U;
+            uint32_t const src = ((src_y * CAMERA_OV5640_WIDTH) + src_x) *
+                                 CAMERA_OV5640_BYTES_PER_PIXEL;
+            g_debug_preview_pixels[write_index][(y * UI_PREVIEW_W) + x] =
+                (uint16_t) (p_rgb565_frame[src] | ((uint16_t) p_rgb565_frame[src + 1U] << 8));
+        }
+    }
+
+    __DMB();
+    taskENTER_CRITICAL();
+    if (g_debug_preview_ready || !g_debug_mode_active) {
+        taskEXIT_CRITICAL();
+        return false;
+    }
+    for (uint32_t i = 0U; i < detection_count; i++) {
+        g_pending_debug_detections[i] = p_detections[i];
+    }
+    g_pending_debug_detection_count = detection_count;
+    g_debug_preview_ready_index = write_index;
+    g_debug_detection_update_pending = true;
+    g_debug_preview_ready = true;
+    taskEXIT_CRITICAL();
+    return true;
+}
+
+bool fruit_ui_is_debug_mode_active(void)
+{
+    return g_debug_mode_active;
+}
+
+bool fruit_ui_take_frame_dump_request(void)
+{
+    bool requested;
+
+    taskENTER_CRITICAL();
+    requested = g_frame_dump_request_pending;
+    g_frame_dump_request_pending = false;
+    taskEXIT_CRITICAL();
+    return requested;
 }
 
 bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target)

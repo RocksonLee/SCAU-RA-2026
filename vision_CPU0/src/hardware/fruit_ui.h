@@ -24,11 +24,24 @@ typedef struct st_fruit_ui_detection
     int32_t x;
     int32_t y;
     int32_t z;
+    int32_t x1;
+    int32_t y1;
+    int32_t x2;
+    int32_t y2;
+    int32_t mean_r;
+    int32_t mean_g;
+    int32_t mean_b;
+    int32_t green_ratio_0p1;
 } fruit_ui_detection_t;
 
 void fruit_ui_create(void);
 void fruit_ui_process(void);
 void fruit_ui_set_detections(fruit_ui_detection_t const * p_detections, uint32_t detection_count);
+bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame,
+                                     fruit_ui_detection_t const * p_detections,
+                                     uint32_t                     detection_count);
+bool fruit_ui_is_debug_mode_active(void);
+bool fruit_ui_take_frame_dump_request(void);
 bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target);
 void fruit_ui_set_weight(int32_t weight_0p1g, bool valid);
 
