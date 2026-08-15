@@ -1,6 +1,7 @@
 #include <Can_Thread.h>
 #include "hardware/canfd0.h"
 #include "hardware/handeye_transform.h"
+#include "hardware/jiesuan.h"
 #include "ipc_detection_protocol.h"
 #include "ipc_detection_rx.h"
 
@@ -18,6 +19,8 @@ typedef enum e_ipc_coordinate_rx_state
 } ipc_coordinate_rx_state_t;
 
 #define IPC_RESULT_QUEUE_LENGTH (4U)
+#define ARM_IK_ELBOW_DIRECTION  (1)
+#define ARM_JOINT_4_LOCK_DEG    (0)
 
 typedef struct st_ipc_arm_result
 {
@@ -33,6 +36,40 @@ static volatile uint32_t g_pair_queue_read;
 static ipc_arm_result_t g_arm_queue[IPC_RESULT_QUEUE_LENGTH];
 static volatile uint32_t g_arm_queue_write;
 static volatile uint32_t g_arm_queue_read;
+
+static bool arm_move_to_point(handeye_arm_point_t const * p_point)
+{
+    double q1;
+    double q2;
+    double q3;
+    double q5;
+
+    if ((NULL == p_point) ||
+        !inverse_kinematics_5dof(p_point->x_mm,
+                                 p_point->y_mm,
+                                 p_point->z_mm,
+                                 ARM_IK_ELBOW_DIRECTION,
+                                 &q1,
+                                 &q2,
+                                 &q3,
+                                 &q5))
+    {
+        return false;
+    }
+
+    /*
+     * Each position command uses sync flag 1.  Queue the five absolute
+     * joint targets first, then trigger them together with run().
+     * Joint 4 is fixed at zero by the current kinematic model.
+     */
+    CANFD0_Operation_1((int32_t) q1);
+    CANFD0_Operation_2((int32_t) q2);
+    CANFD0_Operation_3((int32_t) q3);
+    CANFD0_Operation_4(ARM_JOINT_4_LOCK_DEG);
+    CANFD0_Operation_5((int32_t) q5);
+    run();
+    return true;
+}
 
 static void ipc_coordinate_rx_reset(ipc_coordinate_rx_state_t * p_state)
 {
@@ -228,7 +265,7 @@ void Can_Thread_entry(void *pvParameters) {
 		vTaskDelete(NULL);
 	}
 
-	//CANFD0_Init();
+	CANFD0_Init();
 	while (1)
 	{
         ipc_camera_coordinate_pair_t pair;
@@ -252,6 +289,8 @@ void Can_Thread_entry(void *pvParameters) {
                     g_arm_queue_write = next;
                 }
                 taskEXIT_CRITICAL();
+
+                (void) arm_move_to_point(&arm_point);
             }
         }
 

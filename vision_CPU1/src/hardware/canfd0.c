@@ -146,7 +146,7 @@ void CANFD0_Operation_1(int32_t angle)
 	canfd0_tx_frame.data[3]=(angle_1 >> 8) & 0xFF;
 	canfd0_tx_frame.data[4]=angle_1 & 0xFF;
 	
-	canfd0_tx_frame.data[5]=0x02;
+	canfd0_tx_frame.data[5]=0x01;
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
@@ -201,7 +201,7 @@ void CANFD0_Operation_2(int32_t angle)
 	canfd0_tx_frame.data[3]=(angle_1 >> 8) & 0xFF;
 	canfd0_tx_frame.data[4]=angle_1 & 0xFF;
 	
-	canfd0_tx_frame.data[5]=0x02;
+	canfd0_tx_frame.data[5]=0x01;
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
@@ -256,7 +256,7 @@ void CANFD0_Operation_3(int32_t angle)
 	canfd0_tx_frame.data[3]=(angle_1 >> 8) & 0xFF;
 	canfd0_tx_frame.data[4]=angle_1 & 0xFF;
 
-	canfd0_tx_frame.data[5]=0x02;
+	canfd0_tx_frame.data[5]=0x01;
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
@@ -311,7 +311,7 @@ void CANFD0_Operation_4(int32_t angle)
 	canfd0_tx_frame.data[3]=(angle_1 >> 8) & 0xFF;
 	canfd0_tx_frame.data[4]=angle_1 & 0xFF;
 	
-	canfd0_tx_frame.data[5]=0x02;
+	canfd0_tx_frame.data[5]=0x01;
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
@@ -368,7 +368,7 @@ void CANFD0_Operation_5(int32_t angle)
 	canfd0_tx_frame.data[3]=(angle_1 >> 8) & 0xFF;
 	canfd0_tx_frame.data[4]=angle_1 & 0xFF;
 	
-	canfd0_tx_frame.data[5]=0x02;
+	canfd0_tx_frame.data[5]=0x01;
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
