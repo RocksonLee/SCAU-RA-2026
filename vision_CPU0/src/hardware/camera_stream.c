@@ -26,6 +26,8 @@
 #define CAMERA_SIDE_MUX_SETTLE_MS (50U)
 #define CAMERA_SIDE_SWITCH_SETTLE_MS (2500U)
 #define CAMERA_SIDE_WARMUP_FRAMES (5U)
+#define CAMERA_LED_WRITE_ATTEMPTS  (3U)
+#define CAMERA_LED_RETRY_MS        (20U)
 #define CAMERA_PREVIEW_PERIOD_MS (500U)
 #define CAMERA_TASK_PREVIEW_PERIOD_MS (150U)
 #define CAMERA_TASK_PREVIEW_MIN_MS (1000U)
@@ -58,6 +60,7 @@ static uart_callback_args_t g_uart_callback_memory;
 static char g_uart_line[CAMERA_UART_LINE_BYTES];
 static app_detection_result_t g_detection_results[APP_DETECTION_MAX_RESULTS];
 static bool g_camera_illumination_enabled;
+static bool g_camera_illumination_state_valid;
 
 static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_pair,
                                         fruit_ui_detection_t                * p_detection);
@@ -381,7 +384,8 @@ static int32_t camera_median_5(int32_t const samples[CAMERA_SIDE_SAMPLES])
 
 static bool camera_set_illumination(bool enabled)
 {
-    if (enabled == g_camera_illumination_enabled)
+    if (g_camera_illumination_state_valid &&
+        (enabled == g_camera_illumination_enabled))
     {
         return true;
     }
@@ -390,11 +394,31 @@ static bool camera_set_illumination(bool enabled)
     {
         camera_uart_send_text(enabled ? "CAM_LED_ERR task_on\r\n" :
                                         "CAM_LED_ERR idle_off\r\n");
+        g_camera_illumination_state_valid = false;
         return false;
     }
 
     g_camera_illumination_enabled = enabled;
+    g_camera_illumination_state_valid = true;
     return true;
+}
+
+static bool camera_set_illumination_with_retry(bool enabled)
+{
+    for (uint32_t attempt = 0U; attempt < CAMERA_LED_WRITE_ATTEMPTS; attempt++)
+    {
+        if (camera_set_illumination(enabled))
+        {
+            return true;
+        }
+
+        if ((attempt + 1U) < CAMERA_LED_WRITE_ATTEMPTS)
+        {
+            vTaskDelay(pdMS_TO_TICKS(CAMERA_LED_RETRY_MS));
+        }
+    }
+
+    return false;
 }
 
 static void camera_force_illumination_off(void)
@@ -402,11 +426,13 @@ static void camera_force_illumination_off(void)
     if (!camera_ov5640_set_strobe_led(false))
     {
         camera_uart_send_text("CAM_LED_ERR force_off\r\n");
-        g_camera_illumination_enabled = true;
+        /* The selected sensor's real state is unknown; never treat it as cached. */
+        g_camera_illumination_state_valid = false;
         return;
     }
 
     g_camera_illumination_enabled = false;
+    g_camera_illumination_state_valid = true;
 }
 
 static bool camera_requested_illumination(bool task_recognition_light)
@@ -476,6 +502,9 @@ static bool camera_switch_to(bool side_camera, bool task_recognition_light)
         return false;
     }
 
+    /* PB00 changed the physical OV5640 behind the shared camera interface. */
+    g_camera_illumination_state_valid = false;
+
     vTaskDelay(pdMS_TO_TICKS(side_camera ? CAMERA_SIDE_MUX_SETTLE_MS : CAMERA_MUX_SETTLE_MS));
 
     if (!side_camera)
@@ -488,8 +517,12 @@ static bool camera_switch_to(bool side_camera, bool task_recognition_light)
         }
 
         camera_force_illumination_off();
-        (void) camera_set_illumination(
-            camera_requested_illumination(task_recognition_light));
+        if (!camera_set_illumination_with_retry(
+                camera_requested_illumination(task_recognition_light)))
+        {
+            camera_uart_send_text("CAM_SWITCH_ERR top_light\r\n");
+            return false;
+        }
 
         camera_discard_settle_frames(task_recognition_light);
         camera_uart_send_text("CAM_ACTIVE TOP\r\n");
@@ -505,8 +538,12 @@ static bool camera_switch_to(bool side_camera, bool task_recognition_light)
     }
 
     camera_force_illumination_off();
-    (void) camera_set_illumination(
-        camera_requested_illumination(task_recognition_light));
+    if (!camera_set_illumination_with_retry(
+            camera_requested_illumination(task_recognition_light)))
+    {
+        camera_uart_send_text("CAM_SWITCH_ERR side_light\r\n");
+        return false;
+    }
 
     /* Bad warm-up frames are discarded, but they do not block recognition. */
     camera_warmup_side_camera(task_recognition_light);
