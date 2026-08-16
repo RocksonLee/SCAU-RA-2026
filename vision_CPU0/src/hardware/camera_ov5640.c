@@ -433,8 +433,6 @@ static bool ov5640_update_reg_bits(uint16_t reg, uint8_t mask, bool set_bits)
 
 bool camera_ov5640_set_strobe_led(bool enabled)
 {
-    uint8_t output_value = 0U;
-
     /* Drive STROBE low before changing its pad direction or source. */
     if (!ov5640_update_reg_bits(OV5640_REG_PAD_OUTPUT_VALUE,
                                 OV5640_STROBE_PAD_BIT,
@@ -445,25 +443,18 @@ bool camera_ov5640_set_strobe_led(bool enabled)
 
     if (!enabled)
     {
-        return ov5640_read_reg(OV5640_REG_PAD_OUTPUT_VALUE, &output_value) &&
-               (0U == (output_value & OV5640_STROBE_PAD_BIT));
+        return true;
     }
 
-    if (!ov5640_update_reg_bits(OV5640_REG_PAD_OUTPUT_ENABLE,
-                                OV5640_STROBE_PAD_BIT,
-                                true) ||
-        !ov5640_update_reg_bits(OV5640_REG_PAD_SELECT,
-                                OV5640_STROBE_PAD_BIT,
-                                true) ||
-        !ov5640_update_reg_bits(OV5640_REG_PAD_OUTPUT_VALUE,
-                                OV5640_STROBE_PAD_BIT,
-                                true))
-    {
-        return false;
-    }
-
-    return ov5640_read_reg(OV5640_REG_PAD_OUTPUT_VALUE, &output_value) &&
-           (0U != (output_value & OV5640_STROBE_PAD_BIT));
+    return ov5640_update_reg_bits(OV5640_REG_PAD_OUTPUT_ENABLE,
+                                  OV5640_STROBE_PAD_BIT,
+                                  true) &&
+           ov5640_update_reg_bits(OV5640_REG_PAD_SELECT,
+                                  OV5640_STROBE_PAD_BIT,
+                                  true) &&
+           ov5640_update_reg_bits(OV5640_REG_PAD_OUTPUT_VALUE,
+                                  OV5640_STROBE_PAD_BIT,
+                                  true);
 }
 
 uint32_t camera_ov5640_last_ceu_events(void)
