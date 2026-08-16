@@ -21,7 +21,7 @@
 #define DET_NMS_IOU_THRESHOLD       (0.20f)
 #define DET_MAX_CANDIDATES          (64U)
 #define DET_MAX_OUTPUTS             APP_DETECTION_MAX_RESULTS
-#define DET_UART_LINE_BYTES         (96U)
+#define     DET_UART_LINE_BYTES         (96U)
 #define DET_PIGMENT_CELL_COUNT      (9U)
 #define DET_PIGMENT_TYPE_COUNT      (3U)
 #define DET_PIGMENT_RED             (0U)

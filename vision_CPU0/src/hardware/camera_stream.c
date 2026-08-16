@@ -44,9 +44,9 @@
 /* Keep these coefficients synchronized with CPU1 handeye_transform.c. */
 static double const g_camera_to_arm_homography[3][3] =
 {
-    {0.038658,  0.386610, 54.505698},
-    {0.548603, -0.045075, 62.271670},
-    {0.000383, -0.000106,  1.000000},
+    {0.031114,  0.800983,  -64.142100},
+    {0.954234, -0.013392, -101.298640},
+    {0.000247, -0.000043,    1.000000},
 };
 
 #if APP_DETECTION_MAX_RESULTS != FRUIT_UI_MAX_DETECTIONS
