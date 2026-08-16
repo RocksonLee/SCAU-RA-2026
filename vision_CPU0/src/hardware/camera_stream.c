@@ -28,6 +28,8 @@
 #define CAMERA_SIDE_WARMUP_FRAMES (5U)
 #define CAMERA_LED_WRITE_ATTEMPTS  (3U)
 #define CAMERA_LED_RETRY_MS        (20U)
+#define CAMERA_LED_SETTLE_MS       (400U)
+#define CAMERA_LED_DISCARD_FRAMES  (3U)
 #define CAMERA_PREVIEW_PERIOD_MS (500U)
 #define CAMERA_TASK_PREVIEW_PERIOD_MS (150U)
 #define CAMERA_TASK_PREVIEW_MIN_MS (1000U)
@@ -38,7 +40,7 @@
 #define CAMERA_SIDE_CAL_X_MAX_PX (435)
 #define CAMERA_SIDE_Z_SLOPE      (0.39634450194777904)
 #define CAMERA_SIDE_Z_OFFSET     (270.4756856225454)
-#define CAMERA_TOP_ONLY_Z_MM     (280.0)
+#define CAMERA_TOP_ONLY_Z_MM     (100.0)
 #define CAMERA_HOMOGRAPHY_EPSILON (1.0e-9)
 
 /* Keep these coefficients synchronized with CPU1 handeye_transform.c. */
@@ -61,6 +63,7 @@ static char g_uart_line[CAMERA_UART_LINE_BYTES];
 static app_detection_result_t g_detection_results[APP_DETECTION_MAX_RESULTS];
 static bool g_camera_illumination_enabled;
 static bool g_camera_illumination_state_valid;
+static uint32_t g_camera_illumination_generation;
 
 static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_pair,
                                         fruit_ui_detection_t                * p_detection);
@@ -400,6 +403,7 @@ static bool camera_set_illumination(bool enabled)
 
     g_camera_illumination_enabled = enabled;
     g_camera_illumination_state_valid = true;
+    g_camera_illumination_generation++;
     return true;
 }
 
@@ -616,6 +620,54 @@ static void camera_process_arm_zero_request(void)
     camera_uart_send_text("ARM_ZERO_IPC_SENT\r\n");
 }
 
+static void camera_process_task_joint5_request(void)
+{
+    int32_t angle_deg;
+
+    if (!fruit_ui_take_task_joint5_request(&angle_deg))
+    {
+        return;
+    }
+
+    while (!ipc_detection_send_task_joint5(angle_deg))
+    {
+        camera_uart_send_text("TASK_JOINT5_ERR ipc_send_retry\r\n");
+        vTaskDelay(pdMS_TO_TICKS(1000U));
+    }
+
+    int const count = snprintf(g_uart_line,
+                               sizeof(g_uart_line),
+                               "TASK_JOINT5_IPC_SENT angle=%ld\r\n",
+                               (long) angle_deg);
+    if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
+    {
+        camera_uart_send_text(g_uart_line);
+    }
+}
+
+static void camera_settle_after_illumination_on(bool task_recognition_light)
+{
+    camera_delay_with_illumination_guard(CAMERA_LED_SETTLE_MS,
+                                         task_recognition_light);
+
+    if (!g_camera_illumination_enabled)
+    {
+        return;
+    }
+
+    for (uint32_t frame = 0U; frame < CAMERA_LED_DISCARD_FRAMES; frame++)
+    {
+        (void) camera_capture_frame_with_retry(g_camera_frame);
+        camera_delay_with_illumination_guard(CAMERA_CAPTURE_RETRY_MS,
+                                             task_recognition_light);
+
+        if (!g_camera_illumination_enabled)
+        {
+            break;
+        }
+    }
+}
+
 static bool camera_collect_side_samples(app_detection_result_t const * p_top_results,
                                         uint32_t                       target_count,
                                         int32_t                      * p_side_x,
@@ -801,6 +853,7 @@ void camera_stream_task(void)
     bool recognition_complete = false;
     bool camera_side_active = false;
     bool task_preview_started = false;
+    uint32_t illumination_generation_seen = 0U;
 
     if (camera_debug_uart_init())
     {
@@ -811,8 +864,15 @@ void camera_stream_task(void)
     while ((FRUIT_UI_TASK_NONE == fruit_ui_get_task_mode()) &&
            !fruit_ui_is_debug_mode_active())
     {
+        /* ZERO must remain responsive before any task or Settings starts. */
+        camera_process_arm_zero_request();
         vTaskDelay(pdMS_TO_TICKS(20U));
     }
+
+    camera_process_arm_zero_request();
+
+    /* Move joint 5 to the selected task's view before camera recognition. */
+    camera_process_task_joint5_request();
 
     (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, CAMERA_MUX_SEL, BSP_IO_LEVEL_HIGH);
     vTaskDelay(pdMS_TO_TICKS(CAMERA_MUX_SETTLE_MS));
@@ -857,11 +917,14 @@ void camera_stream_task(void)
         camera_delay_with_illumination_guard(100U, initial_recognition_active);
     }
 
+    illumination_generation_seen = g_camera_illumination_generation;
+
     fruit_ui_set_task_camera(false);
 
     while (1)
     {
         camera_process_arm_zero_request();
+        camera_process_task_joint5_request();
 
         uint32_t const task_generation = fruit_ui_get_task_generation();
         if (task_generation != active_task_generation)
@@ -909,6 +972,21 @@ void camera_stream_task(void)
             !recognition_complete;
         (void) camera_set_illumination(
             camera_requested_illumination(task_recognition_now));
+
+        if (illumination_generation_seen != g_camera_illumination_generation)
+        {
+            illumination_generation_seen = g_camera_illumination_generation;
+
+            if (g_camera_illumination_enabled)
+            {
+                camera_uart_send_text("CAM_LED_SETTLE discard_transition_frames\r\n");
+                camera_settle_after_illumination_on(task_recognition_now);
+                illumination_generation_seen = g_camera_illumination_generation;
+                last_preview_tick = 0U;
+                last_task_preview_tick = 0U;
+                continue;
+            }
+        }
 
         if ((FRUIT_UI_TASK_NONE == fruit_ui_get_task_mode()) &&
             !fruit_ui_is_debug_mode_active())

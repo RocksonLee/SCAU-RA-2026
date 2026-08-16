@@ -88,6 +88,8 @@ static volatile bool g_pending_task_side_camera;
 static volatile bool g_task_camera_update_pending;
 static volatile bool g_frame_dump_request_pending;
 static volatile bool g_arm_zero_request_pending;
+static volatile bool g_task_joint5_request_pending;
+static volatile int32_t g_task_joint5_angle_deg;
 static uint16_t g_debug_preview_pixels[2][UI_PREVIEW_PIXELS]
     BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
 static lv_image_dsc_t g_debug_preview_dsc[2];
@@ -672,6 +674,7 @@ static void cancel_activity_for_home(void)
     g_debug_side_camera_requested = false;
     g_debug_light_requested = false;
     g_frame_dump_request_pending = false;
+    g_task_joint5_request_pending = false;
     g_task_mode = FRUIT_UI_TASK_NONE;
     g_task_generation++;
     g_task_stream_active = false;
@@ -694,6 +697,8 @@ static void on_task_select(lv_event_t * e)
             g_task_mode = mode;
             g_task_generation++;
             g_task_side_camera = false;
+            g_task_joint5_angle_deg = (FRUIT_UI_TASK_TOP_ONLY == mode) ? -30 : 80;
+            g_task_joint5_request_pending = true;
             taskEXIT_CRITICAL();
 
             memset(g_pick_state, 0, sizeof(g_pick_state));
@@ -933,6 +938,8 @@ static void show_home(void)
     lv_obj_set_style_text_font(title, &name3, 0);
     lv_obj_set_pos(title, 116, 7);
 
+    add_small_button(lv_screen_active(), "ZERO", 400, 60, 68, 30, on_arm_zero, NULL);
+
     card = add_card(lv_screen_active(), 18, 96, 180, 210);
     lv_obj_set_style_pad_all(card, 0, 0);
     add_robot_arm_image(card);
@@ -1157,7 +1164,6 @@ static void show_select(void)
     g_task_stream_active = false;
 
     add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_home, NULL);
-    add_small_button(lv_screen_active(), "ZERO", 400, 12, 68, 30, on_arm_zero, NULL);
     add_label(lv_screen_active(), "Pick Detected Fruit", lv_color_hex(0x20303F),
               &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 16);
     add_label(lv_screen_active(), "Choose a fruit; completed weights stay locked",
@@ -1648,6 +1654,24 @@ bool fruit_ui_take_arm_zero_request(void)
     taskENTER_CRITICAL();
     requested = g_arm_zero_request_pending;
     g_arm_zero_request_pending = false;
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+bool fruit_ui_take_task_joint5_request(int32_t * p_angle_deg)
+{
+    bool requested;
+
+    if (NULL == p_angle_deg) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    requested = g_task_joint5_request_pending;
+    if (requested) {
+        *p_angle_deg = g_task_joint5_angle_deg;
+        g_task_joint5_request_pending = false;
+    }
     taskEXIT_CRITICAL();
     return requested;
 }

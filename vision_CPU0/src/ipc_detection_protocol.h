@@ -6,6 +6,8 @@
 #define IPC_COORDINATE_BATCH_BEGIN      (0x33444242U) /* "3DBB" */
 #define IPC_COORDINATE_BATCH_END        (0x33444245U) /* "3DBE" */
 #define IPC_ARM_ZERO_COMMAND            (0x5A45524FU) /* "ZERO" */
+#define IPC_TASK1_JOINT5_COMMAND        (0x54314A35U) /* "T1J5" */
+#define IPC_TASK2_JOINT5_COMMAND        (0x54324A35U) /* "T2J5" */
 #define IPC_COORDINATE_BATCH_MAX_ITEMS  (3U)
 
 typedef struct st_ipc_camera_coordinate_item

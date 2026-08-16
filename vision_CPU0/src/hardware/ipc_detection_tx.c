@@ -78,3 +78,18 @@ bool ipc_detection_send_arm_zero(void)
 {
     return ipc_detection_send_word(IPC_ARM_ZERO_COMMAND);
 }
+
+bool ipc_detection_send_task_joint5(int32_t angle_deg)
+{
+    if (-30 == angle_deg)
+    {
+        return ipc_detection_send_word(IPC_TASK1_JOINT5_COMMAND);
+    }
+
+    if (80 == angle_deg)
+    {
+        return ipc_detection_send_word(IPC_TASK2_JOINT5_COMMAND);
+    }
+
+    return false;
+}

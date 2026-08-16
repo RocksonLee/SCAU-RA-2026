@@ -22,8 +22,9 @@ typedef enum e_ipc_coordinate_rx_state
 #define IPC_RESULT_QUEUE_LENGTH (4U)
 #define ARM_IK_ELBOW_DIRECTION  (1)
 #define ARM_JOINT_2_MAX_DEG     (10.0)
-#define ARM_JOINT_5_OFFSET_DEG  (-90.0)
 #define ARM_JOINT_5_DELAY_MS    (2000U)
+#define ARM_TASK1_JOINT_5_DEG   (-30)
+#define ARM_TASK2_JOINT_5_DEG   (80)
 
 typedef struct st_ipc_arm_result
 {
@@ -40,6 +41,8 @@ static ipc_arm_result_t g_arm_queue[IPC_RESULT_QUEUE_LENGTH];
 static volatile uint32_t g_arm_queue_write;
 static volatile uint32_t g_arm_queue_read;
 static volatile bool g_arm_zero_request_pending;
+static volatile bool g_task_joint5_request_pending;
+static volatile int32_t g_task_joint5_angle_deg;
 
 #if DM_COORDINATE_UART_ENABLE
 extern TaskHandle_t Uart_dm_thread;
@@ -70,7 +73,8 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
      * Each position command uses sync flag 1. Queue joints 1 to 3 first and
      * trigger the first-stage motion together. Joint 4 is mechanically locked
      * and receives no CAN command. After the first stage has had time to
-     * settle, offset joint 5 by -90 degrees and trigger it separately.
+     * settle, send the inverse-kinematics joint 5 angle without an offset and
+     * trigger it separately.
      */
     if (q2 > ARM_JOINT_2_MAX_DEG)
     {
@@ -84,7 +88,7 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
 
     vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_5_DELAY_MS));
 
-    CANFD0_Operation_5((int32_t) (ARM_JOINT_5_OFFSET_DEG + q5));
+    CANFD0_Operation_5((int32_t) q5);
     run();
     return true;
 }
@@ -95,6 +99,12 @@ static void arm_move_to_zero(void)
     CANFD0_Operation_2(0);
     CANFD0_Operation_3(0);
     CANFD0_Operation_5(0);
+    run();
+}
+
+static void arm_prepare_task(int32_t joint5_angle_deg)
+{
+    CANFD0_Operation_5(joint5_angle_deg);
     run();
 }
 #endif
@@ -183,6 +193,22 @@ void ipc0_callback(ipc_callback_args_t *p_args)
     if (IPC_ARM_ZERO_COMMAND == p_args->message)
     {
         g_arm_zero_request_pending = true;
+        ipc_coordinate_rx_reset(&receive_state);
+        return;
+    }
+
+    if (IPC_TASK1_JOINT5_COMMAND == p_args->message)
+    {
+        g_task_joint5_angle_deg = ARM_TASK1_JOINT_5_DEG;
+        g_task_joint5_request_pending = true;
+        ipc_coordinate_rx_reset(&receive_state);
+        return;
+    }
+
+    if (IPC_TASK2_JOINT5_COMMAND == p_args->message)
+    {
+        g_task_joint5_angle_deg = ARM_TASK2_JOINT_5_DEG;
+        g_task_joint5_request_pending = true;
         ipc_coordinate_rx_reset(&receive_state);
         return;
     }
@@ -336,15 +362,31 @@ void Can_Thread_entry(void *pvParameters) {
 	{
 #if !DM_COORDINATE_UART_ENABLE
         bool arm_zero_requested;
+        bool task_joint5_requested;
+        int32_t task_joint5_angle_deg = 0;
 
         taskENTER_CRITICAL();
         arm_zero_requested = g_arm_zero_request_pending;
         g_arm_zero_request_pending = false;
+        task_joint5_requested = !arm_zero_requested &&
+                                g_task_joint5_request_pending;
+        if (task_joint5_requested)
+        {
+            task_joint5_angle_deg = g_task_joint5_angle_deg;
+            g_task_joint5_request_pending = false;
+        }
         taskEXIT_CRITICAL();
 
         if (arm_zero_requested)
         {
             arm_move_to_zero();
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
+
+        if (task_joint5_requested)
+        {
+            arm_prepare_task(task_joint5_angle_deg);
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }

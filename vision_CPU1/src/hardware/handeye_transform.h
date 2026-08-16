@@ -19,7 +19,7 @@ typedef struct st_handeye_arm_point
  * Convert a 640x480 camera pixel coordinate to the robot coordinate system.
  *
  * The homography output and the fixed height are expressed in millimetres.
- * The fixed height is 28 cm (280 mm).
+ * The fixed height is 10 cm (100 mm).
  *
  * @param[in]  camera_x_px Camera horizontal pixel coordinate [0, 639].
  * @param[in]  camera_y_px Camera vertical pixel coordinate [0, 479].

@@ -4,7 +4,7 @@
 
 #define HANDEYE_CAMERA_WIDTH_PX       (640)
 #define HANDEYE_CAMERA_HEIGHT_PX      (480)
-#define HANDEYE_FIXED_HEIGHT_MM       (280.0)
+#define HANDEYE_FIXED_HEIGHT_MM       (100.0)
 #define HANDEYE_DENOMINATOR_EPSILON   (1.0e-9)
 #define HANDEYE_SIDE_X_MIN_PX         (104)
 #define HANDEYE_SIDE_X_MAX_PX         (435)
