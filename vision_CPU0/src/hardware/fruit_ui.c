@@ -14,11 +14,19 @@
 #include "lvgl.h"
 #pragma GCC diagnostic pop
 
+#include "competition_title_font.inc"
+#include "competition_logo_rgb565.inc"
+
 #define UI_W 480
 #define UI_H 320
 #define UI_PREVIEW_W (320U)
 #define UI_PREVIEW_H (240U)
 #define UI_PREVIEW_PIXELS (UI_PREVIEW_W * UI_PREVIEW_H)
+#define UI_TARGET_COUNT (4U)
+#define UI_WEIGHT_LOCK_DELAY_MS (1500U)
+#define UI_WEIGHT_STABLE_SAMPLES (5U)
+#define UI_WEIGHT_STABLE_TOLERANCE_0P1G (5)
+#define UI_WEIGHT_MIN_VALID_0P1G (20)
 
 typedef struct st_target_view
 {
@@ -34,10 +42,19 @@ typedef struct st_target_view
 typedef enum e_ui_page
 {
     UI_PAGE_HOME = 0,
+    UI_PAGE_STREAM,
     UI_PAGE_SELECT,
     UI_PAGE_DETAIL,
     UI_PAGE_DEBUG,
 } ui_page_t;
+
+typedef enum e_target_pick_state
+{
+    TARGET_PICK_AVAILABLE = 0,
+    TARGET_PICK_SENDING,
+    TARGET_PICK_WEIGHING,
+    TARGET_PICK_COMPLETE,
+} target_pick_state_t;
 
 static target_view_t g_targets[] =
 {
@@ -62,6 +79,11 @@ static volatile bool g_debug_mode_active;
 static volatile bool g_debug_side_camera_requested;
 static TickType_t g_debug_camera_button_open_tick;
 static volatile fruit_ui_task_mode_t g_task_mode = FRUIT_UI_TASK_NONE;
+static volatile uint32_t g_task_generation;
+static volatile bool g_task_stream_active;
+static volatile bool g_task_side_camera;
+static volatile bool g_pending_task_side_camera;
+static volatile bool g_task_camera_update_pending;
 static volatile bool g_frame_dump_request_pending;
 static uint16_t g_debug_preview_pixels[2][UI_PREVIEW_PIXELS]
     BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
@@ -71,11 +93,21 @@ static volatile uint32_t g_debug_preview_ready_index;
 static volatile bool g_debug_preview_ready;
 static volatile fruit_ui_target_t g_pending_pick_target;
 static volatile bool g_pick_request_pending;
+static volatile fruit_ui_target_t g_pending_pick_sent_target;
+static volatile bool g_pick_sent_update_pending;
 static volatile int32_t g_pending_weight_0p1g;
 static volatile bool g_pending_weight_valid;
 static volatile bool g_weight_update_pending;
 static int32_t g_weight_0p1g;
 static bool g_weight_valid;
+static target_pick_state_t g_pick_state[UI_TARGET_COUNT];
+static int32_t g_locked_weight_0p1g[UI_TARGET_COUNT];
+static fruit_ui_target_t g_weighing_target = FRUIT_UI_TARGET_NONE;
+static TickType_t g_weighing_start_tick;
+static int32_t g_weighing_baseline_0p1g;
+static bool g_weight_change_seen;
+static int32_t g_weight_stability_reference_0p1g;
+static uint32_t g_weight_stability_count;
 static ui_page_t g_current_page = UI_PAGE_HOME;
 static lv_obj_t * g_home_weight_label;
 static lv_obj_t * g_home_detected_label;
@@ -88,6 +120,10 @@ static lv_obj_t * g_debug_slider;
 static lv_obj_t * g_debug_preview_image;
 static lv_obj_t * g_debug_camera_title;
 static lv_obj_t * g_debug_camera_button;
+static lv_obj_t * g_task_preview_image;
+static lv_obj_t * g_task_camera_title;
+static lv_obj_t * g_task_camera_status;
+static lv_obj_t * g_confirm_pick_button;
 static lv_obj_t * g_debug_boxes[FRUIT_UI_MAX_DETECTIONS];
 static lv_obj_t * g_debug_box_labels[FRUIT_UI_MAX_DETECTIONS];
 static bool g_style_ready;
@@ -97,6 +133,7 @@ static lv_style_t g_style_button;
 static lv_style_t g_style_button_alt;
 
 static void show_home(void);
+static void show_task_stream(void);
 static void show_select(void);
 static void show_detail(fruit_ui_target_t target);
 static void show_debug(void);
@@ -124,6 +161,94 @@ static target_view_t * get_target(fruit_ui_target_t target)
     }
 
     return &g_targets[0];
+}
+
+static uint32_t target_index(fruit_ui_target_t target)
+{
+    uint32_t const index = (uint32_t) target;
+
+    return (index < UI_TARGET_COUNT) ? index : 0U;
+}
+
+static bool pick_flow_busy(void)
+{
+    for (uint32_t i = 1U; i < UI_TARGET_COUNT; i++) {
+        if ((g_pick_state[i] == TARGET_PICK_SENDING) ||
+            (g_pick_state[i] == TARGET_PICK_WEIGHING)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool all_detected_targets_complete(void)
+{
+    if (g_detection_count == 0U) {
+        return false;
+    }
+
+    for (uint32_t i = 0U; i < g_detection_count; i++) {
+        if (g_pick_state[target_index(g_detections[i].target)] != TARGET_PICK_COMPLETE) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static void reset_preview_session(void)
+{
+    taskENTER_CRITICAL();
+    g_debug_preview_ready = false;
+    g_debug_detection_update_pending = false;
+    g_pending_debug_detection_count = 0U;
+    taskEXIT_CRITICAL();
+
+    g_debug_detection_count = 0U;
+}
+
+static bool weight_is_stable_sample(int32_t weight_0p1g)
+{
+    int32_t const magnitude = (weight_0p1g < 0) ? -weight_0p1g : weight_0p1g;
+
+    if (magnitude < UI_WEIGHT_MIN_VALID_0P1G) {
+        g_weight_stability_count = 0U;
+        return false;
+    }
+
+    if (g_weight_stability_count == 0U) {
+        g_weight_stability_reference_0p1g = weight_0p1g;
+        g_weight_stability_count = 1U;
+        return false;
+    }
+
+    int32_t const delta = weight_0p1g - g_weight_stability_reference_0p1g;
+    int32_t const delta_abs = (delta < 0) ? -delta : delta;
+
+    if (delta_abs > UI_WEIGHT_STABLE_TOLERANCE_0P1G) {
+        g_weight_stability_reference_0p1g = weight_0p1g;
+        g_weight_stability_count = 1U;
+        return false;
+    }
+
+    g_weight_stability_reference_0p1g =
+        ((g_weight_stability_reference_0p1g * (int32_t) g_weight_stability_count) + weight_0p1g) /
+        (int32_t) (g_weight_stability_count + 1U);
+    g_weight_stability_count++;
+    return g_weight_stability_count >= UI_WEIGHT_STABLE_SAMPLES;
+}
+
+static void format_weight(char * p_text, size_t text_size, int32_t weight_0p1g)
+{
+    int32_t const weight_abs = (weight_0p1g < 0) ? -weight_0p1g : weight_0p1g;
+
+    (void) snprintf(p_text,
+                    text_size,
+                    "%s%ld.%ld g",
+                    (weight_0p1g < 0) ? "-" : "",
+                    (long) (weight_abs / 10),
+                    (long) (weight_abs % 10));
 }
 
 static bool is_target_detected(fruit_ui_target_t target)
@@ -205,6 +330,10 @@ static void prepare_screen(void)
     g_debug_preview_image = NULL;
     g_debug_camera_title = NULL;
     g_debug_camera_button = NULL;
+    g_task_preview_image = NULL;
+    g_task_camera_title = NULL;
+    g_task_camera_status = NULL;
+    g_confirm_pick_button = NULL;
     for (uint32_t i = 0U; i < FRUIT_UI_MAX_DETECTIONS; i++) {
         g_debug_boxes[i] = NULL;
         g_debug_box_labels[i] = NULL;
@@ -329,6 +458,118 @@ static void add_grape_icon(lv_obj_t * parent, int32_t cx, int32_t cy, lv_color_t
     add_circle_center(parent, cx - 12, cy + 15, 22, color);
     add_circle_center(parent, cx + 12, cy + 15, 22, color);
     add_circle_center(parent, cx,      cy - 48, 10, lv_color_hex(0x4D8C3D));
+}
+
+static void add_robot_arm_sketch(lv_obj_t * parent)
+{
+    static lv_point_precise_t const arm_points[] =
+    {
+        {84, 148}, {62, 97}, {114, 54}, {145, 78},
+    };
+    static lv_point_precise_t const wrist_points[] =
+    {
+        {145, 78}, {156, 88},
+    };
+    static lv_point_precise_t const gripper_upper[] =
+    {
+        {156, 88}, {164, 80}, {174, 85}, {168, 94},
+    };
+    static lv_point_precise_t const gripper_lower[] =
+    {
+        {156, 90}, {164, 100}, {174, 96}, {168, 106},
+    };
+    static int32_t const joint_data[][3] =
+    {
+        {84, 148, 24}, {62, 97, 21}, {114, 54, 19}, {145, 78, 15},
+    };
+    lv_color_t const ink = lv_color_hex(0x31445A);
+    lv_color_t const fill = lv_color_hex(0xF7F9FA);
+    lv_obj_t * line;
+    lv_obj_t * base;
+
+    base = lv_obj_create(parent);
+    lv_obj_remove_style_all(base);
+    lv_obj_set_pos(base, 44, 171);
+    lv_obj_set_size(base, 80, 15);
+    lv_obj_set_style_radius(base, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(base, fill, 0);
+    lv_obj_set_style_bg_opa(base, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(base, 2, 0);
+    lv_obj_set_style_border_color(base, ink, 0);
+
+    base = lv_obj_create(parent);
+    lv_obj_remove_style_all(base);
+    lv_obj_set_pos(base, 53, 151);
+    lv_obj_set_size(base, 62, 28);
+    lv_obj_set_style_radius(base, 9, 0);
+    lv_obj_set_style_bg_color(base, fill, 0);
+    lv_obj_set_style_bg_opa(base, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(base, 2, 0);
+    lv_obj_set_style_border_color(base, ink, 0);
+
+    line = lv_line_create(parent);
+    lv_line_set_points(line, arm_points, 4U);
+    lv_obj_set_style_line_width(line, 14, 0);
+    lv_obj_set_style_line_color(line, ink, 0);
+    lv_obj_set_style_line_rounded(line, true, 0);
+
+    line = lv_line_create(parent);
+    lv_line_set_points(line, arm_points, 4U);
+    lv_obj_set_style_line_width(line, 8, 0);
+    lv_obj_set_style_line_color(line, fill, 0);
+    lv_obj_set_style_line_rounded(line, true, 0);
+
+    line = lv_line_create(parent);
+    lv_line_set_points(line, wrist_points, 2U);
+    lv_obj_set_style_line_width(line, 13, 0);
+    lv_obj_set_style_line_color(line, ink, 0);
+    lv_obj_set_style_line_rounded(line, true, 0);
+
+    line = lv_line_create(parent);
+    lv_line_set_points(line, wrist_points, 2U);
+    lv_obj_set_style_line_width(line, 7, 0);
+    lv_obj_set_style_line_color(line, fill, 0);
+    lv_obj_set_style_line_rounded(line, true, 0);
+
+    line = lv_line_create(parent);
+    lv_line_set_points(line, gripper_upper, 4U);
+    lv_obj_set_style_line_width(line, 3, 0);
+    lv_obj_set_style_line_color(line, ink, 0);
+    lv_obj_set_style_line_rounded(line, false, 0);
+
+    line = lv_line_create(parent);
+    lv_line_set_points(line, gripper_lower, 4U);
+    lv_obj_set_style_line_width(line, 3, 0);
+    lv_obj_set_style_line_color(line, ink, 0);
+    lv_obj_set_style_line_rounded(line, false, 0);
+
+    for (uint32_t i = 0U; i < (uint32_t) (sizeof(joint_data) / sizeof(joint_data[0])); i++) {
+        lv_obj_t * joint = lv_obj_create(parent);
+        int32_t const size = joint_data[i][2];
+
+        lv_obj_remove_style_all(joint);
+        lv_obj_set_pos(joint, joint_data[i][0] - (size / 2), joint_data[i][1] - (size / 2));
+        lv_obj_set_size(joint, size, size);
+        lv_obj_set_style_radius(joint, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_bg_color(joint, fill, 0);
+        lv_obj_set_style_bg_opa(joint, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(joint, 3, 0);
+        lv_obj_set_style_border_color(joint, ink, 0);
+    }
+}
+
+static void add_preview_backdrop(lv_obj_t * parent, int32_t x, int32_t y)
+{
+    lv_obj_t * backdrop = lv_obj_create(parent);
+
+    lv_obj_remove_style_all(backdrop);
+    lv_obj_set_pos(backdrop, x, y);
+    lv_obj_set_size(backdrop, (int32_t) UI_PREVIEW_W, (int32_t) UI_PREVIEW_H);
+    lv_obj_set_style_bg_color(backdrop, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(backdrop, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(backdrop, 1, 0);
+    lv_obj_set_style_border_color(backdrop, lv_color_hex(0x31445A), 0);
+    lv_obj_remove_flag(backdrop, LV_OBJ_FLAG_SCROLLABLE);
 }
 
 static void update_home_detection_widgets(void)
@@ -518,10 +759,22 @@ static void on_task_select(lv_event_t * e)
         if (FRUIT_UI_TASK_NONE == g_task_mode) {
             taskENTER_CRITICAL();
             g_task_mode = mode;
+            g_task_generation++;
+            g_task_side_camera = false;
             taskEXIT_CRITICAL();
-            show_home();
-        } else if ((mode == g_task_mode) && (g_detection_count > 0U)) {
-            show_select();
+
+            memset(g_pick_state, 0, sizeof(g_pick_state));
+            memset(g_locked_weight_0p1g, 0, sizeof(g_locked_weight_0p1g));
+            g_detection_count = 0U;
+            g_weighing_target = FRUIT_UI_TARGET_NONE;
+            g_weight_stability_count = 0U;
+            show_task_stream();
+        } else if (mode == g_task_mode) {
+            if (g_detection_count > 0U) {
+                show_select();
+            } else {
+                show_task_stream();
+            }
         }
     }
 }
@@ -531,7 +784,6 @@ static void on_settings(lv_event_t * e)
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         g_debug_side_camera_requested = false;
         g_debug_camera_button_open_tick = xTaskGetTickCount();
-        g_debug_mode_active = true;
         show_debug();
     }
 }
@@ -564,6 +816,10 @@ static void on_debug_camera_toggle(lv_event_t * e)
 
         g_debug_detection_count = 0U;
         update_debug_results_widget();
+
+        if (g_debug_preview_image != NULL) {
+            lv_obj_add_flag(g_debug_preview_image, LV_OBJ_FLAG_HIDDEN);
+        }
 
         if (g_debug_camera_title != NULL) {
             lv_label_set_text(g_debug_camera_title,
@@ -626,9 +882,14 @@ static void on_debug_uart_dump(lv_event_t * e)
     }
 }
 
-static void on_back_home(lv_event_t * e)
+static void on_home(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        taskENTER_CRITICAL();
+        g_debug_mode_active = false;
+        g_debug_side_camera_requested = false;
+        g_task_stream_active = false;
+        taskEXIT_CRITICAL();
         show_home();
     }
 }
@@ -646,34 +907,29 @@ static void on_confirm_pick(lv_event_t * e)
         return;
     }
 
-    bool selected_found = false;
-
     for (uint32_t i = 0U; i < g_detection_count; i++) {
         if (g_detections[i].target == g_selected) {
+            uint32_t const index = target_index(g_selected);
+
+            if (g_pick_state[index] != TARGET_PICK_AVAILABLE) {
+                return;
+            }
+
+            g_pick_state[index] = TARGET_PICK_SENDING;
             taskENTER_CRITICAL();
             g_pending_pick_target = g_selected;
             g_pick_request_pending = true;
             taskEXIT_CRITICAL();
 
-            for (uint32_t remaining = i + 1U; remaining < g_detection_count; remaining++) {
-                g_detections[remaining - 1U] = g_detections[remaining];
+            if (g_confirm_pick_button != NULL) {
+                lv_obj_add_state(g_confirm_pick_button, LV_STATE_DISABLED);
+                lv_obj_t * label = lv_obj_get_child(g_confirm_pick_button, 0);
+                if (label != NULL) {
+                    lv_label_set_text(label, "SENDING...");
+                }
             }
-
-            g_detection_count--;
-            selected_found = true;
-            break;
+            return;
         }
-    }
-
-    if (!selected_found) {
-        return;
-    }
-
-    g_selected = FRUIT_UI_TARGET_NONE;
-    if (g_detection_count > 0U) {
-        show_select();
-    } else {
-        show_home();
     }
 }
 
@@ -682,7 +938,8 @@ static void on_pick(lv_event_t * e)
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         fruit_ui_target_t const target = (fruit_ui_target_t) (uintptr_t) lv_event_get_user_data(e);
 
-        if (is_target_detected(target)) {
+        if (!pick_flow_busy() && is_target_detected(target) &&
+            (g_pick_state[target_index(target)] == TARGET_PICK_AVAILABLE)) {
             g_selected = target;
             show_detail(target);
         }
@@ -692,53 +949,107 @@ static void on_pick(lv_event_t * e)
 static void show_home(void)
 {
     lv_obj_t * card;
+    lv_obj_t * title;
+    lv_obj_t * logo;
     lv_obj_t * task_1_button;
     lv_obj_t * task_2_button;
+    char status[80];
 
     prepare_screen();
     g_current_page = UI_PAGE_HOME;
+    g_task_stream_active = false;
 
-    add_label(lv_screen_active(), "RENESAS CUP", lv_color_hex(0x1F7A5A),
-              &lv_font_montserrat_16, LV_ALIGN_TOP_LEFT, 20, 14);
-    add_small_button(lv_screen_active(), "SETTINGS", 392, 12, 76, 30, on_settings, NULL);
-    add_label(lv_screen_active(), "Fruit Harvest Robot", lv_color_hex(0x20303F),
-              &lv_font_montserrat_22, LV_ALIGN_TOP_LEFT, 20, 42);
-    add_label(lv_screen_active(), "Vision target recognition and robot arm picking control",
-              lv_color_hex(0x687685), &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 20, 74);
+    logo = lv_image_create(lv_screen_active());
+    lv_image_set_src(logo, &g_competition_logo);
+    lv_obj_set_pos(logo, 24, 3);
 
-    card = add_card(lv_screen_active(), 20, 104, 140, 150);
-    add_label(card, "Overview", lv_color_hex(0x20303F),
-              &lv_font_montserrat_16, LV_ALIGN_TOP_LEFT, 0, 0);
-    add_label(card, "Vision  online\nTouch   ready\nArm     standby",
-              lv_color_hex(0x435466), &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 38);
+    title = lv_label_create(lv_screen_active());
+    lv_label_set_text(title, "2026年全国大学生电子设计竞赛\n信息科技前沿专题赛（瑞萨杯）");
+    lv_obj_set_width(title, 348);
+    lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(0x20303F), 0);
+    lv_obj_set_style_text_font(title, &name3, 0);
+    lv_obj_set_pos(title, 116, 7);
 
-    card = add_card(lv_screen_active(), 170, 104, 140, 150);
-    add_label(card, "Weight", lv_color_hex(0x77818C),
-              &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
-    g_home_weight_label = add_label(card, "--.- g", lv_color_hex(0x77818C),
-                                    &lv_font_montserrat_18, LV_ALIGN_CENTER, 0, 8);
-    update_home_weight_widget();
+    card = add_card(lv_screen_active(), 18, 96, 180, 210);
+    lv_obj_set_style_pad_all(card, 0, 0);
+    add_robot_arm_sketch(card);
+    add_label(card, "ROBOT ARM", lv_color_hex(0x77818C),
+              &lv_font_montserrat_10, LV_ALIGN_BOTTOM_MID, 0, -3);
 
-    card = add_card(lv_screen_active(), 320, 104, 140, 150);
-    add_label(card, "Detected", lv_color_hex(0x77818C),
-              &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
-    g_home_detected_label = add_label(card, "None", get_target(FRUIT_UI_TARGET_NONE)->color,
-                                      &lv_font_montserrat_16, LV_ALIGN_CENTER, 0, 8);
+    add_label(lv_screen_active(), "FLEXIBLE HARVEST ROBOT", lv_color_hex(0x1F7A5A),
+              &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 218, 94);
 
-    task_1_button = add_button(lv_screen_active(), "TASK 1", 76, 274, 154, 36,
+    task_1_button = add_button(lv_screen_active(), "TASK 1  |  TOP", 236, 119, 224, 40,
                                on_task_select,
                                (void *) (uintptr_t) FRUIT_UI_TASK_TOP_ONLY);
-    task_2_button = add_button(lv_screen_active(), "TASK 2", 250, 274, 154, 36,
+    task_2_button = add_button(lv_screen_active(), "TASK 2  |  TOP + SIDE", 236, 169, 224, 40,
                                on_task_select,
                                (void *) (uintptr_t) FRUIT_UI_TASK_TOP_AND_SIDE);
+    add_small_button(lv_screen_active(), "SETTING", 236, 219, 224, 40, on_settings, NULL);
+
+    card = add_card(lv_screen_active(), 218, 269, 242, 39);
+    lv_obj_set_style_pad_all(card, 5, 0);
+    add_label(card, "SYSTEM", lv_color_hex(0x77818C),
+              &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 0);
+    (void) snprintf(status,
+                    sizeof(status),
+                    "D:%lu | Scale:%s",
+                    (unsigned long) g_detection_count,
+                    g_weight_valid ? "ready" : "waiting");
+    add_label(card, status, lv_color_hex(0x435466),
+              &lv_font_montserrat_10, LV_ALIGN_TOP_RIGHT, 0, 0);
 
     if (FRUIT_UI_TASK_TOP_ONLY == g_task_mode) {
+        lv_obj_t * label = lv_obj_get_child(task_1_button, 0);
+        if (label != NULL) {
+            lv_label_set_text(label, "CONTINUE TASK 1");
+        }
         lv_obj_add_state(task_2_button, LV_STATE_DISABLED);
     } else if (FRUIT_UI_TASK_TOP_AND_SIDE == g_task_mode) {
+        lv_obj_t * label = lv_obj_get_child(task_2_button, 0);
+        if (label != NULL) {
+            lv_label_set_text(label, "CONTINUE TASK 2");
+        }
         lv_obj_add_state(task_1_button, LV_STATE_DISABLED);
     }
 
     update_home_detection_widgets();
+}
+
+static void show_task_stream(void)
+{
+    char const * title;
+
+    prepare_screen();
+    g_current_page = UI_PAGE_STREAM;
+    g_task_stream_active = false;
+    reset_preview_session();
+
+    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_home, NULL);
+
+    if (FRUIT_UI_TASK_TOP_AND_SIDE == g_task_mode) {
+        title = g_task_side_camera ? "TASK 2 - SIDE CAMERA" : "TASK 2 - TOP CAMERA";
+    } else {
+        title = "TASK 1 - TOP CAMERA";
+    }
+
+    g_task_camera_title = add_label(lv_screen_active(), title, lv_color_hex(0x20303F),
+                                    &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 15);
+    g_task_camera_status = add_label(lv_screen_active(), "Recognizing fruit...",
+                                     lv_color_hex(0x1F7A5A), &lv_font_montserrat_12,
+                                     LV_ALIGN_BOTTOM_MID, 0, -8);
+
+    add_preview_backdrop(lv_screen_active(), 80, 52);
+    g_task_preview_image = lv_image_create(lv_screen_active());
+    lv_obj_set_pos(g_task_preview_image, 80, 52);
+    lv_obj_set_style_border_width(g_task_preview_image, 1, 0);
+    lv_obj_set_style_border_color(g_task_preview_image, lv_color_hex(0x31445A), 0);
+    lv_obj_add_flag(g_task_preview_image, LV_OBJ_FLAG_HIDDEN);
+
+    taskENTER_CRITICAL();
+    g_task_stream_active = true;
+    taskEXIT_CRITICAL();
 }
 
 static void show_debug(void)
@@ -749,18 +1060,22 @@ static void show_debug(void)
 
     prepare_screen();
     g_current_page = UI_PAGE_DEBUG;
+    g_task_stream_active = false;
+    g_debug_mode_active = false;
+    reset_preview_session();
 
-    add_small_button(lv_screen_active(), "BACK", 12, 12, 68, 30, on_back_debug, NULL);
+    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_back_debug, NULL);
     g_debug_camera_title = add_label(lv_screen_active(), "TOP CAMERA DEBUG", lv_color_hex(0x20303F),
                                      &lv_font_montserrat_16, LV_ALIGN_TOP_MID, 0, 15);
     g_debug_camera_button = add_small_button(lv_screen_active(), "SIDE", 84, 12, 76, 30,
                                              on_debug_camera_toggle, NULL);
 
+    add_preview_backdrop(lv_screen_active(), 4, 52);
     g_debug_preview_image = lv_image_create(lv_screen_active());
-    lv_image_set_src(g_debug_preview_image, &g_debug_preview_dsc[g_debug_preview_display_index]);
     lv_obj_set_pos(g_debug_preview_image, 4, 52);
     lv_obj_set_style_border_width(g_debug_preview_image, 1, 0);
     lv_obj_set_style_border_color(g_debug_preview_image, lv_color_hex(0x31445A), 0);
+    lv_obj_add_flag(g_debug_preview_image, LV_OBJ_FLAG_HIDDEN);
 
     for (uint32_t i = 0U; i < FRUIT_UI_MAX_DETECTIONS; i++) {
         g_debug_boxes[i] = lv_obj_create(lv_screen_active());
@@ -811,38 +1126,76 @@ static void show_debug(void)
 
     add_small_button(card, "UART DUMP", 20, 194, 94, 26, on_debug_uart_dump, NULL);
     update_debug_results_widget();
+
+    taskENTER_CRITICAL();
+    g_debug_mode_active = true;
+    taskEXIT_CRITICAL();
 }
 
 static void add_fruit_column(fruit_ui_target_t target, int32_t x)
 {
-    lv_obj_t * card = add_card(lv_screen_active(), x, 78, 138, 198);
+    lv_obj_t * card = add_card(lv_screen_active(), x, 72, 138, 210);
     target_view_t * info = get_target(target);
+    uint32_t const index = target_index(target);
+    target_pick_state_t const state = g_pick_state[index];
+    lv_obj_t * button;
+    char weight_text[32];
 
     lv_obj_set_style_pad_all(card, 0, 0);
 
     add_label(card, info->name, lv_color_hex(0x20303F),
-              &lv_font_montserrat_12, LV_ALIGN_TOP_MID, 0, 14);
+              &lv_font_montserrat_12, LV_ALIGN_TOP_MID, 0, 10);
 
     if (target == FRUIT_UI_TARGET_TOMATO) {
-        add_tomato_icon(card, 69, 90);
+        add_tomato_icon(card, 69, 78);
     } else {
-        add_grape_icon(card, 69, 88, info->color);
+        add_grape_icon(card, 69, 76, info->color);
     }
 
     add_label(card, info->vision_name, lv_color_hex(0x687685),
-              &lv_font_montserrat_10, LV_ALIGN_TOP_MID, 0, 132);
-    add_button(card, "SELECT", 22, 154, 94, 32, on_pick, (void *) (uintptr_t) target);
+              &lv_font_montserrat_10, LV_ALIGN_TOP_MID, 0, 124);
+
+    if (state == TARGET_PICK_COMPLETE) {
+        format_weight(weight_text, sizeof(weight_text), g_locked_weight_0p1g[index]);
+    } else if (state == TARGET_PICK_WEIGHING) {
+        (void) snprintf(weight_text, sizeof(weight_text), "WEIGHING...");
+    } else if (state == TARGET_PICK_SENDING) {
+        (void) snprintf(weight_text, sizeof(weight_text), "SENDING...");
+    } else {
+        (void) snprintf(weight_text, sizeof(weight_text), "WEIGHT --.- g");
+    }
+
+    add_label(card,
+              weight_text,
+              (state == TARGET_PICK_AVAILABLE) ? lv_color_hex(0x77818C) : lv_color_hex(0x1F7A5A),
+              &lv_font_montserrat_12,
+              LV_ALIGN_TOP_MID,
+              0,
+              145);
+
+    button = add_button(card,
+                        (state == TARGET_PICK_COMPLETE) ? "DONE" : "PICK",
+                        22,
+                        170,
+                        94,
+                        30,
+                        on_pick,
+                        (void *) (uintptr_t) target);
+    if ((state != TARGET_PICK_AVAILABLE) || pick_flow_busy()) {
+        lv_obj_add_state(button, LV_STATE_DISABLED);
+    }
 }
 
 static void show_select(void)
 {
     prepare_screen();
     g_current_page = UI_PAGE_SELECT;
+    g_task_stream_active = false;
 
-    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_back_home, NULL);
-    add_label(lv_screen_active(), "Select Detected Fruit", lv_color_hex(0x20303F),
+    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_home, NULL);
+    add_label(lv_screen_active(), "Pick Detected Fruit", lv_color_hex(0x20303F),
               &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 16);
-    add_label(lv_screen_active(), "Choose one detected fruit for robot-arm planning",
+    add_label(lv_screen_active(), "Choose a fruit; completed weights stay locked",
               lv_color_hex(0x687685), &lv_font_montserrat_12, LV_ALIGN_TOP_MID, 0, 46);
 
     if (g_detection_count > 0U) {
@@ -861,8 +1214,8 @@ static void show_select(void)
                   &lv_font_montserrat_18, LV_ALIGN_CENTER, 0, 12);
     }
 
-    add_label(lv_screen_active(), "Camera -> select target -> IK solve -> grip",
-              lv_color_hex(0x77818C), &lv_font_montserrat_10, LV_ALIGN_BOTTOM_MID, 0, -12);
+    add_label(lv_screen_active(), "Pick -> Confirm Pick -> IPC -> weighing",
+              lv_color_hex(0x77818C), &lv_font_montserrat_10, LV_ALIGN_BOTTOM_MID, 0, -5);
 }
 
 static void show_detail(fruit_ui_target_t target)
@@ -873,8 +1226,10 @@ static void show_detail(fruit_ui_target_t target)
 
     prepare_screen();
     g_current_page = UI_PAGE_DETAIL;
+    g_task_stream_active = false;
 
     add_small_button(lv_screen_active(), "BACK", 12, 12, 68, 30, on_back_select, NULL);
+    add_small_button(lv_screen_active(), "HOME", 400, 12, 68, 30, on_home, NULL);
     add_label(lv_screen_active(), "Target Detail", lv_color_hex(0x20303F),
               &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 16);
 
@@ -898,7 +1253,8 @@ static void show_detail(fruit_ui_target_t target)
     add_label(card, "1.lock target 2.solve arm pose 3.close gripper 4.detect weight",
               lv_color_hex(0x435466), &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 30);
 
-    add_button(lv_screen_active(), "CONFIRM PICK", 138, 270, 204, 36, on_confirm_pick, NULL);
+    g_confirm_pick_button = add_button(lv_screen_active(), "CONFIRM PICK", 138, 270, 204, 36,
+                                       on_confirm_pick, NULL);
 }
 
 void fruit_ui_create(void)
@@ -922,6 +1278,10 @@ void fruit_ui_process(void)
     bool has_debug_update = false;
     uint32_t preview_index = 0U;
     bool has_preview_update = false;
+    bool pending_task_side_camera = false;
+    bool has_task_camera_update = false;
+    fruit_ui_target_t pending_pick_sent_target = FRUIT_UI_TARGET_NONE;
+    bool has_pick_sent_update = false;
 
     taskENTER_CRITICAL();
     if (g_target_update_pending) {
@@ -975,11 +1335,91 @@ void fruit_ui_process(void)
         g_debug_preview_ready = false;
         has_preview_update = true;
     }
+    if (g_task_camera_update_pending) {
+        pending_task_side_camera = g_pending_task_side_camera;
+        g_task_camera_update_pending = false;
+        has_task_camera_update = true;
+    }
+    if (g_pick_sent_update_pending) {
+        pending_pick_sent_target = g_pending_pick_sent_target;
+        g_pick_sent_update_pending = false;
+        has_pick_sent_update = true;
+    }
     taskEXIT_CRITICAL();
+
+    if (has_task_camera_update) {
+        g_task_side_camera = pending_task_side_camera;
+
+        if (g_current_page == UI_PAGE_STREAM) {
+            if (g_task_camera_title != NULL) {
+                lv_label_set_text(g_task_camera_title,
+                                  pending_task_side_camera ? "TASK 2 - SIDE CAMERA" :
+                                                             ((g_task_mode == FRUIT_UI_TASK_TOP_AND_SIDE) ?
+                                                              "TASK 2 - TOP CAMERA" :
+                                                              "TASK 1 - TOP CAMERA"));
+            }
+            if (g_task_camera_status != NULL) {
+                lv_label_set_text(g_task_camera_status,
+                                  pending_task_side_camera ? "Switching to side camera..." :
+                                                             "Recognizing fruit...");
+            }
+            if (g_task_preview_image != NULL) {
+                lv_obj_add_flag(g_task_preview_image, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
+    }
+
+    if (has_pick_sent_update) {
+        uint32_t const index = target_index(pending_pick_sent_target);
+
+        if ((pending_pick_sent_target != FRUIT_UI_TARGET_NONE) &&
+            (g_pick_state[index] == TARGET_PICK_SENDING)) {
+            g_pick_state[index] = TARGET_PICK_WEIGHING;
+            g_weighing_target = pending_pick_sent_target;
+            g_weighing_start_tick = xTaskGetTickCount();
+            g_weighing_baseline_0p1g = g_weight_valid ? g_weight_0p1g : 0;
+            g_weight_change_seen = false;
+            g_weight_stability_count = 0U;
+            g_selected = FRUIT_UI_TARGET_NONE;
+            show_select();
+        }
+    }
 
     if (has_weight_update) {
         g_weight_0p1g = pending_weight_0p1g;
         g_weight_valid = pending_weight_valid;
+
+        if ((g_weighing_target != FRUIT_UI_TARGET_NONE) &&
+            pending_weight_valid &&
+            ((xTaskGetTickCount() - g_weighing_start_tick) >=
+             pdMS_TO_TICKS(UI_WEIGHT_LOCK_DELAY_MS))) {
+            int32_t const change = pending_weight_0p1g - g_weighing_baseline_0p1g;
+            int32_t const change_abs = (change < 0) ? -change : change;
+
+            if (change_abs >= UI_WEIGHT_MIN_VALID_0P1G) {
+                g_weight_change_seen = true;
+            }
+
+            if (g_weight_change_seen && weight_is_stable_sample(pending_weight_0p1g)) {
+                uint32_t const index = target_index(g_weighing_target);
+
+                g_locked_weight_0p1g[index] = g_weight_stability_reference_0p1g;
+                g_pick_state[index] = TARGET_PICK_COMPLETE;
+                g_weighing_target = FRUIT_UI_TARGET_NONE;
+                g_weight_stability_count = 0U;
+
+                if (all_detected_targets_complete()) {
+                    taskENTER_CRITICAL();
+                    g_task_mode = FRUIT_UI_TASK_NONE;
+                    g_task_stream_active = false;
+                    taskEXIT_CRITICAL();
+                }
+
+                if (g_current_page == UI_PAGE_SELECT) {
+                    show_select();
+                }
+            }
+        }
 
         if (g_current_page == UI_PAGE_HOME) {
             update_home_weight_widget();
@@ -1000,12 +1440,24 @@ void fruit_ui_process(void)
     if (has_preview_update && (g_current_page == UI_PAGE_DEBUG) &&
         (g_debug_preview_image != NULL)) {
         lv_image_set_src(g_debug_preview_image, &g_debug_preview_dsc[preview_index]);
+        lv_obj_remove_flag(g_debug_preview_image, LV_OBJ_FLAG_HIDDEN);
         lv_obj_invalidate(g_debug_preview_image);
 
         if (g_debug_save_label != NULL) {
             lv_label_set_text(g_debug_save_label,
                               g_debug_side_camera_requested ? "SIDE active" : "TOP active");
             lv_obj_set_style_text_color(g_debug_save_label, lv_color_hex(0x1F7A5A), 0);
+        }
+    } else if (has_preview_update && (g_current_page == UI_PAGE_STREAM) &&
+               (g_task_preview_image != NULL)) {
+        lv_image_set_src(g_task_preview_image, &g_debug_preview_dsc[preview_index]);
+        lv_obj_remove_flag(g_task_preview_image, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_invalidate(g_task_preview_image);
+
+        if (g_task_camera_status != NULL) {
+            lv_label_set_text(g_task_camera_status,
+                              g_task_side_camera ? "Side camera active - recognizing..." :
+                                                   "Top camera active - recognizing...");
         }
     }
 
@@ -1033,7 +1485,7 @@ void fruit_ui_process(void)
         info->z = pending_detections[i].z;
     }
 
-    if (g_current_page == UI_PAGE_HOME) {
+    if ((g_current_page == UI_PAGE_HOME) || (g_current_page == UI_PAGE_STREAM)) {
         if (g_detection_count > 0U) {
             show_select();
         } else {
@@ -1090,18 +1542,28 @@ void fruit_ui_set_detections(fruit_ui_detection_t const * p_detections, uint32_t
     taskEXIT_CRITICAL();
 }
 
-bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame,
-                                     fruit_ui_detection_t const * p_detections,
-                                     uint32_t                     detection_count,
-                                     bool                         side_camera)
+static bool snapshot_owner_active(bool debug_snapshot, bool side_camera)
+{
+    if (debug_snapshot) {
+        return g_debug_mode_active && (side_camera == g_debug_side_camera_requested);
+    }
+
+    return !g_debug_mode_active && g_task_stream_active &&
+           (side_camera == g_task_side_camera);
+}
+
+static bool publish_camera_snapshot(uint8_t const              * p_rgb565_frame,
+                                    fruit_ui_detection_t const * p_detections,
+                                    uint32_t                     detection_count,
+                                    bool                         side_camera,
+                                    bool                         debug_snapshot)
 {
     uint32_t write_index;
 
     if ((p_rgb565_frame == NULL) ||
         (detection_count > FRUIT_UI_MAX_DETECTIONS) ||
         ((detection_count > 0U) && (p_detections == NULL)) ||
-        !g_debug_mode_active ||
-        (side_camera != g_debug_side_camera_requested)) {
+        !snapshot_owner_active(debug_snapshot, side_camera)) {
         return false;
     }
 
@@ -1127,8 +1589,7 @@ bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame
 
     __DMB();
     taskENTER_CRITICAL();
-    if (g_debug_preview_ready || !g_debug_mode_active ||
-        (side_camera != g_debug_side_camera_requested)) {
+    if (g_debug_preview_ready || !snapshot_owner_active(debug_snapshot, side_camera)) {
         taskEXIT_CRITICAL();
         return false;
     }
@@ -1141,6 +1602,42 @@ bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame
     g_debug_preview_ready = true;
     taskEXIT_CRITICAL();
     return true;
+}
+
+bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame,
+                                     fruit_ui_detection_t const * p_detections,
+                                     uint32_t                     detection_count,
+                                     bool                         side_camera)
+{
+    return publish_camera_snapshot(p_rgb565_frame,
+                                   p_detections,
+                                   detection_count,
+                                   side_camera,
+                                   true);
+}
+
+bool fruit_ui_publish_task_snapshot(uint8_t const              * p_rgb565_frame,
+                                    fruit_ui_detection_t const * p_detections,
+                                    uint32_t                     detection_count,
+                                    bool                         side_camera)
+{
+    return publish_camera_snapshot(p_rgb565_frame,
+                                   p_detections,
+                                   detection_count,
+                                   side_camera,
+                                   false);
+}
+
+void fruit_ui_set_task_camera(bool side_camera)
+{
+    taskENTER_CRITICAL();
+    g_pending_task_side_camera = side_camera;
+    g_task_side_camera = side_camera;
+    g_debug_preview_ready = false;
+    g_debug_detection_update_pending = false;
+    g_pending_debug_detection_count = 0U;
+    g_task_camera_update_pending = true;
+    taskEXIT_CRITICAL();
 }
 
 bool fruit_ui_is_debug_mode_active(void)
@@ -1156,6 +1653,11 @@ bool fruit_ui_debug_side_camera_requested(void)
 fruit_ui_task_mode_t fruit_ui_get_task_mode(void)
 {
     return g_task_mode;
+}
+
+uint32_t fruit_ui_get_task_generation(void)
+{
+    return g_task_generation;
 }
 
 bool fruit_ui_take_frame_dump_request(void)
@@ -1185,6 +1687,18 @@ bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target)
     g_pick_request_pending = false;
     taskEXIT_CRITICAL();
     return true;
+}
+
+void fruit_ui_notify_pick_sent(fruit_ui_target_t target)
+{
+    if (target == FRUIT_UI_TARGET_NONE) {
+        return;
+    }
+
+    taskENTER_CRITICAL();
+    g_pending_pick_sent_target = target;
+    g_pick_sent_update_pending = true;
+    taskEXIT_CRITICAL();
 }
 
 void fruit_ui_set_weight(int32_t weight_0p1g, bool valid)

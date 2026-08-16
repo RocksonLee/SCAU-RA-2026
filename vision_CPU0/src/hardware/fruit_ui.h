@@ -48,11 +48,18 @@ bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame
                                      fruit_ui_detection_t const * p_detections,
                                      uint32_t                     detection_count,
                                      bool                         side_camera);
+bool fruit_ui_publish_task_snapshot(uint8_t const              * p_rgb565_frame,
+                                    fruit_ui_detection_t const * p_detections,
+                                    uint32_t                     detection_count,
+                                    bool                         side_camera);
+void fruit_ui_set_task_camera(bool side_camera);
 bool fruit_ui_is_debug_mode_active(void);
 bool fruit_ui_debug_side_camera_requested(void);
 fruit_ui_task_mode_t fruit_ui_get_task_mode(void);
+uint32_t fruit_ui_get_task_generation(void);
 bool fruit_ui_take_frame_dump_request(void);
 bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target);
+void fruit_ui_notify_pick_sent(fruit_ui_target_t target);
 void fruit_ui_set_weight(int32_t weight_0p1g, bool valid);
 
 #ifdef __cplusplus

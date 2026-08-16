@@ -27,6 +27,8 @@
 #define CAMERA_SIDE_SWITCH_SETTLE_MS (2500U)
 #define CAMERA_SIDE_WARMUP_FRAMES (5U)
 #define CAMERA_PREVIEW_PERIOD_MS (500U)
+#define CAMERA_TASK_PREVIEW_PERIOD_MS (150U)
+#define CAMERA_TASK_PREVIEW_MIN_MS (1000U)
 #define CAMERA_SIDE_SAMPLES      (5U)
 #define CAMERA_SIDE_MAX_FRAMES   (90U)
 #define CAMERA_SIDE_Y_MIN_PX     (50)
@@ -453,10 +455,11 @@ static bool camera_switch_to(bool side_camera)
     return true;
 }
 
-static bool camera_publish_debug_snapshot(uint8_t const                 * p_rgb565_frame,
-                                          app_detection_result_t const * p_results,
-                                          uint32_t                       result_count,
-                                          bool                           side_camera)
+static bool camera_publish_snapshot(uint8_t const                 * p_rgb565_frame,
+                                    app_detection_result_t const * p_results,
+                                    uint32_t                       result_count,
+                                    bool                           side_camera,
+                                    bool                           debug_snapshot)
 {
     fruit_ui_detection_t detections[FRUIT_UI_MAX_DETECTIONS];
     uint32_t detection_count = 0U;
@@ -484,10 +487,15 @@ static bool camera_publish_debug_snapshot(uint8_t const                 * p_rgb5
         detection_count++;
     }
 
-    return fruit_ui_publish_debug_snapshot(p_rgb565_frame,
+    return debug_snapshot ?
+           fruit_ui_publish_debug_snapshot(p_rgb565_frame,
                                            detections,
                                            detection_count,
-                                           side_camera);
+                                           side_camera) :
+           fruit_ui_publish_task_snapshot(p_rgb565_frame,
+                                          detections,
+                                          detection_count,
+                                          side_camera);
 }
 
 static bool camera_collect_side_samples(app_detection_result_t const * p_top_results,
@@ -547,6 +555,12 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
             camera_uart_send_text("SIDE_DET_ERR run\r\n");
             continue;
         }
+
+        (void) camera_publish_snapshot(g_camera_frame,
+                                       g_detection_results,
+                                       result_count,
+                                       true,
+                                       false);
 
         bool sampled_this_frame[APP_DETECTION_MAX_RESULTS] = {false};
         for (uint32_t i = 0U; i < result_count; i++)
@@ -657,8 +671,12 @@ void camera_stream_task(void)
 {
     uint32_t batch_id = 0U;
     TickType_t last_preview_tick = 0U;
+    TickType_t last_task_preview_tick = 0U;
+    TickType_t task_preview_start_tick = 0U;
+    uint32_t active_task_generation = 0U;
     bool recognition_complete = false;
     bool camera_side_active = false;
+    bool task_preview_started = false;
 
     if (camera_debug_uart_init())
     {
@@ -706,8 +724,20 @@ void camera_stream_task(void)
         vTaskDelay(pdMS_TO_TICKS(100U));
     }
 
+    fruit_ui_set_task_camera(false);
+
     while (1)
     {
+        uint32_t const task_generation = fruit_ui_get_task_generation();
+        if (task_generation != active_task_generation)
+        {
+            active_task_generation = task_generation;
+            recognition_complete = false;
+            task_preview_started = false;
+            task_preview_start_tick = 0U;
+            last_task_preview_tick = 0U;
+        }
+
         bool const debug_active = fruit_ui_is_debug_mode_active();
         bool const debug_side_requested = debug_active &&
                                           fruit_ui_debug_side_camera_requested();
@@ -779,10 +809,11 @@ void camera_stream_task(void)
             TickType_t const now = xTaskGetTickCount();
             if ((now - last_preview_tick) >= pdMS_TO_TICKS(CAMERA_PREVIEW_PERIOD_MS))
             {
-                if (camera_publish_debug_snapshot(g_camera_frame,
-                                                  g_detection_results,
-                                                  result_count,
-                                                  camera_side_active))
+                if (camera_publish_snapshot(g_camera_frame,
+                                            g_detection_results,
+                                            result_count,
+                                            camera_side_active,
+                                            true))
                 {
                     last_preview_tick = now;
                 }
@@ -791,6 +822,33 @@ void camera_stream_task(void)
             {
                 (void) camera_stream_send_frame_dump();
             }
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
+
+        TickType_t const task_preview_now = xTaskGetTickCount();
+        if (!task_preview_started)
+        {
+            task_preview_start_tick = task_preview_now;
+            task_preview_started = true;
+        }
+
+        if ((task_preview_now - last_task_preview_tick) >=
+            pdMS_TO_TICKS(CAMERA_TASK_PREVIEW_PERIOD_MS))
+        {
+            if (camera_publish_snapshot(g_camera_frame,
+                                        g_detection_results,
+                                        result_count,
+                                        false,
+                                        false))
+            {
+                last_task_preview_tick = task_preview_now;
+            }
+        }
+
+        if ((task_preview_now - task_preview_start_tick) <
+            pdMS_TO_TICKS(CAMERA_TASK_PREVIEW_MIN_MS))
+        {
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }
@@ -882,10 +940,13 @@ void camera_stream_task(void)
         }
         else if (FRUIT_UI_TASK_TOP_AND_SIDE == task_mode)
         {
+            fruit_ui_set_task_camera(true);
+
             if (!camera_switch_to(true))
             {
                 camera_uart_send_text("CAM_SWITCH_ERR side\r\n");
                 (void) camera_switch_to(false);
+                fruit_ui_set_task_camera(false);
                 continue;
             }
             camera_side_active = true;
@@ -912,6 +973,7 @@ void camera_stream_task(void)
                     vTaskDelay(pdMS_TO_TICKS(1000U));
                 }
                 camera_side_active = false;
+                fruit_ui_set_task_camera(false);
                 continue;
             }
 
@@ -982,6 +1044,11 @@ void camera_stream_task(void)
                 }
             }
             camera_side_active = false;
+
+            if (0U == paired_detection_count)
+            {
+                fruit_ui_set_task_camera(false);
+            }
         }
 
         if (paired_detection_count > 0U)
@@ -1040,6 +1107,8 @@ void camera_stream_task(void)
                     camera_uart_send_text("PICK_ERR ipc_send_retry\r\n");
                     vTaskDelay(pdMS_TO_TICKS(1000U));
                 }
+
+                fruit_ui_notify_pick_sent(requested_target);
 
                 batch_id = selected_batch.batch_id;
                 item_sent[selected_index] = true;
