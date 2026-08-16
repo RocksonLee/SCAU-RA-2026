@@ -18,8 +18,8 @@ typedef struct st_handeye_arm_point
 /**
  * Convert a 640x480 camera pixel coordinate to the robot coordinate system.
  *
- * The homography output and the fixed height are expressed in millimetres.
- * The fixed height is 10 cm (100 mm).
+ * The Z=0 homography output and the fixed target height are expressed in
+ * millimetres. The fixed target height is 10 cm (100 mm).
  *
  * @param[in]  camera_x_px Camera horizontal pixel coordinate [0, 639].
  * @param[in]  camera_y_px Camera vertical pixel coordinate [0, 479].
@@ -45,7 +45,7 @@ bool handeye_pixel_to_arm(int32_t camera_x_px,
 bool handeye_side_pixel_to_arm_z(int32_t side_x_px, double * p_z_mm);
 
 /**
- * Fuse the top-camera XY conversion with the side-camera Z conversion.
+ * Fuse the side-camera Z conversion with height-interpolated top-camera XY.
  */
 bool handeye_pixels_to_arm_3d(int32_t top_x_px,
                               int32_t top_y_px,

@@ -41,14 +41,30 @@
 #define CAMERA_SIDE_Z_SLOPE      (0.39634450194777904)
 #define CAMERA_SIDE_Z_OFFSET     (270.4756856225454)
 #define CAMERA_TOP_ONLY_Z_MM     (100.0)
+#define CAMERA_TOP_Z_LOW_MM      (275.0)
+#define CAMERA_TOP_Z_HIGH_MM     (425.0)
 #define CAMERA_HOMOGRAPHY_EPSILON (1.0e-9)
 
 /* Keep these coefficients synchronized with CPU1 handeye_transform.c. */
-static double const g_camera_to_arm_homography[3][3] =
+static double const g_camera_to_arm_homography_z0[3][3] =
 {
     {0.031114,  0.800983,  -64.142100},
     {0.954234, -0.013392, -101.298640},
     {0.000247, -0.000043,    1.000000},
+};
+
+static double const g_camera_to_arm_homography_z275[3][3] =
+{
+    {0.166329,  0.311028, 10.802838},
+    {0.796301, -0.114012, 26.787988},
+    {0.001480, -0.000806,  1.000000},
+};
+
+static double const g_camera_to_arm_homography_z425[3][3] =
+{
+    {0.127322, -0.270970,  96.431837},
+    {0.309648, -0.456334, 148.252655},
+    {0.001204, -0.002781,   1.000000},
 };
 
 #if APP_DETECTION_MAX_RESULTS != FRUIT_UI_MAX_DETECTIONS
@@ -1381,6 +1397,60 @@ static int32_t camera_round_mm(double value)
     return (int32_t) (value >= 0.0 ? value + 0.5 : value - 0.5);
 }
 
+static bool camera_project_top(double const homography[3][3],
+                               double       u,
+                               double       v,
+                               double     * p_x_mm,
+                               double     * p_y_mm)
+{
+    double const denominator = (homography[2][0] * u) +
+                               (homography[2][1] * v) +
+                                homography[2][2];
+
+    if ((denominator > -CAMERA_HOMOGRAPHY_EPSILON) &&
+        (denominator < CAMERA_HOMOGRAPHY_EPSILON))
+    {
+        return false;
+    }
+
+    *p_x_mm = ((homography[0][0] * u) +
+               (homography[0][1] * v) +
+                homography[0][2]) / denominator;
+    *p_y_mm = ((homography[1][0] * u) +
+               (homography[1][1] * v) +
+                homography[1][2]) / denominator;
+    return true;
+}
+
+static bool camera_top_pixel_to_arm_xy(double   u,
+                                        double   v,
+                                        double   z_mm,
+                                        double * p_x_mm,
+                                        double * p_y_mm)
+{
+    if ((z_mm < CAMERA_TOP_Z_LOW_MM) || (z_mm > CAMERA_TOP_Z_HIGH_MM))
+    {
+        return false;
+    }
+
+    double x_low_mm;
+    double y_low_mm;
+    double x_high_mm;
+    double y_high_mm;
+
+    if (!camera_project_top(g_camera_to_arm_homography_z275, u, v, &x_low_mm, &y_low_mm) ||
+        !camera_project_top(g_camera_to_arm_homography_z425, u, v, &x_high_mm, &y_high_mm))
+    {
+        return false;
+    }
+
+    double const ratio = (z_mm - CAMERA_TOP_Z_LOW_MM) /
+                         (CAMERA_TOP_Z_HIGH_MM - CAMERA_TOP_Z_LOW_MM);
+    *p_x_mm = x_low_mm + (ratio * (x_high_mm - x_low_mm));
+    *p_y_mm = y_low_mm + (ratio * (y_high_mm - y_low_mm));
+    return true;
+}
+
 static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_pair,
                                         fruit_ui_detection_t                * p_detection)
 {
@@ -1403,27 +1473,28 @@ static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_p
         return false;
     }
 
-    double const u = (double) p_pair->top_x;
-    double const v = (double) p_pair->top_y;
-    double const denominator = (g_camera_to_arm_homography[2][0] * u) +
-                               (g_camera_to_arm_homography[2][1] * v) +
-                                g_camera_to_arm_homography[2][2];
-
-    if ((denominator > -CAMERA_HOMOGRAPHY_EPSILON) &&
-        (denominator < CAMERA_HOMOGRAPHY_EPSILON))
-    {
-        return false;
-    }
-
-    double const x_mm = ((g_camera_to_arm_homography[0][0] * u) +
-                         (g_camera_to_arm_homography[0][1] * v) +
-                          g_camera_to_arm_homography[0][2]) / denominator;
-    double const y_mm = ((g_camera_to_arm_homography[1][0] * u) +
-                         (g_camera_to_arm_homography[1][1] * v) +
-                          g_camera_to_arm_homography[1][2]) / denominator;
     double const z_mm = top_only ? CAMERA_TOP_ONLY_Z_MM :
                        ((CAMERA_SIDE_Z_SLOPE * (double) p_pair->side_x) +
                          CAMERA_SIDE_Z_OFFSET);
+    double x_mm;
+    double y_mm;
+
+    bool const xy_valid = top_only ?
+                          camera_project_top(g_camera_to_arm_homography_z0,
+                                             (double) p_pair->top_x,
+                                             (double) p_pair->top_y,
+                                             &x_mm,
+                                             &y_mm) :
+                          camera_top_pixel_to_arm_xy((double) p_pair->top_x,
+                                                     (double) p_pair->top_y,
+                                                     z_mm,
+                                                     &x_mm,
+                                                     &y_mm);
+
+    if (!xy_valid)
+    {
+        return false;
+    }
 
     p_detection->target = target;
     p_detection->x = camera_round_mm(x_mm);
