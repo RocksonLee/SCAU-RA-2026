@@ -437,8 +437,14 @@ static void camera_force_illumination_off(void)
 
 static bool camera_requested_illumination(bool task_recognition_light)
 {
-    return fruit_ui_is_debug_mode_active() ?
-           fruit_ui_debug_light_requested() : task_recognition_light;
+    if (fruit_ui_is_debug_mode_active())
+    {
+        return fruit_ui_debug_light_requested();
+    }
+
+    /* HOME cancels the task, including any stale request held by a delay loop. */
+    return task_recognition_light &&
+           (FRUIT_UI_TASK_NONE != fruit_ui_get_task_mode());
 }
 
 static void camera_delay_with_illumination_guard(uint32_t delay_ms,
@@ -631,6 +637,12 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
     {
         if (fruit_ui_is_debug_mode_active())
         {
+            return false;
+        }
+
+        if (FRUIT_UI_TASK_TOP_AND_SIDE != fruit_ui_get_task_mode())
+        {
+            (void) camera_set_illumination(false);
             return false;
         }
 
@@ -1184,6 +1196,14 @@ void camera_stream_task(void)
             {
                 fruit_ui_set_task_camera(false);
             }
+        }
+
+        /* Do not publish a result from a task that HOME cancelled mid-frame. */
+        if (fruit_ui_is_debug_mode_active() ||
+            (task_mode != fruit_ui_get_task_mode()))
+        {
+            (void) camera_set_illumination(false);
+            continue;
         }
 
         if (paired_detection_count > 0U)

@@ -665,6 +665,24 @@ static void set_debug_threshold(uint32_t percent)
     }
 }
 
+static void cancel_activity_for_home(void)
+{
+    taskENTER_CRITICAL();
+    g_debug_mode_active = false;
+    g_debug_side_camera_requested = false;
+    g_debug_light_requested = false;
+    g_frame_dump_request_pending = false;
+    g_task_mode = FRUIT_UI_TASK_NONE;
+    g_task_generation++;
+    g_task_stream_active = false;
+    g_task_side_camera = false;
+    g_pending_task_side_camera = false;
+    g_task_camera_update_pending = false;
+    taskEXIT_CRITICAL();
+
+    reset_preview_session();
+}
+
 static void on_task_select(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
@@ -709,11 +727,7 @@ static void on_settings(lv_event_t * e)
 static void on_back_debug(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        taskENTER_CRITICAL();
-        g_debug_side_camera_requested = false;
-        g_debug_light_requested = false;
-        g_debug_mode_active = false;
-        taskEXIT_CRITICAL();
+        cancel_activity_for_home();
         show_home();
     }
 }
@@ -806,12 +820,7 @@ static void on_debug_uart_dump(lv_event_t * e)
 static void on_home(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        taskENTER_CRITICAL();
-        g_debug_mode_active = false;
-        g_debug_side_camera_requested = false;
-        g_debug_light_requested = false;
-        g_task_stream_active = false;
-        taskEXIT_CRITICAL();
+        cancel_activity_for_home();
         show_home();
     }
 }
