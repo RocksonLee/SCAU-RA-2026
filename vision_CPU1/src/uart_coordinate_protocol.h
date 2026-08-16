@@ -8,7 +8,7 @@
  *   0: keep the original inverse-kinematics + CAN motor control path.
  *   1: send calibrated arm coordinates to the other board over SCI0 UART.
  */
-#define DM_COORDINATE_UART_ENABLE            (1) //0就是坐标逆解后，继续通过 CAN 控制电机。 1就是不执行这组 CAN 动作，改由 SCI0/UART0 将坐标发给 DM_MC02。
+#define DM_COORDINATE_UART_ENABLE            (0) //0就是坐标逆解后，继续通过 CAN 控制电机。 1就是不执行这组 CAN 动作，改由 SCI0/UART0 将坐标发给 DM_MC02。
 
 #if ((DM_COORDINATE_UART_ENABLE != 0) && (DM_COORDINATE_UART_ENABLE != 1))
  #error "DM_COORDINATE_UART_ENABLE must be 0 or 1."

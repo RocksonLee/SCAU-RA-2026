@@ -16,6 +16,13 @@ typedef enum e_fruit_ui_target
     FRUIT_UI_TARGET_GREEN_GRAPE,
 } fruit_ui_target_t;
 
+typedef enum e_fruit_ui_task_mode
+{
+    FRUIT_UI_TASK_NONE = 0,
+    FRUIT_UI_TASK_TOP_ONLY,
+    FRUIT_UI_TASK_TOP_AND_SIDE,
+} fruit_ui_task_mode_t;
+
 #define FRUIT_UI_MAX_DETECTIONS (3U)
 
 typedef struct st_fruit_ui_detection
@@ -41,6 +48,7 @@ bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame
                                      fruit_ui_detection_t const * p_detections,
                                      uint32_t                     detection_count);
 bool fruit_ui_is_debug_mode_active(void);
+fruit_ui_task_mode_t fruit_ui_get_task_mode(void);
 bool fruit_ui_take_frame_dump_request(void);
 bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target);
 void fruit_ui_set_weight(int32_t weight_0p1g, bool valid);

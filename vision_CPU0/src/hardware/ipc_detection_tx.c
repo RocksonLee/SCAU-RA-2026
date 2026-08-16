@@ -7,11 +7,13 @@
 #include "hal_data.h"
 #include "ipc_detection_protocol.h"
 
-#define IPC_DETECTION_SEND_TIMEOUT_MS (100U)
+#define IPC_DETECTION_WORD_TIMEOUT_MS (500U)
+#define IPC_DETECTION_WORD_GAP_MS     (2U)
 
-static bool ipc_detection_send_word(uint32_t word, TickType_t packet_start)
+static bool ipc_detection_send_word(uint32_t word)
 {
     fsp_err_t err;
+    TickType_t const word_start = xTaskGetTickCount();
 
     do
     {
@@ -19,8 +21,8 @@ static bool ipc_detection_send_word(uint32_t word, TickType_t packet_start)
 
         if (FSP_ERR_OVERFLOW == err)
         {
-            if ((xTaskGetTickCount() - packet_start) >=
-                pdMS_TO_TICKS(IPC_DETECTION_SEND_TIMEOUT_MS))
+            if ((xTaskGetTickCount() - word_start) >=
+                pdMS_TO_TICKS(IPC_DETECTION_WORD_TIMEOUT_MS))
             {
                 return false;
             }
@@ -29,7 +31,14 @@ static bool ipc_detection_send_word(uint32_t word, TickType_t packet_start)
         }
     } while (FSP_ERR_OVERFLOW == err);
 
-    return FSP_SUCCESS == err;
+    if (FSP_SUCCESS != err)
+    {
+        return false;
+    }
+
+    /* Give CPU1 time to pop this word before the next FIFO write. */
+    vTaskDelay(pdMS_TO_TICKS(IPC_DETECTION_WORD_GAP_MS));
+    return true;
 }
 
 bool ipc_detection_send_coordinate_batch(ipc_camera_coordinate_batch_t const * p_batch)
@@ -41,11 +50,9 @@ bool ipc_detection_send_coordinate_batch(ipc_camera_coordinate_batch_t const * p
         return false;
     }
 
-    TickType_t const packet_start = xTaskGetTickCount();
-
-    if (!ipc_detection_send_word(IPC_COORDINATE_BATCH_BEGIN, packet_start) ||
-        !ipc_detection_send_word(p_batch->batch_id, packet_start) ||
-        !ipc_detection_send_word(p_batch->count, packet_start))
+    if (!ipc_detection_send_word(IPC_COORDINATE_BATCH_BEGIN) ||
+        !ipc_detection_send_word(p_batch->batch_id) ||
+        !ipc_detection_send_word(p_batch->count))
     {
         return false;
     }
@@ -54,15 +61,15 @@ bool ipc_detection_send_coordinate_batch(ipc_camera_coordinate_batch_t const * p
     {
         ipc_camera_coordinate_item_t const * p_item = &p_batch->items[i];
 
-        if (!ipc_detection_send_word(p_item->class_id, packet_start) ||
-            !ipc_detection_send_word((uint32_t) p_item->top_x, packet_start) ||
-            !ipc_detection_send_word((uint32_t) p_item->top_y, packet_start) ||
-            !ipc_detection_send_word((uint32_t) p_item->side_x, packet_start) ||
-            !ipc_detection_send_word((uint32_t) p_item->side_y, packet_start))
+        if (!ipc_detection_send_word(p_item->class_id) ||
+            !ipc_detection_send_word((uint32_t) p_item->top_x) ||
+            !ipc_detection_send_word((uint32_t) p_item->top_y) ||
+            !ipc_detection_send_word((uint32_t) p_item->side_x) ||
+            !ipc_detection_send_word((uint32_t) p_item->side_y))
         {
             return false;
         }
     }
 
-    return ipc_detection_send_word(IPC_COORDINATE_BATCH_END, packet_start);
+    return ipc_detection_send_word(IPC_COORDINATE_BATCH_END);
 }

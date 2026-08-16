@@ -59,6 +59,7 @@ static volatile fruit_ui_detection_t g_pending_debug_detections[FRUIT_UI_MAX_DET
 static volatile uint32_t g_pending_debug_detection_count;
 static volatile bool g_debug_detection_update_pending;
 static volatile bool g_debug_mode_active;
+static volatile fruit_ui_task_mode_t g_task_mode = FRUIT_UI_TASK_NONE;
 static volatile bool g_frame_dump_request_pending;
 static uint16_t g_debug_preview_pixels[2][UI_PREVIEW_PIXELS]
     BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
@@ -76,7 +77,6 @@ static bool g_weight_valid;
 static ui_page_t g_current_page = UI_PAGE_HOME;
 static lv_obj_t * g_home_weight_label;
 static lv_obj_t * g_home_detected_label;
-static lv_obj_t * g_home_start_button;
 static lv_obj_t * g_detail_type_label;
 static lv_obj_t * g_detail_coordinate_label;
 static lv_obj_t * g_debug_threshold_label;
@@ -192,7 +192,6 @@ static void prepare_screen(void)
     init_styles();
     g_home_weight_label = NULL;
     g_home_detected_label = NULL;
-    g_home_start_button = NULL;
     g_detail_type_label = NULL;
     g_detail_coordinate_label = NULL;
     g_debug_threshold_label = NULL;
@@ -358,13 +357,6 @@ static void update_home_detection_widgets(void)
                                     0);
     }
 
-    if (g_home_start_button != NULL) {
-        if (g_detection_count == 0U) {
-            lv_obj_add_state(g_home_start_button, LV_STATE_DISABLED);
-        } else {
-            lv_obj_remove_state(g_home_start_button, LV_STATE_DISABLED);
-        }
-    }
 }
 
 static void update_home_weight_widget(void)
@@ -511,11 +503,20 @@ static void set_debug_threshold(uint32_t percent)
     }
 }
 
-static void on_home_start(lv_event_t * e)
+static void on_task_select(lv_event_t * e)
 {
-    if ((lv_event_get_code(e) == LV_EVENT_CLICKED) &&
-        (g_detection_count > 0U)) {
-        show_select();
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        fruit_ui_task_mode_t const mode =
+            (fruit_ui_task_mode_t) (uintptr_t) lv_event_get_user_data(e);
+
+        if (FRUIT_UI_TASK_NONE == g_task_mode) {
+            taskENTER_CRITICAL();
+            g_task_mode = mode;
+            taskEXIT_CRITICAL();
+            show_home();
+        } else if ((mode == g_task_mode) && (g_detection_count > 0U)) {
+            show_select();
+        }
     }
 }
 
@@ -621,7 +622,11 @@ static void on_confirm_pick(lv_event_t * e)
     }
 
     g_selected = FRUIT_UI_TARGET_NONE;
-    show_home();
+    if (g_detection_count > 0U) {
+        show_select();
+    } else {
+        show_home();
+    }
 }
 
 static void on_pick(lv_event_t * e)
@@ -639,6 +644,8 @@ static void on_pick(lv_event_t * e)
 static void show_home(void)
 {
     lv_obj_t * card;
+    lv_obj_t * task_1_button;
+    lv_obj_t * task_2_button;
 
     prepare_screen();
     g_current_page = UI_PAGE_HOME;
@@ -670,7 +677,19 @@ static void show_home(void)
     g_home_detected_label = add_label(card, "None", get_target(FRUIT_UI_TARGET_NONE)->color,
                                       &lv_font_montserrat_16, LV_ALIGN_CENTER, 0, 8);
 
-    g_home_start_button = add_button(lv_screen_active(), "START", 138, 274, 204, 36, on_home_start, NULL);
+    task_1_button = add_button(lv_screen_active(), "TASK 1", 76, 274, 154, 36,
+                               on_task_select,
+                               (void *) (uintptr_t) FRUIT_UI_TASK_TOP_ONLY);
+    task_2_button = add_button(lv_screen_active(), "TASK 2", 250, 274, 154, 36,
+                               on_task_select,
+                               (void *) (uintptr_t) FRUIT_UI_TASK_TOP_AND_SIDE);
+
+    if (FRUIT_UI_TASK_TOP_ONLY == g_task_mode) {
+        lv_obj_add_state(task_2_button, LV_STATE_DISABLED);
+    } else if (FRUIT_UI_TASK_TOP_AND_SIDE == g_task_mode) {
+        lv_obj_add_state(task_1_button, LV_STATE_DISABLED);
+    }
+
     update_home_detection_widgets();
 }
 
@@ -961,7 +980,11 @@ void fruit_ui_process(void)
     }
 
     if (g_current_page == UI_PAGE_HOME) {
-        update_home_detection_widgets();
+        if (g_detection_count > 0U) {
+            show_select();
+        } else {
+            update_home_detection_widgets();
+        }
     } else if ((g_current_page == UI_PAGE_SELECT) &&
                (old_target_mask != detected_target_mask())) {
         show_select();
@@ -1066,6 +1089,11 @@ bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame
 bool fruit_ui_is_debug_mode_active(void)
 {
     return g_debug_mode_active;
+}
+
+fruit_ui_task_mode_t fruit_ui_get_task_mode(void)
+{
+    return g_task_mode;
 }
 
 bool fruit_ui_take_frame_dump_request(void)

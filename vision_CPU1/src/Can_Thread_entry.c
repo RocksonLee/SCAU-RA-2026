@@ -21,6 +21,7 @@ typedef enum e_ipc_coordinate_rx_state
 
 #define IPC_RESULT_QUEUE_LENGTH (4U)
 #define ARM_IK_ELBOW_DIRECTION  (1)
+#define ARM_JOINT_2_MAX_DEG     (5.0)
 
 typedef struct st_ipc_arm_result
 {
@@ -67,6 +68,11 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
      * joint targets first, then trigger them together with run().
      * Joint 4 is mechanically locked and receives no CAN command.
      */
+    if (q2 > ARM_JOINT_2_MAX_DEG)
+    {
+        q2 = ARM_JOINT_2_MAX_DEG;
+    }
+
     CANFD0_Operation_1((int32_t) q1);
     CANFD0_Operation_2((int32_t) q2);
     CANFD0_Operation_3((int32_t) q3);
@@ -309,11 +315,13 @@ void Can_Thread_entry(void *pvParameters) {
         if (ipc_coordinate_pair_take(&pair))
         {
             handeye_arm_point_t arm_point;
+            bool const top_only = (0 == pair.side_x) && (0 == pair.side_y);
 
-            if (handeye_pixels_to_arm_3d(pair.top_x,
-                                         pair.top_y,
-                                         pair.side_x,
-                                         &arm_point))
+            if ((top_only && handeye_pixel_to_arm(pair.top_x, pair.top_y, &arm_point)) ||
+                (!top_only && handeye_pixels_to_arm_3d(pair.top_x,
+                                                       pair.top_y,
+                                                       pair.side_x,
+                                                       &arm_point)))
             {
 #if DM_COORDINATE_UART_ENABLE
                 if (ipc_arm_point_publish(&arm_point, pair.pair_id, pair.class_id))

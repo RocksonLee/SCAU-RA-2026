@@ -34,6 +34,7 @@
 #define CAMERA_SIDE_CAL_X_MAX_PX (640)
 #define CAMERA_SIDE_Z_SLOPE      (0.5631433347759307)
 #define CAMERA_SIDE_Z_OFFSET     (278.6319722003004)
+#define CAMERA_TOP_ONLY_Z_MM     (280.0)
 #define CAMERA_HOMOGRAPHY_EPSILON (1.0e-9)
 
 /* Keep these coefficients synchronized with CPU1 handeye_transform.c. */
@@ -651,6 +652,13 @@ void camera_stream_task(void)
         camera_uart_send_text("FW=CPU0_CEU_V3\r\n");
     }
 
+    /* Do not start the camera until the operator selects a task or opens Settings. */
+    while ((FRUIT_UI_TASK_NONE == fruit_ui_get_task_mode()) &&
+           !fruit_ui_is_debug_mode_active())
+    {
+        vTaskDelay(pdMS_TO_TICKS(20U));
+    }
+
     (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, CAMERA_MUX_SEL, BSP_IO_LEVEL_HIGH);
     vTaskDelay(pdMS_TO_TICKS(CAMERA_MUX_SETTLE_MS));
 
@@ -687,6 +695,13 @@ void camera_stream_task(void)
 
     while (1)
     {
+        if ((FRUIT_UI_TASK_NONE == fruit_ui_get_task_mode()) &&
+            !fruit_ui_is_debug_mode_active())
+        {
+            vTaskDelay(pdMS_TO_TICKS(100U));
+            continue;
+        }
+
         /*
          * A production recognition batch is single-shot.  After every item
          * from the first batch has been picked, keep the normal camera flow
@@ -787,92 +802,128 @@ void camera_stream_task(void)
         fruit_ui_detection_t paired_detections[FRUIT_UI_MAX_DETECTIONS];
         ipc_camera_coordinate_item_t selectable_items[FRUIT_UI_MAX_DETECTIONS];
         uint32_t paired_detection_count = 0U;
+        fruit_ui_task_mode_t const task_mode = fruit_ui_get_task_mode();
 
         if (fruit_ui_is_debug_mode_active())
         {
             continue;
         }
 
-        if (!camera_switch_to(true))
+        if (FRUIT_UI_TASK_TOP_ONLY == task_mode)
         {
-            camera_uart_send_text("CAM_SWITCH_ERR side\r\n");
-            (void) camera_switch_to(false);
-            continue;
-        }
-
-        if (!camera_collect_side_samples(top_results,
-                                         top_result_count,
-                                         side_x,
-                                         side_y,
-                                         side_valid))
-        {
-            while (!camera_switch_to(false))
+            for (uint32_t i = 0U;
+                 (i < top_result_count) && (paired_detection_count < FRUIT_UI_MAX_DETECTIONS);
+                 i++)
             {
-                vTaskDelay(pdMS_TO_TICKS(1000U));
+                ipc_camera_coordinate_item_t const item =
+                {
+                    .class_id = top_results[i].class_id,
+                    .top_x = top_results[i].x,
+                    .top_y = top_results[i].y,
+                    .side_x = 0,
+                    .side_y = 0,
+                };
+                ipc_camera_coordinate_pair_t const pair =
+                {
+                    .pair_id = batch_id + 1U,
+                    .class_id = item.class_id,
+                    .top_x = item.top_x,
+                    .top_y = item.top_y,
+                    .side_x = item.side_x,
+                    .side_y = item.side_y,
+                };
+
+                if (camera_pair_to_ui_detection(&pair,
+                                                &paired_detections[paired_detection_count]))
+                {
+                    selectable_items[paired_detection_count] = item;
+                    paired_detection_count++;
+                }
             }
-            continue;
         }
-
-        ipc_camera_coordinate_batch_t batch =
+        else if (FRUIT_UI_TASK_TOP_AND_SIDE == task_mode)
         {
-            .batch_id = batch_id + 1U,
-            .count = 0U,
-        };
-
-        for (uint32_t target = 0U; target < top_result_count; target++)
-        {
-            if (!side_valid[target])
+            if (!camera_switch_to(true))
             {
+                camera_uart_send_text("CAM_SWITCH_ERR side\r\n");
+                (void) camera_switch_to(false);
                 continue;
             }
 
-            ipc_camera_coordinate_item_t * p_item = &batch.items[batch.count];
-            p_item->class_id = top_results[target].class_id;
-            p_item->top_x = top_results[target].x;
-            p_item->top_y = top_results[target].y;
-            p_item->side_x = side_x[target];
-            p_item->side_y = side_y[target];
-            batch.count++;
-        }
-
-        for (uint32_t i = 0U; i < batch.count; i++)
-        {
-            ipc_camera_coordinate_item_t const * p_item = &batch.items[i];
-            ipc_camera_coordinate_pair_t const pair =
+            if (!camera_collect_side_samples(top_results,
+                                             top_result_count,
+                                             side_x,
+                                             side_y,
+                                             side_valid))
             {
-                .pair_id = batch.batch_id,
-                .class_id = p_item->class_id,
-                .top_x = p_item->top_x,
-                .top_y = p_item->top_y,
-                .side_x = p_item->side_x,
-                .side_y = p_item->side_y,
+                while (!camera_switch_to(false))
+                {
+                    vTaskDelay(pdMS_TO_TICKS(1000U));
+                }
+                continue;
+            }
+
+            ipc_camera_coordinate_batch_t batch =
+            {
+                .batch_id = batch_id + 1U,
+                .count = 0U,
             };
 
-            if ((paired_detection_count < FRUIT_UI_MAX_DETECTIONS) &&
-                camera_pair_to_ui_detection(&pair, &paired_detections[paired_detection_count]))
+            for (uint32_t target = 0U; target < top_result_count; target++)
             {
-                selectable_items[paired_detection_count] = *p_item;
-                paired_detection_count++;
+                if (!side_valid[target])
+                {
+                    continue;
+                }
+
+                ipc_camera_coordinate_item_t * p_item = &batch.items[batch.count];
+                p_item->class_id = top_results[target].class_id;
+                p_item->top_x = top_results[target].x;
+                p_item->top_y = top_results[target].y;
+                p_item->side_x = side_x[target];
+                p_item->side_y = side_y[target];
+                batch.count++;
             }
-            else
+
+            for (uint32_t i = 0U; i < batch.count; i++)
             {
-                camera_uart_send_text("UI_COORD_ERR transform\r\n");
+                ipc_camera_coordinate_item_t const * p_item = &batch.items[i];
+                ipc_camera_coordinate_pair_t const pair =
+                {
+                    .pair_id = batch.batch_id,
+                    .class_id = p_item->class_id,
+                    .top_x = p_item->top_x,
+                    .top_y = p_item->top_y,
+                    .side_x = p_item->side_x,
+                    .side_y = p_item->side_y,
+                };
+
+                if ((paired_detection_count < FRUIT_UI_MAX_DETECTIONS) &&
+                    camera_pair_to_ui_detection(&pair, &paired_detections[paired_detection_count]))
+                {
+                    selectable_items[paired_detection_count] = *p_item;
+                    paired_detection_count++;
+                }
+                else
+                {
+                    camera_uart_send_text("UI_COORD_ERR transform\r\n");
+                }
+            }
+
+            if (!camera_switch_to(false))
+            {
+                camera_uart_send_text("CAM_SWITCH_ERR top\r\n");
+
+                while (!camera_switch_to(false))
+                {
+                    vTaskDelay(pdMS_TO_TICKS(1000U));
+                }
             }
         }
 
         if (paired_detection_count > 0U)
         {
             fruit_ui_set_detections(paired_detections, paired_detection_count);
-        }
-
-        if (!camera_switch_to(false))
-        {
-            camera_uart_send_text("CAM_SWITCH_ERR top\r\n");
-
-            while (!camera_switch_to(false))
-            {
-                vTaskDelay(pdMS_TO_TICKS(1000U));
-            }
         }
 
         if (paired_detection_count > 0U)
@@ -965,12 +1016,15 @@ static int32_t camera_round_mm(double value)
 static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_pair,
                                         fruit_ui_detection_t                * p_detection)
 {
+    bool const top_only = (NULL != p_pair) &&
+                          (0 == p_pair->side_x) && (0 == p_pair->side_y);
+
     if ((NULL == p_pair) || (NULL == p_detection) ||
         (p_pair->top_x < 0) || (p_pair->top_x >= (int32_t) CAMERA_OV5640_WIDTH) ||
         (p_pair->top_y < 0) || (p_pair->top_y >= (int32_t) CAMERA_OV5640_HEIGHT) ||
-        (p_pair->side_y < CAMERA_SIDE_Y_MIN_PX) ||
-        (p_pair->side_x < CAMERA_SIDE_CAL_X_MIN_PX) ||
-        (p_pair->side_x > CAMERA_SIDE_CAL_X_MAX_PX))
+        (!top_only && ((p_pair->side_y < CAMERA_SIDE_Y_MIN_PX) ||
+                       (p_pair->side_x < CAMERA_SIDE_CAL_X_MIN_PX) ||
+                       (p_pair->side_x > CAMERA_SIDE_CAL_X_MAX_PX))))
     {
         return false;
     }
@@ -999,8 +1053,9 @@ static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_p
     double const y_mm = ((g_camera_to_arm_homography[1][0] * u) +
                          (g_camera_to_arm_homography[1][1] * v) +
                           g_camera_to_arm_homography[1][2]) / denominator;
-    double const z_mm = (CAMERA_SIDE_Z_SLOPE * (double) p_pair->side_x) +
-                         CAMERA_SIDE_Z_OFFSET;
+    double const z_mm = top_only ? CAMERA_TOP_ONLY_Z_MM :
+                       ((CAMERA_SIDE_Z_SLOPE * (double) p_pair->side_x) +
+                         CAMERA_SIDE_Z_OFFSET);
 
     p_detection->target = target;
     p_detection->x = camera_round_mm(x_mm);
