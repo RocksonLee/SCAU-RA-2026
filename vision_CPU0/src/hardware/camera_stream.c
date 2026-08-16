@@ -57,6 +57,7 @@ static volatile bool g_uart_tx_busy;
 static uart_callback_args_t g_uart_callback_memory;
 static char g_uart_line[CAMERA_UART_LINE_BYTES];
 static app_detection_result_t g_detection_results[APP_DETECTION_MAX_RESULTS];
+static bool g_camera_illumination_enabled;
 
 static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_pair,
                                         fruit_ui_detection_t                * p_detection);
@@ -378,32 +379,87 @@ static int32_t camera_median_5(int32_t const samples[CAMERA_SIDE_SAMPLES])
     return sorted[CAMERA_SIDE_SAMPLES / 2U];
 }
 
-static void camera_discard_settle_frames(void)
+static bool camera_set_illumination(bool enabled)
 {
-    vTaskDelay(pdMS_TO_TICKS(CAMERA_SWITCH_SETTLE_MS));
+    if (enabled == g_camera_illumination_enabled)
+    {
+        return true;
+    }
+
+    if (!camera_ov5640_set_strobe_led(enabled))
+    {
+        camera_uart_send_text(enabled ? "CAM_LED_ERR task_on\r\n" :
+                                        "CAM_LED_ERR idle_off\r\n");
+        return false;
+    }
+
+    g_camera_illumination_enabled = enabled;
+    return true;
+}
+
+static void camera_force_illumination_off(void)
+{
+    if (!camera_ov5640_set_strobe_led(false))
+    {
+        camera_uart_send_text("CAM_LED_ERR force_off\r\n");
+        g_camera_illumination_enabled = true;
+        return;
+    }
+
+    g_camera_illumination_enabled = false;
+}
+
+static bool camera_requested_illumination(bool task_recognition_light)
+{
+    return fruit_ui_is_debug_mode_active() ?
+           fruit_ui_debug_light_requested() : task_recognition_light;
+}
+
+static void camera_delay_with_illumination_guard(uint32_t delay_ms,
+                                                 bool     task_recognition_light)
+{
+    uint32_t remaining_ms = delay_ms;
+
+    while (remaining_ms > 0U)
+    {
+        uint32_t const chunk_ms = (remaining_ms > 20U) ? 20U : remaining_ms;
+        vTaskDelay(pdMS_TO_TICKS(chunk_ms));
+        remaining_ms -= chunk_ms;
+
+        (void) camera_set_illumination(
+            camera_requested_illumination(task_recognition_light));
+    }
+}
+
+static void camera_discard_settle_frames(bool task_recognition_light)
+{
+    camera_delay_with_illumination_guard(CAMERA_SWITCH_SETTLE_MS,
+                                         task_recognition_light);
 
     for (uint32_t i = 0U; i < CAMERA_DISCARD_FRAMES; i++)
     {
         (void) camera_capture_frame_with_retry(g_camera_frame);
-        vTaskDelay(pdMS_TO_TICKS(100U));
+        camera_delay_with_illumination_guard(100U, task_recognition_light);
     }
 }
 
-static void camera_warmup_side_camera(void)
+static void camera_warmup_side_camera(bool task_recognition_light)
 {
-    vTaskDelay(pdMS_TO_TICKS(CAMERA_SIDE_SWITCH_SETTLE_MS));
+    camera_delay_with_illumination_guard(CAMERA_SIDE_SWITCH_SETTLE_MS,
+                                         task_recognition_light);
 
     for (uint32_t frame = 0U; frame < CAMERA_SIDE_WARMUP_FRAMES; frame++)
     {
         (void) camera_capture_frame_with_retry(g_camera_frame);
-        vTaskDelay(pdMS_TO_TICKS(CAMERA_CAPTURE_RETRY_MS));
+        camera_delay_with_illumination_guard(CAMERA_CAPTURE_RETRY_MS,
+                                             task_recognition_light);
     }
 }
 
-static bool camera_switch_to(bool side_camera)
+static bool camera_switch_to(bool side_camera, bool task_recognition_light)
 {
     /* Ensure the currently selected module's illumination is off before power-down. */
-    (void) camera_ov5640_set_strobe_led(false);
+    camera_force_illumination_off();
 
     camera_ov5640_result_t const stop_result = camera_ov5640_stop();
 
@@ -431,12 +487,11 @@ static bool camera_switch_to(bool side_camera)
             return false;
         }
 
-        if (!camera_ov5640_set_strobe_led(true))
-        {
-            camera_uart_send_text("CAM_LED_ERR top_on\r\n");
-        }
+        camera_force_illumination_off();
+        (void) camera_set_illumination(
+            camera_requested_illumination(task_recognition_light));
 
-        camera_discard_settle_frames();
+        camera_discard_settle_frames(task_recognition_light);
         camera_uart_send_text("CAM_ACTIVE TOP\r\n");
         return true;
     }
@@ -449,13 +504,12 @@ static bool camera_switch_to(bool side_camera)
         return false;
     }
 
-    if (!camera_ov5640_set_strobe_led(true))
-    {
-        camera_uart_send_text("CAM_LED_ERR side_on\r\n");
-    }
+    camera_force_illumination_off();
+    (void) camera_set_illumination(
+        camera_requested_illumination(task_recognition_light));
 
     /* Bad warm-up frames are discarded, but they do not block recognition. */
-    camera_warmup_side_camera();
+    camera_warmup_side_camera(task_recognition_light);
     camera_uart_send_text("CAM_ACTIVE SIDE\r\n");
     return true;
 }
@@ -725,10 +779,7 @@ void camera_stream_task(void)
         }
     }
 
-    if (!camera_ov5640_set_strobe_led(true))
-    {
-        camera_uart_send_text("CAM_LED_ERR top_on\r\n");
-    }
+    camera_force_illumination_off();
 
     if (!app_detection_init())
     {
@@ -742,12 +793,19 @@ void camera_stream_task(void)
 
     camera_uart_send_ov5640_diagnostics();
 
-    vTaskDelay(pdMS_TO_TICKS(CAMERA_AE_SETTLE_MS));
+    bool const initial_recognition_active =
+        (FRUIT_UI_TASK_NONE != fruit_ui_get_task_mode()) &&
+        !fruit_ui_is_debug_mode_active();
+    (void) camera_set_illumination(
+        camera_requested_illumination(initial_recognition_active));
+
+    camera_delay_with_illumination_guard(CAMERA_AE_SETTLE_MS,
+                                         initial_recognition_active);
 
     for (uint32_t i = 0U; i < CAMERA_DISCARD_FRAMES; i++)
     {
         (void) camera_capture_frame_with_retry(g_camera_frame);
-        vTaskDelay(pdMS_TO_TICKS(100U));
+        camera_delay_with_illumination_guard(100U, initial_recognition_active);
     }
 
     fruit_ui_set_task_camera(false);
@@ -769,16 +827,21 @@ void camera_stream_task(void)
         bool const debug_active = fruit_ui_is_debug_mode_active();
         bool const debug_side_requested = debug_active &&
                                           fruit_ui_debug_side_camera_requested();
+        bool const recognition_active =
+            !debug_active &&
+            (FRUIT_UI_TASK_NONE != fruit_ui_get_task_mode()) &&
+            !recognition_complete;
 
         if (debug_side_requested != camera_side_active)
         {
-            if (!camera_switch_to(debug_side_requested))
+            if (!camera_switch_to(debug_side_requested,
+                                  recognition_active && !debug_side_requested))
             {
                 camera_uart_send_text(debug_side_requested ?
                                       "CAM_SWITCH_ERR debug_side\r\n" :
                                       "CAM_SWITCH_ERR debug_top\r\n");
 
-                if (debug_side_requested && camera_switch_to(false))
+                if (debug_side_requested && camera_switch_to(false, false))
                 {
                     camera_side_active = false;
                 }
@@ -790,6 +853,13 @@ void camera_stream_task(void)
             camera_side_active = debug_side_requested;
             last_preview_tick = 0U;
         }
+
+        bool const task_recognition_now =
+            !fruit_ui_is_debug_mode_active() &&
+            (FRUIT_UI_TASK_NONE != fruit_ui_get_task_mode()) &&
+            !recognition_complete;
+        (void) camera_set_illumination(
+            camera_requested_illumination(task_recognition_now));
 
         if ((FRUIT_UI_TASK_NONE == fruit_ui_get_task_mode()) &&
             !fruit_ui_is_debug_mode_active())
@@ -970,10 +1040,10 @@ void camera_stream_task(void)
         {
             fruit_ui_set_task_camera(true);
 
-            if (!camera_switch_to(true))
+            if (!camera_switch_to(true, true))
             {
                 camera_uart_send_text("CAM_SWITCH_ERR side\r\n");
-                (void) camera_switch_to(false);
+                (void) camera_switch_to(false, true);
                 fruit_ui_set_task_camera(false);
                 continue;
             }
@@ -996,7 +1066,7 @@ void camera_stream_task(void)
                     continue;
                 }
 
-                while (!camera_switch_to(false))
+                while (!camera_switch_to(false, true))
                 {
                     vTaskDelay(pdMS_TO_TICKS(1000U));
                 }
@@ -1062,11 +1132,11 @@ void camera_stream_task(void)
                 continue;
             }
 
-            if (!camera_switch_to(false))
+            if (!camera_switch_to(false, false))
             {
                 camera_uart_send_text("CAM_SWITCH_ERR top\r\n");
 
-                while (!camera_switch_to(false))
+                while (!camera_switch_to(false, false))
                 {
                     vTaskDelay(pdMS_TO_TICKS(1000U));
                 }
@@ -1081,6 +1151,7 @@ void camera_stream_task(void)
 
         if (paired_detection_count > 0U)
         {
+            (void) camera_set_illumination(false);
             fruit_ui_set_detections(paired_detections, paired_detection_count);
         }
 

@@ -78,6 +78,7 @@ static volatile uint32_t g_pending_debug_detection_count;
 static volatile bool g_debug_detection_update_pending;
 static volatile bool g_debug_mode_active;
 static volatile bool g_debug_side_camera_requested;
+static volatile bool g_debug_light_requested;
 static TickType_t g_debug_camera_button_open_tick;
 static volatile fruit_ui_task_mode_t g_task_mode = FRUIT_UI_TASK_NONE;
 static volatile uint32_t g_task_generation;
@@ -122,6 +123,7 @@ static lv_obj_t * g_debug_slider;
 static lv_obj_t * g_debug_preview_image;
 static lv_obj_t * g_debug_camera_title;
 static lv_obj_t * g_debug_camera_button;
+static lv_obj_t * g_debug_light_button;
 static lv_obj_t * g_task_preview_image;
 static lv_obj_t * g_task_camera_title;
 static lv_obj_t * g_task_camera_status;
@@ -332,6 +334,7 @@ static void prepare_screen(void)
     g_debug_preview_image = NULL;
     g_debug_camera_title = NULL;
     g_debug_camera_button = NULL;
+    g_debug_light_button = NULL;
     g_task_preview_image = NULL;
     g_task_camera_title = NULL;
     g_task_camera_status = NULL;
@@ -694,7 +697,10 @@ static void on_task_select(lv_event_t * e)
 static void on_settings(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        taskENTER_CRITICAL();
         g_debug_side_camera_requested = false;
+        g_debug_light_requested = false;
+        taskEXIT_CRITICAL();
         g_debug_camera_button_open_tick = xTaskGetTickCount();
         show_debug();
     }
@@ -703,8 +709,11 @@ static void on_settings(lv_event_t * e)
 static void on_back_debug(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        taskENTER_CRITICAL();
         g_debug_side_camera_requested = false;
+        g_debug_light_requested = false;
         g_debug_mode_active = false;
+        taskEXIT_CRITICAL();
         show_home();
     }
 }
@@ -800,6 +809,7 @@ static void on_home(lv_event_t * e)
         taskENTER_CRITICAL();
         g_debug_mode_active = false;
         g_debug_side_camera_requested = false;
+        g_debug_light_requested = false;
         g_task_stream_active = false;
         taskEXIT_CRITICAL();
         show_home();
@@ -819,6 +829,28 @@ static void on_arm_zero(lv_event_t * e)
         taskENTER_CRITICAL();
         g_arm_zero_request_pending = true;
         taskEXIT_CRITICAL();
+    }
+}
+
+static void on_debug_light_toggle(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        bool const light_requested = !g_debug_light_requested;
+
+        taskENTER_CRITICAL();
+        g_debug_light_requested = light_requested;
+        taskEXIT_CRITICAL();
+
+        if (g_debug_light_button != NULL) {
+            lv_obj_t * label = lv_obj_get_child(g_debug_light_button, 0);
+            if (label != NULL) {
+                lv_label_set_text(label, light_requested ? "LIGHT OFF" : "LIGHT ON");
+            }
+            lv_obj_set_style_bg_color(g_debug_light_button,
+                                      light_requested ? lv_color_hex(0x1F7A5A) :
+                                                        lv_color_hex(0x31445A),
+                                      0);
+        }
     }
 }
 
@@ -990,6 +1022,8 @@ static void show_debug(void)
                                      &lv_font_montserrat_16, LV_ALIGN_TOP_MID, 0, 15);
     g_debug_camera_button = add_small_button(lv_screen_active(), "SIDE", 84, 12, 76, 30,
                                              on_debug_camera_toggle, NULL);
+    g_debug_light_button = add_small_button(lv_screen_active(), "LIGHT ON", 392, 12, 76, 30,
+                                            on_debug_light_toggle, NULL);
 
     add_preview_backdrop(lv_screen_active(), 4, 52);
     g_debug_preview_image = lv_image_create(lv_screen_active());
@@ -1570,6 +1604,11 @@ bool fruit_ui_is_debug_mode_active(void)
 bool fruit_ui_debug_side_camera_requested(void)
 {
     return g_debug_side_camera_requested;
+}
+
+bool fruit_ui_debug_light_requested(void)
+{
+    return g_debug_light_requested;
 }
 
 fruit_ui_task_mode_t fruit_ui_get_task_mode(void)

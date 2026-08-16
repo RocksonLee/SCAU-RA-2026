@@ -55,6 +55,7 @@ bool fruit_ui_publish_task_snapshot(uint8_t const              * p_rgb565_frame,
 void fruit_ui_set_task_camera(bool side_camera);
 bool fruit_ui_is_debug_mode_active(void);
 bool fruit_ui_debug_side_camera_requested(void);
+bool fruit_ui_debug_light_requested(void);
 fruit_ui_task_mode_t fruit_ui_get_task_mode(void);
 uint32_t fruit_ui_get_task_generation(void);
 bool fruit_ui_take_frame_dump_request(void);
