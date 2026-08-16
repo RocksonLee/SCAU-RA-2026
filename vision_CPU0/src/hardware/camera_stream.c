@@ -29,8 +29,9 @@
 #define CAMERA_PREVIEW_PERIOD_MS (500U)
 #define CAMERA_SIDE_SAMPLES      (5U)
 #define CAMERA_SIDE_MAX_FRAMES   (90U)
-#define CAMERA_SIDE_X_MIN_PX     (92)
-#define CAMERA_SIDE_X_MAX_PX     (338)
+#define CAMERA_SIDE_Y_MIN_PX     (50)
+#define CAMERA_SIDE_CAL_X_MIN_PX (0)
+#define CAMERA_SIDE_CAL_X_MAX_PX (640)
 #define CAMERA_SIDE_Z_SLOPE      (0.5631433347759307)
 #define CAMERA_SIDE_Z_OFFSET     (278.6319722003004)
 #define CAMERA_HOMOGRAPHY_EPSILON (1.0e-9)
@@ -528,7 +529,7 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
                                      g_detection_results,
                                      APP_DETECTION_MAX_RESULTS,
                                      &result_count,
-                                     camera_uart_send_text))
+                                     NULL))
         {
             camera_uart_send_text("SIDE_DET_ERR run\r\n");
             continue;
@@ -537,9 +538,20 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
         bool sampled_this_frame[APP_DETECTION_MAX_RESULTS] = {false};
         for (uint32_t i = 0U; i < result_count; i++)
         {
-            if (g_detection_results[i].x < CAMERA_SIDE_X_MIN_PX)
+            if (g_detection_results[i].y < CAMERA_SIDE_Y_MIN_PX)
             {
                 continue;
+            }
+
+            int const det_count = snprintf(g_uart_line,
+                                           sizeof(g_uart_line),
+                                           "SIDE_DET class=%lu x=%ld y=%ld\r\n",
+                                           (unsigned long) g_detection_results[i].class_id,
+                                           (long) g_detection_results[i].x,
+                                           (long) g_detection_results[i].y);
+            if ((det_count > 0) && ((size_t) det_count < sizeof(g_uart_line)))
+            {
+                camera_uart_send_text(g_uart_line);
             }
 
             for (uint32_t target = 0U; target < target_count; target++)
@@ -956,8 +968,9 @@ static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_p
     if ((NULL == p_pair) || (NULL == p_detection) ||
         (p_pair->top_x < 0) || (p_pair->top_x >= (int32_t) CAMERA_OV5640_WIDTH) ||
         (p_pair->top_y < 0) || (p_pair->top_y >= (int32_t) CAMERA_OV5640_HEIGHT) ||
-        (p_pair->side_x < CAMERA_SIDE_X_MIN_PX) ||
-        (p_pair->side_x > CAMERA_SIDE_X_MAX_PX))
+        (p_pair->side_y < CAMERA_SIDE_Y_MIN_PX) ||
+        (p_pair->side_x < CAMERA_SIDE_CAL_X_MIN_PX) ||
+        (p_pair->side_x > CAMERA_SIDE_CAL_X_MAX_PX))
     {
         return false;
     }
