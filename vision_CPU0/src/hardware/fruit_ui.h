@@ -58,6 +58,7 @@ bool fruit_ui_debug_side_camera_requested(void);
 fruit_ui_task_mode_t fruit_ui_get_task_mode(void);
 uint32_t fruit_ui_get_task_generation(void);
 bool fruit_ui_take_frame_dump_request(void);
+bool fruit_ui_take_arm_zero_request(void);
 bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target);
 void fruit_ui_notify_pick_sent(fruit_ui_target_t target);
 void fruit_ui_set_weight(int32_t weight_0p1g, bool valid);

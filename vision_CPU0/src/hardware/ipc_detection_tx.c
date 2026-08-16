@@ -73,3 +73,8 @@ bool ipc_detection_send_coordinate_batch(ipc_camera_coordinate_batch_t const * p
 
     return ipc_detection_send_word(IPC_COORDINATE_BATCH_END);
 }
+
+bool ipc_detection_send_arm_zero(void)
+{
+    return ipc_detection_send_word(IPC_ARM_ZERO_COMMAND);
+}

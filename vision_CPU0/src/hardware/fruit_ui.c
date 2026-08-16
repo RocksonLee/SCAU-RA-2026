@@ -86,6 +86,7 @@ static volatile bool g_task_side_camera;
 static volatile bool g_pending_task_side_camera;
 static volatile bool g_task_camera_update_pending;
 static volatile bool g_frame_dump_request_pending;
+static volatile bool g_arm_zero_request_pending;
 static uint16_t g_debug_preview_pixels[2][UI_PREVIEW_PIXELS]
     BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
 static lv_image_dsc_t g_debug_preview_dsc[2];
@@ -812,6 +813,15 @@ static void on_back_select(lv_event_t * e)
     }
 }
 
+static void on_arm_zero(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        taskENTER_CRITICAL();
+        g_arm_zero_request_pending = true;
+        taskEXIT_CRITICAL();
+    }
+}
+
 static void on_confirm_pick(lv_event_t * e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
@@ -1104,6 +1114,7 @@ static void show_select(void)
     g_task_stream_active = false;
 
     add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_home, NULL);
+    add_small_button(lv_screen_active(), "ZERO", 400, 12, 68, 30, on_arm_zero, NULL);
     add_label(lv_screen_active(), "Pick Detected Fruit", lv_color_hex(0x20303F),
               &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 16);
     add_label(lv_screen_active(), "Choose a fruit; completed weights stay locked",
@@ -1578,6 +1589,17 @@ bool fruit_ui_take_frame_dump_request(void)
     taskENTER_CRITICAL();
     requested = g_frame_dump_request_pending;
     g_frame_dump_request_pending = false;
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+bool fruit_ui_take_arm_zero_request(void)
+{
+    bool requested;
+
+    taskENTER_CRITICAL();
+    requested = g_arm_zero_request_pending;
+    g_arm_zero_request_pending = false;
     taskEXIT_CRITICAL();
     return requested;
 }

@@ -39,6 +39,7 @@ static volatile uint32_t g_pair_queue_read;
 static ipc_arm_result_t g_arm_queue[IPC_RESULT_QUEUE_LENGTH];
 static volatile uint32_t g_arm_queue_write;
 static volatile uint32_t g_arm_queue_read;
+static volatile bool g_arm_zero_request_pending;
 
 #if DM_COORDINATE_UART_ENABLE
 extern TaskHandle_t Uart_dm_thread;
@@ -86,6 +87,15 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
     CANFD0_Operation_5((int32_t) (ARM_JOINT_5_OFFSET_DEG + q5));
     run();
     return true;
+}
+
+static void arm_move_to_zero(void)
+{
+    CANFD0_Operation_1(0);
+    CANFD0_Operation_2(0);
+    CANFD0_Operation_3(0);
+    CANFD0_Operation_5(0);
+    run();
 }
 #endif
 
@@ -169,6 +179,13 @@ void ipc0_callback(ipc_callback_args_t *p_args)
         receive_state = IPC_RX_READ_BATCH_ID;
         return;
 	}
+
+    if (IPC_ARM_ZERO_COMMAND == p_args->message)
+    {
+        g_arm_zero_request_pending = true;
+        ipc_coordinate_rx_reset(&receive_state);
+        return;
+    }
 
 	switch (receive_state)
 	{
@@ -317,6 +334,22 @@ void Can_Thread_entry(void *pvParameters) {
 #endif
 	while (1)
 	{
+#if !DM_COORDINATE_UART_ENABLE
+        bool arm_zero_requested;
+
+        taskENTER_CRITICAL();
+        arm_zero_requested = g_arm_zero_request_pending;
+        g_arm_zero_request_pending = false;
+        taskEXIT_CRITICAL();
+
+        if (arm_zero_requested)
+        {
+            arm_move_to_zero();
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
+#endif
+
         ipc_camera_coordinate_pair_t pair;
 
         if (ipc_coordinate_pair_take(&pair))

@@ -503,6 +503,22 @@ static bool camera_publish_snapshot(uint8_t const                 * p_rgb565_fra
                                           side_camera);
 }
 
+static void camera_process_arm_zero_request(void)
+{
+    if (!fruit_ui_take_arm_zero_request())
+    {
+        return;
+    }
+
+    while (!ipc_detection_send_arm_zero())
+    {
+        camera_uart_send_text("ARM_ZERO_ERR ipc_send_retry\r\n");
+        vTaskDelay(pdMS_TO_TICKS(1000U));
+    }
+
+    camera_uart_send_text("ARM_ZERO_IPC_SENT\r\n");
+}
+
 static bool camera_collect_side_samples(app_detection_result_t const * p_top_results,
                                         uint32_t                       target_count,
                                         int32_t                      * p_side_x,
@@ -738,6 +754,8 @@ void camera_stream_task(void)
 
     while (1)
     {
+        camera_process_arm_zero_request();
+
         uint32_t const task_generation = fruit_ui_get_task_generation();
         if (task_generation != active_task_generation)
         {
@@ -1074,6 +1092,8 @@ void camera_stream_task(void)
 
             while (remaining_count > 0U)
             {
+                camera_process_arm_zero_request();
+
                 if (fruit_ui_is_debug_mode_active())
                 {
                     debug_interrupted = true;
