@@ -30,7 +30,7 @@
 #define DET_PIGMENT_MIN_PIXELS      (6U)
 #define DET_CHROMA_MIN_PERMILLE     (12U)
 #define DET_DARK_MIN_PERMILLE       (30U)
-/* VBTBKR[0..5] are reserved for the detection settings record. */
+/* VBTBKR[0..5]w are reserved for the detection settings record. */
 #define DET_SETTINGS_MAGIC_0        (0x47U)
 #define DET_SETTINGS_MAGIC_1        (0x50U)
 #define DET_SETTINGS_VERSION        (2U)

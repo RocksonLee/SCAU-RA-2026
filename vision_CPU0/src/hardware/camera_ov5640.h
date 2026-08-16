@@ -40,6 +40,7 @@ camera_ov5640_result_t camera_ov5640_stop(void);
 camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame);
 uint16_t camera_ov5640_chip_id(void);
 bool camera_ov5640_read_reg(uint16_t reg, uint8_t * p_val);
+bool camera_ov5640_set_strobe_led(bool enabled);
 uint32_t camera_ov5640_last_ceu_events(void);
 uint32_t camera_ov5640_last_error_step(void);
 uint16_t camera_ov5640_last_failed_reg(void);

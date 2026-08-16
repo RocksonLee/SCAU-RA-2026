@@ -15,6 +15,10 @@
 #define OV5640_RESET_RETRIES        (3U)
 #define OV5640_REG_WRITE_RETRIES    (3U)
 #define OV5640_FRAME_SENTINEL       (0xA5U)
+#define OV5640_REG_PAD_OUTPUT_ENABLE (0x3016U)
+#define OV5640_REG_PAD_OUTPUT_VALUE  (0x3019U)
+#define OV5640_REG_PAD_SELECT        (0x301CU)
+#define OV5640_STROBE_PAD_BIT        (0x02U)
 
 #define OV5640_PIN_RESET            BSP_IO_PORT_07_PIN_09
 #define OV5640_PIN_PWDN             BSP_IO_PORT_07_PIN_10
@@ -411,6 +415,46 @@ bool camera_ov5640_read_reg(uint16_t reg, uint8_t * p_val)
     }
 
     return ov5640_read_reg(reg, p_val);
+}
+
+static bool ov5640_update_reg_bits(uint16_t reg, uint8_t mask, bool set_bits)
+{
+    uint8_t value = 0U;
+
+    if (!ov5640_read_reg(reg, &value))
+    {
+        return false;
+    }
+
+    value = set_bits ? (uint8_t) (value | mask) :
+                       (uint8_t) (value & (uint8_t) ~mask);
+    return ov5640_write_reg(reg, value);
+}
+
+bool camera_ov5640_set_strobe_led(bool enabled)
+{
+    /* Drive STROBE low before changing its pad direction or source. */
+    if (!ov5640_update_reg_bits(OV5640_REG_PAD_OUTPUT_VALUE,
+                                OV5640_STROBE_PAD_BIT,
+                                false))
+    {
+        return false;
+    }
+
+    if (!enabled)
+    {
+        return true;
+    }
+
+    return ov5640_update_reg_bits(OV5640_REG_PAD_OUTPUT_ENABLE,
+                                  OV5640_STROBE_PAD_BIT,
+                                  true) &&
+           ov5640_update_reg_bits(OV5640_REG_PAD_SELECT,
+                                  OV5640_STROBE_PAD_BIT,
+                                  true) &&
+           ov5640_update_reg_bits(OV5640_REG_PAD_OUTPUT_VALUE,
+                                  OV5640_STROBE_PAD_BIT,
+                                  true);
 }
 
 uint32_t camera_ov5640_last_ceu_events(void)

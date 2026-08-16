@@ -59,6 +59,8 @@ static volatile fruit_ui_detection_t g_pending_debug_detections[FRUIT_UI_MAX_DET
 static volatile uint32_t g_pending_debug_detection_count;
 static volatile bool g_debug_detection_update_pending;
 static volatile bool g_debug_mode_active;
+static volatile bool g_debug_side_camera_requested;
+static TickType_t g_debug_camera_button_open_tick;
 static volatile fruit_ui_task_mode_t g_task_mode = FRUIT_UI_TASK_NONE;
 static volatile bool g_frame_dump_request_pending;
 static uint16_t g_debug_preview_pixels[2][UI_PREVIEW_PIXELS]
@@ -84,6 +86,8 @@ static lv_obj_t * g_debug_save_label;
 static lv_obj_t * g_debug_results_label;
 static lv_obj_t * g_debug_slider;
 static lv_obj_t * g_debug_preview_image;
+static lv_obj_t * g_debug_camera_title;
+static lv_obj_t * g_debug_camera_button;
 static lv_obj_t * g_debug_boxes[FRUIT_UI_MAX_DETECTIONS];
 static lv_obj_t * g_debug_box_labels[FRUIT_UI_MAX_DETECTIONS];
 static bool g_style_ready;
@@ -199,6 +203,8 @@ static void prepare_screen(void)
     g_debug_results_label = NULL;
     g_debug_slider = NULL;
     g_debug_preview_image = NULL;
+    g_debug_camera_title = NULL;
+    g_debug_camera_button = NULL;
     for (uint32_t i = 0U; i < FRUIT_UI_MAX_DETECTIONS; i++) {
         g_debug_boxes[i] = NULL;
         g_debug_box_labels[i] = NULL;
@@ -523,6 +529,8 @@ static void on_task_select(lv_event_t * e)
 static void on_settings(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        g_debug_side_camera_requested = false;
+        g_debug_camera_button_open_tick = xTaskGetTickCount();
         g_debug_mode_active = true;
         show_debug();
     }
@@ -531,8 +539,48 @@ static void on_settings(lv_event_t * e)
 static void on_back_debug(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        g_debug_side_camera_requested = false;
         g_debug_mode_active = false;
         show_home();
+    }
+}
+
+static void on_debug_camera_toggle(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        if ((xTaskGetTickCount() - g_debug_camera_button_open_tick) <
+            pdMS_TO_TICKS(350U)) {
+            return;
+        }
+
+        bool const request_side = !g_debug_side_camera_requested;
+
+        taskENTER_CRITICAL();
+        g_debug_side_camera_requested = request_side;
+        g_debug_preview_ready = false;
+        g_debug_detection_update_pending = false;
+        g_pending_debug_detection_count = 0U;
+        taskEXIT_CRITICAL();
+
+        g_debug_detection_count = 0U;
+        update_debug_results_widget();
+
+        if (g_debug_camera_title != NULL) {
+            lv_label_set_text(g_debug_camera_title,
+                              request_side ? "SIDE CAMERA DEBUG" : "TOP CAMERA DEBUG");
+        }
+
+        if (g_debug_camera_button != NULL) {
+            lv_obj_t * label = lv_obj_get_child(g_debug_camera_button, 0);
+            if (label != NULL) {
+                lv_label_set_text(label, request_side ? "TOP" : "SIDE");
+            }
+        }
+
+        if (g_debug_save_label != NULL) {
+            lv_label_set_text(g_debug_save_label, "Camera switching...");
+            lv_obj_set_style_text_color(g_debug_save_label, lv_color_hex(0x31445A), 0);
+        }
     }
 }
 
@@ -703,10 +751,10 @@ static void show_debug(void)
     g_current_page = UI_PAGE_DEBUG;
 
     add_small_button(lv_screen_active(), "BACK", 12, 12, 68, 30, on_back_debug, NULL);
-    add_label(lv_screen_active(), "TOP CAMERA DEBUG", lv_color_hex(0x20303F),
-              &lv_font_montserrat_16, LV_ALIGN_TOP_MID, 0, 15);
-    add_label(lv_screen_active(), "2 FPS", lv_color_hex(0x1F7A5A),
-              &lv_font_montserrat_10, LV_ALIGN_TOP_RIGHT, -14, 18);
+    g_debug_camera_title = add_label(lv_screen_active(), "TOP CAMERA DEBUG", lv_color_hex(0x20303F),
+                                     &lv_font_montserrat_16, LV_ALIGN_TOP_MID, 0, 15);
+    g_debug_camera_button = add_small_button(lv_screen_active(), "SIDE", 84, 12, 76, 30,
+                                             on_debug_camera_toggle, NULL);
 
     g_debug_preview_image = lv_image_create(lv_screen_active());
     lv_image_set_src(g_debug_preview_image, &g_debug_preview_dsc[g_debug_preview_display_index]);
@@ -953,6 +1001,12 @@ void fruit_ui_process(void)
         (g_debug_preview_image != NULL)) {
         lv_image_set_src(g_debug_preview_image, &g_debug_preview_dsc[preview_index]);
         lv_obj_invalidate(g_debug_preview_image);
+
+        if (g_debug_save_label != NULL) {
+            lv_label_set_text(g_debug_save_label,
+                              g_debug_side_camera_requested ? "SIDE active" : "TOP active");
+            lv_obj_set_style_text_color(g_debug_save_label, lv_color_hex(0x1F7A5A), 0);
+        }
     }
 
     if (!has_update) {
@@ -1038,14 +1092,16 @@ void fruit_ui_set_detections(fruit_ui_detection_t const * p_detections, uint32_t
 
 bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame,
                                      fruit_ui_detection_t const * p_detections,
-                                     uint32_t                     detection_count)
+                                     uint32_t                     detection_count,
+                                     bool                         side_camera)
 {
     uint32_t write_index;
 
     if ((p_rgb565_frame == NULL) ||
         (detection_count > FRUIT_UI_MAX_DETECTIONS) ||
         ((detection_count > 0U) && (p_detections == NULL)) ||
-        !g_debug_mode_active) {
+        !g_debug_mode_active ||
+        (side_camera != g_debug_side_camera_requested)) {
         return false;
     }
 
@@ -1071,7 +1127,8 @@ bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame
 
     __DMB();
     taskENTER_CRITICAL();
-    if (g_debug_preview_ready || !g_debug_mode_active) {
+    if (g_debug_preview_ready || !g_debug_mode_active ||
+        (side_camera != g_debug_side_camera_requested)) {
         taskEXIT_CRITICAL();
         return false;
     }
@@ -1089,6 +1146,11 @@ bool fruit_ui_publish_debug_snapshot(uint8_t const              * p_rgb565_frame
 bool fruit_ui_is_debug_mode_active(void)
 {
     return g_debug_mode_active;
+}
+
+bool fruit_ui_debug_side_camera_requested(void)
+{
+    return g_debug_side_camera_requested;
 }
 
 fruit_ui_task_mode_t fruit_ui_get_task_mode(void)
