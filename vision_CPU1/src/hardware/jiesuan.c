@@ -109,7 +109,7 @@ int inverse_kinematics_5dof(double x, double y, double z, int elbow_dir,
     // 说明：按需求对 1轴、3轴、5轴 进行取反输出
     // ==================================================
     *q1 = round(-math_q1 * 180.0 / M_PI);
-    *q2 = round( math_q2 * 180.0 / M_PI);
+    *q2 = round(-math_q2 * 180.0 / M_PI);
     *q3 = round(-math_q3 * 180.0 / M_PI);
     *q5 = round(-math_q5 * 180.0 / M_PI);
 
