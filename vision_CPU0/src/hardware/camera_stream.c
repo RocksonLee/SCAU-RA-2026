@@ -431,6 +431,11 @@ static bool camera_switch_to(bool side_camera)
             return false;
         }
 
+        if (!camera_ov5640_set_strobe_led(true))
+        {
+            camera_uart_send_text("CAM_LED_ERR top_on\r\n");
+        }
+
         camera_discard_settle_frames();
         camera_uart_send_text("CAM_ACTIVE TOP\r\n");
         return true;
@@ -702,6 +707,11 @@ void camera_stream_task(void)
         {
             vTaskDelay(pdMS_TO_TICKS(1000U));
         }
+    }
+
+    if (!camera_ov5640_set_strobe_led(true))
+    {
+        camera_uart_send_text("CAM_LED_ERR top_on\r\n");
     }
 
     if (!app_detection_init())

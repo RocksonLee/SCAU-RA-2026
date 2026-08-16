@@ -16,6 +16,7 @@
 
 #include "competition_title_font.inc"
 #include "competition_logo_rgb565.inc"
+#include "robot_arm_rgb565.inc"
 
 #define UI_W 480
 #define UI_H 320
@@ -460,102 +461,12 @@ static void add_grape_icon(lv_obj_t * parent, int32_t cx, int32_t cy, lv_color_t
     add_circle_center(parent, cx,      cy - 48, 10, lv_color_hex(0x4D8C3D));
 }
 
-static void add_robot_arm_sketch(lv_obj_t * parent)
+static void add_robot_arm_image(lv_obj_t * parent)
 {
-    static lv_point_precise_t const arm_points[] =
-    {
-        {84, 148}, {62, 97}, {114, 54}, {145, 78},
-    };
-    static lv_point_precise_t const wrist_points[] =
-    {
-        {145, 78}, {156, 88},
-    };
-    static lv_point_precise_t const gripper_upper[] =
-    {
-        {156, 88}, {164, 80}, {174, 85}, {168, 94},
-    };
-    static lv_point_precise_t const gripper_lower[] =
-    {
-        {156, 90}, {164, 100}, {174, 96}, {168, 106},
-    };
-    static int32_t const joint_data[][3] =
-    {
-        {84, 148, 24}, {62, 97, 21}, {114, 54, 19}, {145, 78, 15},
-    };
-    lv_color_t const ink = lv_color_hex(0x31445A);
-    lv_color_t const fill = lv_color_hex(0xF7F9FA);
-    lv_obj_t * line;
-    lv_obj_t * base;
+    lv_obj_t * image = lv_image_create(parent);
 
-    base = lv_obj_create(parent);
-    lv_obj_remove_style_all(base);
-    lv_obj_set_pos(base, 44, 171);
-    lv_obj_set_size(base, 80, 15);
-    lv_obj_set_style_radius(base, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(base, fill, 0);
-    lv_obj_set_style_bg_opa(base, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(base, 2, 0);
-    lv_obj_set_style_border_color(base, ink, 0);
-
-    base = lv_obj_create(parent);
-    lv_obj_remove_style_all(base);
-    lv_obj_set_pos(base, 53, 151);
-    lv_obj_set_size(base, 62, 28);
-    lv_obj_set_style_radius(base, 9, 0);
-    lv_obj_set_style_bg_color(base, fill, 0);
-    lv_obj_set_style_bg_opa(base, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(base, 2, 0);
-    lv_obj_set_style_border_color(base, ink, 0);
-
-    line = lv_line_create(parent);
-    lv_line_set_points(line, arm_points, 4U);
-    lv_obj_set_style_line_width(line, 14, 0);
-    lv_obj_set_style_line_color(line, ink, 0);
-    lv_obj_set_style_line_rounded(line, true, 0);
-
-    line = lv_line_create(parent);
-    lv_line_set_points(line, arm_points, 4U);
-    lv_obj_set_style_line_width(line, 8, 0);
-    lv_obj_set_style_line_color(line, fill, 0);
-    lv_obj_set_style_line_rounded(line, true, 0);
-
-    line = lv_line_create(parent);
-    lv_line_set_points(line, wrist_points, 2U);
-    lv_obj_set_style_line_width(line, 13, 0);
-    lv_obj_set_style_line_color(line, ink, 0);
-    lv_obj_set_style_line_rounded(line, true, 0);
-
-    line = lv_line_create(parent);
-    lv_line_set_points(line, wrist_points, 2U);
-    lv_obj_set_style_line_width(line, 7, 0);
-    lv_obj_set_style_line_color(line, fill, 0);
-    lv_obj_set_style_line_rounded(line, true, 0);
-
-    line = lv_line_create(parent);
-    lv_line_set_points(line, gripper_upper, 4U);
-    lv_obj_set_style_line_width(line, 3, 0);
-    lv_obj_set_style_line_color(line, ink, 0);
-    lv_obj_set_style_line_rounded(line, false, 0);
-
-    line = lv_line_create(parent);
-    lv_line_set_points(line, gripper_lower, 4U);
-    lv_obj_set_style_line_width(line, 3, 0);
-    lv_obj_set_style_line_color(line, ink, 0);
-    lv_obj_set_style_line_rounded(line, false, 0);
-
-    for (uint32_t i = 0U; i < (uint32_t) (sizeof(joint_data) / sizeof(joint_data[0])); i++) {
-        lv_obj_t * joint = lv_obj_create(parent);
-        int32_t const size = joint_data[i][2];
-
-        lv_obj_remove_style_all(joint);
-        lv_obj_set_pos(joint, joint_data[i][0] - (size / 2), joint_data[i][1] - (size / 2));
-        lv_obj_set_size(joint, size, size);
-        lv_obj_set_style_radius(joint, LV_RADIUS_CIRCLE, 0);
-        lv_obj_set_style_bg_color(joint, fill, 0);
-        lv_obj_set_style_bg_opa(joint, LV_OPA_COVER, 0);
-        lv_obj_set_style_border_width(joint, 3, 0);
-        lv_obj_set_style_border_color(joint, ink, 0);
-    }
+    lv_image_set_src(image, &g_robot_arm_image);
+    lv_obj_set_pos(image, 5, 5);
 }
 
 static void add_preview_backdrop(lv_obj_t * parent, int32_t x, int32_t y)
@@ -973,7 +884,7 @@ static void show_home(void)
 
     card = add_card(lv_screen_active(), 18, 96, 180, 210);
     lv_obj_set_style_pad_all(card, 0, 0);
-    add_robot_arm_sketch(card);
+    add_robot_arm_image(card);
     add_label(card, "ROBOT ARM", lv_color_hex(0x77818C),
               &lv_font_montserrat_10, LV_ALIGN_BOTTOM_MID, 0, -3);
 
@@ -1174,7 +1085,7 @@ static void add_fruit_column(fruit_ui_target_t target, int32_t x)
               145);
 
     button = add_button(card,
-                        (state == TARGET_PICK_COMPLETE) ? "DONE" : "PICK",
+                        (state == TARGET_PICK_COMPLETE) ? "DONE" : "SELECT",
                         22,
                         170,
                         94,

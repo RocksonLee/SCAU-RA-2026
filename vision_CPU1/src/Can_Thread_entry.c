@@ -22,7 +22,7 @@ typedef enum e_ipc_coordinate_rx_state
 #define IPC_RESULT_QUEUE_LENGTH (4U)
 #define ARM_IK_ELBOW_DIRECTION  (1)
 #define ARM_JOINT_2_MAX_DEG     (10.0)
-#define ARM_JOINT_5_OFFSET_DEG  (-80.0)
+#define ARM_JOINT_5_OFFSET_DEG  (-90.0)
 #define ARM_JOINT_5_DELAY_MS    (2000U)
 
 typedef struct st_ipc_arm_result
@@ -69,7 +69,7 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
      * Each position command uses sync flag 1. Queue joints 1 to 3 first and
      * trigger the first-stage motion together. Joint 4 is mechanically locked
      * and receives no CAN command. After the first stage has had time to
-     * settle, offset joint 5 by -80 degrees and trigger it separately.
+     * settle, offset joint 5 by -90 degrees and trigger it separately.
      */
     if (q2 > ARM_JOINT_2_MAX_DEG)
     {
