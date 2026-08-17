@@ -22,9 +22,16 @@ static inline void dc_high(void) { R_IOPORT_PinWrite(&g_ioport_ctrl, PIN_DC, BSP
 static inline void led_write(bsp_io_level_t v)  { R_IOPORT_PinWrite(&g_ioport_ctrl, PIN_LED, v); }
 
 /* ===== Hardware SPI ===== */
+typedef void (* lcd_spi_async_callback_t)(void * p_context);
+
 bool lcd_spi_write(const uint8_t * data, uint32_t length);
 void spi_write_byte(uint8_t data);
 bool lcd_write_pixels_rgb565(const uint16_t * pixels, uint32_t pixel_count);
+bool lcd_write_pixels_rgb565_async(const uint16_t       * pixels,
+                                   uint32_t               pixel_count,
+                                   lcd_spi_async_callback_t p_callback,
+                                   void                   * p_context);
+bool lcd_spi_wait_for_async(void);
 
 /* Debug information: inspect these variables when an SPI transfer fails. */
 extern volatile fsp_err_t   g_lcd_spi_last_error;

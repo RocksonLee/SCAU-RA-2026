@@ -9,6 +9,7 @@ extern "C" {
 #endif
 
 void lv_port_indev_init(void);
+void lv_port_indev_sample(void);
 void lv_port_indev_get_state(int32_t * out_x, int32_t * out_y, bool * out_pressed);
 
 #ifdef __cplusplus

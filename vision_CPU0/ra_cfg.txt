@@ -1237,3 +1237,12 @@ FSP Configuration
     Memory Allocation: Static
     Allocate Secure Context: Enable
     
+  Thread "Touch_Thread"
+    Symbol: Touch_Thread
+    Name: Touch_Thread
+    Stack size (bytes): 2048
+    Priority: 4
+    Thread Context: NULL
+    Memory Allocation: Static
+    Allocate Secure Context: Enable
+    
