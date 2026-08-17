@@ -1,4 +1,12 @@
-#include "canfd0.h" 
+#include "canfd0.h"
+
+#include "FreeRTOS.h"
+#include "task.h"
+
+#define CANFD_INTERFRAME_DELAY_MS    (5U)
+#define CANFD_TX_TIMEOUT_MS          (20U)
+#define CANFD_TX_POLL_MS             (1U)
+
 #define uint8_t unsigned char
 can_frame_t canfd0_rx_frame;
 can_frame_t canfd0_tx_frame;
@@ -53,6 +61,31 @@ volatile bool canfd0_rx_complete_flag =false ;
 volatile bool canfd0_tx_complete_flag =false ;
 volatile bool canfd0_err_status_flag =false ;
 volatile can_event_t canfd0_error_status =(can_event_t)0;
+
+static void canfd0_delay_ms(uint32_t delay_ms)
+{
+	vTaskDelay(pdMS_TO_TICKS(delay_ms));
+}
+
+static bool canfd0_wait_tx_complete(void)
+{
+	TickType_t const start_tick = xTaskGetTickCount();
+	TickType_t const timeout_ticks = pdMS_TO_TICKS(CANFD_TX_TIMEOUT_MS);
+
+	while (!canfd0_tx_complete_flag)
+	{
+		if ((xTaskGetTickCount() - start_tick) >= timeout_ticks)
+		{
+			canfd0_tx_complete_flag = false;
+			return false;
+		}
+
+		vTaskDelay(pdMS_TO_TICKS(CANFD_TX_POLL_MS));
+	}
+
+	canfd0_tx_complete_flag = false;
+	return true;
+}
 
 void canfd0_callback(can_callback_args_t *p_args)
 {
@@ -136,7 +169,6 @@ void CANFD0_Operation_1(int32_t angle)
 	assert(err==FSP_SUCCESS);
 	
 	//梯形曲线加减速位置模式控制packet包
-	uint32_t time_out =0xFFFF;
 	canfd0_tx_frame.id=CAN_ID_AP;
 	canfd0_tx_frame.data_length_code=CAN_DATA_LENGTH_CODE;
 	canfd0_tx_frame.data[0]=0xFD;
@@ -150,17 +182,15 @@ void CANFD0_Operation_1(int32_t angle)
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
+	canfd0_tx_complete_flag=false;
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
-	while((true!=canfd0_tx_complete_flag)&& (--time_out));
-	canfd0_tx_complete_flag=false;
-	
-	if(time_out==0)
+	if (!canfd0_wait_tx_complete())
 	{
 		return;
 	}
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 	
 }
 
@@ -191,7 +221,6 @@ void CANFD0_Operation_2(int32_t angle)
 	assert(err==FSP_SUCCESS);
 	
 	//梯形曲线加减速位置模式控制packet包
-	uint32_t time_out =0xFFFF;
 	canfd0_tx_frame.id=CAN_ID_BP;
 	canfd0_tx_frame.data_length_code=CAN_DATA_LENGTH_CODE;
 	canfd0_tx_frame.data[0]=0xFD;
@@ -205,17 +234,15 @@ void CANFD0_Operation_2(int32_t angle)
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
+	canfd0_tx_complete_flag=false;
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
-	while((true!=canfd0_tx_complete_flag)&& (--time_out));
-	canfd0_tx_complete_flag=false;
-	
-	if(time_out==0)
+	if (!canfd0_wait_tx_complete())
 	{
 		return;
 	}
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 	
 }
 
@@ -246,7 +273,6 @@ void CANFD0_Operation_3(int32_t angle)
 	assert(err==FSP_SUCCESS);
 	
 	//梯形曲线加减速位置模式控制packet包
-	uint32_t time_out =0xFFFF;
 	canfd0_tx_frame.id=CAN_ID_CP;
 	canfd0_tx_frame.data_length_code=CAN_DATA_LENGTH_CODE;
 	canfd0_tx_frame.data[0]=0xFD;
@@ -260,17 +286,15 @@ void CANFD0_Operation_3(int32_t angle)
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
+	canfd0_tx_complete_flag=false;
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
-	while((true!=canfd0_tx_complete_flag)&& (--time_out));
-	canfd0_tx_complete_flag=false;
-	
-	if(time_out==0)
+	if (!canfd0_wait_tx_complete())
 	{
 		return;
 	}
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 	
 }
 
@@ -301,7 +325,6 @@ void CANFD0_Operation_4(int32_t angle)
 	assert(err==FSP_SUCCESS);
 	
 	//梯形曲线加减速位置模式控制packet包
-	uint32_t time_out =0xFFFF;
 	canfd0_tx_frame.id=CAN_ID_DP;
 	canfd0_tx_frame.data_length_code=CAN_DATA_LENGTH_CODE;
 	canfd0_tx_frame.data[0]=0xFD;
@@ -315,17 +338,15 @@ void CANFD0_Operation_4(int32_t angle)
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
+	canfd0_tx_complete_flag=false;
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
-	while((true!=canfd0_tx_complete_flag)&& (--time_out));
-	canfd0_tx_complete_flag=false;
-	
-	if(time_out==0)
+	if (!canfd0_wait_tx_complete())
 	{
 		return;
 	}
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 	
 }
 
@@ -357,7 +378,6 @@ void CANFD0_Operation_5(int32_t angle)
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
 	
-	uint32_t time_out =0xFFFF;
 	canfd0_tx_frame.id=CAN_ID_EP;
 	canfd0_tx_frame.data_length_code=CAN_DATA_LENGTH_CODE;
 	//梯形曲线加减速位置模式控制packet包
@@ -372,17 +392,15 @@ void CANFD0_Operation_5(int32_t angle)
 	canfd0_tx_frame.data[6]=0x01;
 	canfd0_tx_frame.data[7]=0x6B;
 	
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
+	canfd0_tx_complete_flag=false;
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
-	while((true!=canfd0_tx_complete_flag)&& (--time_out));
-	canfd0_tx_complete_flag=false;
-	
-	if(time_out==0)
+	if (!canfd0_wait_tx_complete())
 	{
 		return;
 	}
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 	
 }
 
@@ -397,10 +415,10 @@ void run(void)
 	canfd0_tx_frame.data[0]=0xFF;
 	canfd0_tx_frame.data[1]=0x66;
 	canfd0_tx_frame.data[2]=0x6B;
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 	
 }
 
@@ -429,7 +447,6 @@ void Claw_Control()
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
 	
-	uint32_t time_out =0xFFFF;
 	canfd0_tx_frame.id=CAN_ID_FP;
 	canfd0_tx_frame.data_length_code=CAN_DATA_LENGTH_CODE_P;
 	canfd0_tx_frame.data[0]=0xC6;
@@ -438,16 +455,15 @@ void Claw_Control()
 	//校验码
 	canfd0_tx_frame.data[2]=0x6B;
 	
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
+	canfd0_tx_complete_flag=false;
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
-	while((true!=canfd0_tx_complete_flag)&& (--time_out));
-	canfd0_tx_complete_flag=false;
-	if(time_out==0)
+	if (!canfd0_wait_tx_complete())
 	{
 		return;
 	}
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 }
 void Claw_Open()
 {
@@ -473,7 +489,6 @@ void Claw_Open()
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
 	
-	uint32_t time_out =0xFFFF;
 	canfd0_tx_frame.id=CAN_ID_FP;
 	canfd0_tx_frame.data_length_code=CAN_DATA_LENGTH_CODE_P;
 	canfd0_tx_frame.data[0]=0xC6;
@@ -482,21 +497,19 @@ void Claw_Open()
 	//校验码
 	canfd0_tx_frame.data[2]=0x6B;
 	
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
+	canfd0_tx_complete_flag=false;
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
-	while((true!=canfd0_tx_complete_flag)&& (--time_out));
-	canfd0_tx_complete_flag=false;
-	if(time_out==0)
+	if (!canfd0_wait_tx_complete())
 	{
 		return;
 	}
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 }
 //读取夹爪状态
 void Read_Claw()
 {
-	uint32_t time_out =0xFFFF;
 	fsp_err_t err;
 	canfd0_tx_frame.id=CAN_ID_F;
 	canfd0_tx_frame.id_mode=CAN_ID_MODE_EXTENDED;
@@ -506,16 +519,15 @@ void Read_Claw()
 	canfd0_tx_frame.data[0]=0x17;
 	canfd0_tx_frame.data[1]=0x6B;
 	
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
+	canfd0_tx_complete_flag=false;
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
-	while((true!=canfd0_tx_complete_flag)&& (--time_out));
-	canfd0_tx_complete_flag=false;
-	if(time_out==0)
+	if (!canfd0_wait_tx_complete())
 	{
 		return;
 	}
-	R_BSP_SoftwareDelay(5, BSP_DELAY_UNITS_MILLISECONDS);
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
 	
 }
 
