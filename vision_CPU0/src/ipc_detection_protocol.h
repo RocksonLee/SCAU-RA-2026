@@ -8,6 +8,11 @@
 #define IPC_ARM_ZERO_COMMAND            (0x5A45524FU) /* "ZERO" */
 #define IPC_TASK1_JOINT5_COMMAND        (0x54314A35U) /* "T1J5" */
 #define IPC_TASK2_JOINT5_COMMAND        (0x54324A35U) /* "T2J5" */
+#define IPC_AXIS_JOG_COMMAND_PREFIX     (0x4A4F4700U) /* "JOG" + payload */
+#define IPC_AXIS_JOG_COMMAND_MASK       (0xFFFFFF00U)
+#define IPC_AXIS_JOG_DIRECTION_POSITIVE (0x00000080U)
+#define IPC_AXIS_JOG_AXIS_MASK          (0x00000007U)
+#define IPC_AXIS_JOG_STEP_DEG           (5)
 #define IPC_COORDINATE_BATCH_MAX_ITEMS  (3U)
 
 typedef struct st_ipc_camera_coordinate_item

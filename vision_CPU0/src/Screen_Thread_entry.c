@@ -2,6 +2,7 @@
 #include "Touch_Thread.h"
 
 #include "hardware/fruit_ui.h"
+#include "hardware/ipc_detection_tx.h"
 #include "hardware/lcd_spi.h"
 #include "hardware/lv_port_disp.h"
 #include "hardware/lv_port_indev.h"
@@ -18,6 +19,24 @@ extern TaskHandle_t Touch_Thread;
 static uint32_t lvgl_freertos_tick_ms(void)
 {
 	return (uint32_t) pdTICKS_TO_MS(xTaskGetTickCount());
+}
+
+static void screen_process_arm_control_request(void)
+{
+	uint8_t axis;
+	int32_t delta_deg;
+
+	if (fruit_ui_take_arm_zero_request())
+	{
+		(void) ipc_detection_send_arm_zero();
+		return;
+	}
+
+	if (fruit_ui_take_axis_jog_request(&axis, &delta_deg))
+	{
+		bool const sent = ipc_detection_send_axis_jog(axis, delta_deg);
+		fruit_ui_notify_axis_jog_result(axis, delta_deg, sent);
+	}
 }
 
 void Screen_Thread_entry(void *pvParameters)
@@ -43,6 +62,7 @@ void Screen_Thread_entry(void *pvParameters)
 	{
 		fruit_ui_process();
 		(void) lv_timer_handler();
+		screen_process_arm_control_request();
 
 		vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(5U));
 	}

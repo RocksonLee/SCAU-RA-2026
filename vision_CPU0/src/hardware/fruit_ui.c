@@ -28,6 +28,9 @@
 #define UI_WEIGHT_STABLE_SAMPLES (5U)
 #define UI_WEIGHT_STABLE_TOLERANCE_0P1G (5)
 #define UI_WEIGHT_MIN_VALID_0P1G (20)
+#define UI_AXIS_COUNT (5U)
+#define UI_AXIS_JOG_STEP_DEG (5)
+#define UI_AXIS_JOG_QUEUE_LENGTH (16U)
 
 typedef struct st_target_view
 {
@@ -47,7 +50,14 @@ typedef enum e_ui_page
     UI_PAGE_SELECT,
     UI_PAGE_DETAIL,
     UI_PAGE_DEBUG,
+    UI_PAGE_AXIS_JOG,
 } ui_page_t;
+
+typedef struct st_axis_jog_request
+{
+    uint8_t axis;
+    int32_t delta_deg;
+} axis_jog_request_t;
 
 typedef enum e_target_pick_state
 {
@@ -90,6 +100,9 @@ static volatile bool g_frame_dump_request_pending;
 static volatile bool g_arm_zero_request_pending;
 static volatile bool g_task_joint5_request_pending;
 static volatile int32_t g_task_joint5_angle_deg;
+static volatile axis_jog_request_t g_axis_jog_queue[UI_AXIS_JOG_QUEUE_LENGTH];
+static volatile uint32_t g_axis_jog_queue_write;
+static volatile uint32_t g_axis_jog_queue_read;
 static uint16_t g_debug_preview_pixels[2][UI_PREVIEW_PIXELS]
     BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
 static lv_image_dsc_t g_debug_preview_dsc[2];
@@ -126,6 +139,7 @@ static lv_obj_t * g_debug_preview_image;
 static lv_obj_t * g_debug_camera_title;
 static lv_obj_t * g_debug_camera_button;
 static lv_obj_t * g_debug_light_button;
+static lv_obj_t * g_axis_jog_status_label;
 static lv_obj_t * g_task_preview_image;
 static lv_obj_t * g_task_camera_title;
 static lv_obj_t * g_task_camera_status;
@@ -143,6 +157,7 @@ static void show_task_stream(void);
 static void show_select(void);
 static void show_detail(fruit_ui_target_t target);
 static void show_debug(void);
+static void show_axis_jog(void);
 
 static void init_debug_preview(void)
 {
@@ -337,6 +352,7 @@ static void prepare_screen(void)
     g_debug_camera_title = NULL;
     g_debug_camera_button = NULL;
     g_debug_light_button = NULL;
+    g_axis_jog_status_label = NULL;
     g_task_preview_image = NULL;
     g_task_camera_title = NULL;
     g_task_camera_status = NULL;
@@ -737,6 +753,56 @@ static void on_back_debug(lv_event_t * e)
     }
 }
 
+static void on_axis_jog_page(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        taskENTER_CRITICAL();
+        g_debug_side_camera_requested = false;
+        g_debug_light_requested = false;
+        taskEXIT_CRITICAL();
+        show_axis_jog();
+    }
+}
+
+static void on_axis_jog(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        uint32_t const token = (uint32_t) (uintptr_t) lv_event_get_user_data(e);
+        uint8_t const axis = (uint8_t) (token >> 1U);
+        int32_t const delta_deg = (0U != (token & 1U)) ?
+                                  UI_AXIS_JOG_STEP_DEG : -UI_AXIS_JOG_STEP_DEG;
+        uint32_t next;
+        bool queued = false;
+
+        taskENTER_CRITICAL();
+        next = (g_axis_jog_queue_write + 1U) % UI_AXIS_JOG_QUEUE_LENGTH;
+        if (next != g_axis_jog_queue_read) {
+            g_axis_jog_queue[g_axis_jog_queue_write].axis = axis;
+            g_axis_jog_queue[g_axis_jog_queue_write].delta_deg = delta_deg;
+            g_axis_jog_queue_write = next;
+            queued = true;
+        }
+        taskEXIT_CRITICAL();
+
+        if (g_axis_jog_status_label != NULL) {
+            char status[48];
+            if (queued) {
+                (void) snprintf(status, sizeof(status),
+                                "Axis %u: %s5 deg queued",
+                                (unsigned int) axis,
+                                (delta_deg > 0) ? "+" : "-");
+                lv_obj_set_style_text_color(g_axis_jog_status_label,
+                                            lv_color_hex(0x1F7A5A), 0);
+            } else {
+                (void) snprintf(status, sizeof(status), "Command queue full");
+                lv_obj_set_style_text_color(g_axis_jog_status_label,
+                                            lv_color_hex(0xD83B35), 0);
+            }
+            lv_label_set_text(g_axis_jog_status_label, status);
+        }
+    }
+}
+
 static void on_debug_camera_toggle(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
@@ -938,8 +1004,6 @@ static void show_home(void)
     lv_obj_set_style_text_font(title, &name3, 0);
     lv_obj_set_pos(title, 116, 7);
 
-    add_small_button(lv_screen_active(), "ZERO", 400, 60, 68, 30, on_arm_zero, NULL);
-
     card = add_card(lv_screen_active(), 18, 96, 180, 210);
     lv_obj_set_style_pad_all(card, 0, 0);
     add_robot_arm_image(card);
@@ -955,7 +1019,9 @@ static void show_home(void)
     task_2_button = add_button(lv_screen_active(), "TASK 2  |  TOP + SIDE", 236, 169, 224, 40,
                                on_task_select,
                                (void *) (uintptr_t) FRUIT_UI_TASK_TOP_AND_SIDE);
-    add_small_button(lv_screen_active(), "SETTING", 236, 219, 224, 40, on_settings, NULL);
+    add_small_button(lv_screen_active(), "CAMERA TEST", 236, 219, 108, 40, on_settings, NULL);
+    add_small_button(lv_screen_active(), "AXIS TEST", 352, 219, 108, 40,
+                     on_axis_jog_page, NULL);
 
     card = add_card(lv_screen_active(), 218, 269, 242, 39);
     lv_obj_set_style_pad_all(card, 5, 0);
@@ -1621,6 +1687,49 @@ bool fruit_ui_debug_side_camera_requested(void)
     return g_debug_side_camera_requested;
 }
 
+static void show_axis_jog(void)
+{
+    prepare_screen();
+    g_current_page = UI_PAGE_AXIS_JOG;
+    g_task_stream_active = false;
+    reset_preview_session();
+
+    /* Axis test is independent of camera debug mode. */
+    taskENTER_CRITICAL();
+    g_debug_mode_active = false;
+    g_debug_side_camera_requested = false;
+    g_debug_light_requested = false;
+    taskEXIT_CRITICAL();
+
+    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_back_debug, NULL);
+    add_small_button(lv_screen_active(), "ZERO", 84, 12, 68, 30, on_arm_zero, NULL);
+    add_label(lv_screen_active(), "SINGLE AXIS JOG  |  5 DEG",
+              lv_color_hex(0x20303F), &lv_font_montserrat_16,
+              LV_ALIGN_TOP_RIGHT, -12, 18);
+
+    for (uint32_t i = 0U; i < UI_AXIS_COUNT; i++) {
+        int32_t const y = 56 + ((int32_t) i * 46);
+        uint32_t const axis = i + 1U;
+        lv_obj_t * card = add_card(lv_screen_active(), 24, y, 432, 40);
+        char axis_text[16];
+
+        lv_obj_set_style_pad_all(card, 6, 0);
+        (void) snprintf(axis_text, sizeof(axis_text), "AXIS %lu", (unsigned long) axis);
+        add_label(card, axis_text, lv_color_hex(0x20303F),
+                  &lv_font_montserrat_14, LV_ALIGN_LEFT_MID, 8, 0);
+        add_small_button(card, "-5 DEG", 218, 2, 90, 28, on_axis_jog,
+                         (void *) (uintptr_t) (axis << 1U));
+        add_button(card, "+5 DEG", 316, 2, 90, 28, on_axis_jog,
+                   (void *) (uintptr_t) ((axis << 1U) | 1U));
+    }
+
+    g_axis_jog_status_label = add_label(lv_screen_active(),
+                                        "Tap once to move only that axis",
+                                        lv_color_hex(0x77818C),
+                                        &lv_font_montserrat_10,
+                                        LV_ALIGN_BOTTOM_MID, 0, -4);
+}
+
 bool fruit_ui_debug_light_requested(void)
 {
     return g_debug_light_requested;
@@ -1674,6 +1783,46 @@ bool fruit_ui_take_task_joint5_request(int32_t * p_angle_deg)
     }
     taskEXIT_CRITICAL();
     return requested;
+}
+
+bool fruit_ui_take_axis_jog_request(uint8_t * p_axis, int32_t * p_delta_deg)
+{
+    bool requested = false;
+
+    if ((NULL == p_axis) || (NULL == p_delta_deg)) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    if (g_axis_jog_queue_read != g_axis_jog_queue_write) {
+        *p_axis = g_axis_jog_queue[g_axis_jog_queue_read].axis;
+        *p_delta_deg = g_axis_jog_queue[g_axis_jog_queue_read].delta_deg;
+        g_axis_jog_queue_read = (g_axis_jog_queue_read + 1U) % UI_AXIS_JOG_QUEUE_LENGTH;
+        requested = true;
+    }
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+void fruit_ui_notify_axis_jog_result(uint8_t axis, int32_t delta_deg, bool sent)
+{
+    char status[48];
+
+    if ((UI_PAGE_AXIS_JOG != g_current_page) ||
+        (NULL == g_axis_jog_status_label)) {
+        return;
+    }
+
+    (void) snprintf(status, sizeof(status),
+                    sent ? "Axis %u: %s5 deg IPC sent" :
+                           "Axis %u: %s5 deg send failed",
+                    (unsigned int) axis,
+                    (delta_deg > 0) ? "+" : "-");
+    lv_label_set_text(g_axis_jog_status_label, status);
+    lv_obj_set_style_text_color(g_axis_jog_status_label,
+                                sent ? lv_color_hex(0x1F7A5A) :
+                                       lv_color_hex(0xD83B35),
+                                0);
 }
 
 bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target)

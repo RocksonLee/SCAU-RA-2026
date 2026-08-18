@@ -93,3 +93,23 @@ bool ipc_detection_send_task_joint5(int32_t angle_deg)
 
     return false;
 }
+
+bool ipc_detection_send_axis_jog(uint8_t axis, int32_t delta_deg)
+{
+    uint32_t command;
+
+    if ((axis < 1U) || (axis > 5U) ||
+        ((IPC_AXIS_JOG_STEP_DEG != delta_deg) &&
+         (-IPC_AXIS_JOG_STEP_DEG != delta_deg)))
+    {
+        return false;
+    }
+
+    command = IPC_AXIS_JOG_COMMAND_PREFIX | (uint32_t) axis;
+    if (delta_deg > 0)
+    {
+        command |= IPC_AXIS_JOG_DIRECTION_POSITIVE;
+    }
+
+    return ipc_detection_send_word(command);
+}

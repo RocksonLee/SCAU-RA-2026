@@ -718,22 +718,6 @@ static bool camera_wait_for_task_side_preview(void)
     return false;
 }
 
-static void camera_process_arm_zero_request(void)
-{
-    if (!fruit_ui_take_arm_zero_request())
-    {
-        return;
-    }
-
-    while (!ipc_detection_send_arm_zero())
-    {
-        camera_uart_send_text("ARM_ZERO_ERR ipc_send_retry\r\n");
-        vTaskDelay(pdMS_TO_TICKS(1000U));
-    }
-
-    camera_uart_send_text("ARM_ZERO_IPC_SENT\r\n");
-}
-
 static void camera_process_task_joint5_request(void)
 {
     int32_t angle_deg;
@@ -962,12 +946,8 @@ void camera_stream_task(void)
     while ((FRUIT_UI_TASK_NONE == fruit_ui_get_task_mode()) &&
            !fruit_ui_is_debug_mode_active())
     {
-        /* ZERO must remain responsive before any task or Settings starts. */
-        camera_process_arm_zero_request();
         vTaskDelay(pdMS_TO_TICKS(20U));
     }
-
-    camera_process_arm_zero_request();
 
     /* Move joint 5 to the selected task's view before camera recognition. */
     camera_process_task_joint5_request();
@@ -1015,7 +995,6 @@ void camera_stream_task(void)
 
     while (1)
     {
-        camera_process_arm_zero_request();
         camera_process_task_joint5_request();
 
         uint32_t const task_generation = fruit_ui_get_task_generation();
@@ -1411,8 +1390,6 @@ void camera_stream_task(void)
 
             while (remaining_count > 0U)
             {
-                camera_process_arm_zero_request();
-
                 if (fruit_ui_is_debug_mode_active())
                 {
                     debug_interrupted = true;
