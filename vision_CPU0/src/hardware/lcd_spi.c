@@ -2,7 +2,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#define LCD_SPI_MAX_PIXELS_PER_TRANSFER (480U * 20U)
+#define LCD_SPI_MAX_PIXELS_PER_TRANSFER (480U * 40U)
 #define LCD_SPI_BYTES_PER_PIXEL         (3U)
 #define LCD_SPI_WAIT_TIMEOUT_MS         (1000U)
 /* MX + MV + BGR: landscape orientation, rotated 180 degrees from 0xA8. */
@@ -161,6 +161,26 @@ void spi_write_byte(uint8_t data)
     (void) lcd_spi_write(&data, 1U);
 }
 
+static bool lcd_write_command_data(uint8_t cmd,
+                                   const uint8_t * data,
+                                   uint32_t length)
+{
+    bool success;
+
+    cs_low();
+    dc_low();
+    success = lcd_spi_write(&cmd, 1U);
+
+    if (success && (NULL != data) && (length > 0U))
+    {
+        dc_high();
+        success = lcd_spi_write(data, length);
+    }
+
+    cs_high();
+    return success;
+}
+
 static void lcd_convert_rgb565_to_rgb666(const uint16_t * pixels, uint32_t pixel_count)
 {
     for (uint32_t i = 0U; i < pixel_count; i++)
@@ -252,19 +272,28 @@ void lcd_data(uint8_t d)   { cs_low(); dc_high(); spi_write_byte(d);   cs_high()
 
 void lcd_set_window(uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2)
 {
-    lcd_cmd(0x2A);
-    lcd_data((uint8_t)(x1 >> 8));
-    lcd_data((uint8_t)(x1 & 0xFF));
-    lcd_data((uint8_t)(x2 >> 8));
-    lcd_data((uint8_t)(x2 & 0xFF));
+    uint8_t const column[4] =
+    {
+        (uint8_t) (x1 >> 8U),
+        (uint8_t) (x1 & 0xFFU),
+        (uint8_t) (x2 >> 8U),
+        (uint8_t) (x2 & 0xFFU)
+    };
+    uint8_t const row[4] =
+    {
+        (uint8_t) (y1 >> 8U),
+        (uint8_t) (y1 & 0xFFU),
+        (uint8_t) (y2 >> 8U),
+        (uint8_t) (y2 & 0xFFU)
+    };
 
-    lcd_cmd(0x2B);
-    lcd_data((uint8_t)(y1 >> 8));
-    lcd_data((uint8_t)(y1 & 0xFF));
-    lcd_data((uint8_t)(y2 >> 8));
-    lcd_data((uint8_t)(y2 & 0xFF));
+    if (!lcd_write_command_data(0x2AU, column, sizeof(column)) ||
+        !lcd_write_command_data(0x2BU, row, sizeof(row)))
+    {
+        return;
+    }
 
-    lcd_cmd(0x2C);
+    (void) lcd_write_command_data(0x2CU, NULL, 0U);
 }
 
 void lcd_fill_screen(uint16_t color)

@@ -126,7 +126,7 @@
     <node id="board.clock.u60ck.div" option="board.clock.u60ck.div.8"/>
     <node id="board.clock.u60ck.display" option="board.clock.u60ck.display.value"/>
     <node id="board.clock.octaspiclk.source" option="board.clock.octaspiclk.source.pll1q"/>
-    <node id="board.clock.octaspiclk.div" option="board.clock.octaspiclk.div.1"/>
+    <node id="board.clock.octaspiclk.div" option="board.clock.octaspiclk.div.8"/>
     <node id="board.clock.octaspiclk.display" option="board.clock.octaspiclk.display.value"/>
     <node id="board.clock.octaspiclk.om_sclk.display" option="board.clock.octaspiclk.om_sclk.display.value"/>
     <node id="board.clock.adcclk.source" option="board.clock.adcclk.source.pll2r"/>

@@ -19,3 +19,7 @@
 
 # Debugger and build logs
 *.log
+
+# Local board schematic references (do not upload)
+/CPKHMI_RA8P1_V1.1_原理图说明.md
+/cpkhmi_ra8p1_v1.1_sch_release.pdf

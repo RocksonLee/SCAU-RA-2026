@@ -115,7 +115,10 @@
             <slot name="P013.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORT1.CPU0" group="PORT">
+            <slot name="P100.CPU0" secure="true"/>
+            <slot name="P101.CPU0" secure="true"/>
             <slot name="P102.CPU0" secure="true"/>
+            <slot name="P103.CPU0" secure="true"/>
             <slot name="P106.CPU0" secure="true"/>
             <slot name="P107.CPU0" secure="true"/>
             <slot name="P109.CPU0" secure="true"/>
@@ -195,6 +198,8 @@
         </peripheral>
         <peripheral name="PORT8.CPU0" group="PORT">
             <slot name="P801.CPU0" secure="true"/>
+            <slot name="P803.CPU0" secure="true"/>
+            <slot name="P808.CPU0" secure="true"/>
             <slot name="P812.CPU0" secure="true"/>
             <slot name="P813.CPU0" secure="true"/>
             <slot name="P814.CPU0" secure="true"/>
@@ -338,7 +343,10 @@
             <assign group="PORT" peripheral="PORT0.P009"/>
             <assign group="PORT" peripheral="PORT0.P012"/>
             <assign group="PORT" peripheral="PORT0.P013"/>
+            <assign group="PORT" peripheral="PORT1.P100"/>
+            <assign group="PORT" peripheral="PORT1.P101"/>
             <assign group="PORT" peripheral="PORT1.P102"/>
+            <assign group="PORT" peripheral="PORT1.P103"/>
             <assign group="PORT" peripheral="PORT1.P106"/>
             <assign group="PORT" peripheral="PORT1.P107"/>
             <assign group="PORT" peripheral="PORT1.P109"/>
@@ -404,6 +412,8 @@
             <assign group="PORT" peripheral="PORT7.P714"/>
             <assign group="PORT" peripheral="PORT7.P715"/>
             <assign group="PORT" peripheral="PORT8.P801"/>
+            <assign group="PORT" peripheral="PORT8.P803"/>
+            <assign group="PORT" peripheral="PORT8.P808"/>
             <assign group="PORT" peripheral="PORT8.P812"/>
             <assign group="PORT" peripheral="PORT8.P813"/>
             <assign group="PORT" peripheral="PORT8.P814"/>

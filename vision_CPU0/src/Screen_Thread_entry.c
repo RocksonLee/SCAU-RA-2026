@@ -6,6 +6,8 @@
 #include "hardware/lcd_spi.h"
 #include "hardware/lv_port_disp.h"
 #include "hardware/lv_port_indev.h"
+#include "hardware/ospi_flash.h"
+#include "hardware/ui_assets.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -43,6 +45,8 @@ void Screen_Thread_entry(void *pvParameters)
 {
 	FSP_PARAMETER_NOT_USED(pvParameters);
 
+	(void) ospi_flash_init();
+	(void) ui_assets_init();
 	lcd_init();
 	lv_init();
 	lv_tick_set_cb(lvgl_freertos_tick_ms);

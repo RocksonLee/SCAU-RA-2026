@@ -27,7 +27,7 @@ extern "C" {
 
 #if LV_USE_STDLIB_MALLOC == LV_STDLIB_BUILTIN
 #ifndef LV_MEM_SIZE
-#define LV_MEM_SIZE (0x10000)
+#define LV_MEM_SIZE (0x18000)
 #endif
 #endif
 

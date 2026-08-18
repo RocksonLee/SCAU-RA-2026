@@ -9,8 +9,8 @@
 #define DISP_VER_RES  320
 #define BYTE_PER_PIXEL 2   /* RGB565 = 2 bytes */
 
-/* Single partial buffer: 480 x 20 rows x 2 bytes = 19200 bytes */
-#define BUF_ROWS  20
+/* Single partial buffer: 480 x 40 rows x 2 bytes = 38400 bytes */
+#define BUF_ROWS  40
 static LV_ATTRIBUTE_MEM_ALIGN uint8_t buf_1[DISP_HOR_RES * BUF_ROWS * BYTE_PER_PIXEL];
 
 static void disp_flush_complete(void * p_context)

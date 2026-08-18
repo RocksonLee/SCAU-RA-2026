@@ -8,15 +8,15 @@
 #include "task.h"
 #include "app_detection.h"
 #include "camera_ov5640.h"
+#include "ospi_flash.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
 #include "lvgl.h"
 #pragma GCC diagnostic pop
 
+#include "ui_assets.h"
 #include "competition_title_font.inc"
-#include "competition_logo_rgb565.inc"
-#include "robot_arm_rgb565.inc"
 
 #define UI_W 480
 #define UI_H 320
@@ -127,6 +127,7 @@ static bool g_weight_change_seen;
 static int32_t g_weight_stability_reference_0p1g;
 static uint32_t g_weight_stability_count;
 static ui_page_t g_current_page = UI_PAGE_HOME;
+static lv_obj_t * g_page_screen;
 static lv_obj_t * g_home_weight_label;
 static lv_obj_t * g_home_detected_label;
 static lv_obj_t * g_detail_type_label;
@@ -335,11 +336,18 @@ static void init_styles(void)
     g_style_ready = true;
 }
 
+static lv_obj_t * page_screen(void)
+{
+    return (NULL != g_page_screen) ? g_page_screen : lv_screen_active();
+}
+
 static void prepare_screen(void)
 {
-    lv_obj_t * scr = lv_screen_active();
+    lv_obj_t * scr;
 
     init_styles();
+    g_page_screen = lv_obj_create(NULL);
+    scr = g_page_screen;
     g_home_weight_label = NULL;
     g_home_detected_label = NULL;
     g_detail_type_label = NULL;
@@ -361,9 +369,18 @@ static void prepare_screen(void)
         g_debug_boxes[i] = NULL;
         g_debug_box_labels[i] = NULL;
     }
-    lv_obj_clean(scr);
     lv_obj_add_style(scr, &g_style_screen, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+static void finish_screen_switch(void)
+{
+    if (NULL == g_page_screen) {
+        return;
+    }
+
+    lv_screen_load_anim(g_page_screen, LV_SCR_LOAD_ANIM_NONE, 0U, 0U, true);
+    g_page_screen = NULL;
 }
 
 static lv_obj_t * add_label(lv_obj_t * parent,
@@ -485,9 +502,15 @@ static void add_grape_icon(lv_obj_t * parent, int32_t cx, int32_t cy, lv_color_t
 
 static void add_robot_arm_image(lv_obj_t * parent)
 {
-    lv_obj_t * image = lv_image_create(parent);
+    lv_image_dsc_t const * source = ui_assets_robot_arm();
+    lv_obj_t * image;
 
-    lv_image_set_src(image, &g_robot_arm_image);
+    if (NULL == source) {
+        return;
+    }
+
+    image = lv_image_create(parent);
+    lv_image_set_src(image, source);
     lv_obj_set_pos(image, 5, 5);
 }
 
@@ -992,11 +1015,13 @@ static void show_home(void)
     g_current_page = UI_PAGE_HOME;
     g_task_stream_active = false;
 
-    logo = lv_image_create(lv_screen_active());
-    lv_image_set_src(logo, &g_competition_logo);
-    lv_obj_set_pos(logo, 24, 3);
+    if (NULL != ui_assets_competition_logo()) {
+        logo = lv_image_create(page_screen());
+        lv_image_set_src(logo, ui_assets_competition_logo());
+        lv_obj_set_pos(logo, 24, 3);
+    }
 
-    title = lv_label_create(lv_screen_active());
+    title = lv_label_create(page_screen());
     lv_label_set_text(title, "2026年全国大学生电子设计竞赛\n信息科技前沿专题赛（瑞萨杯）");
     lv_obj_set_width(title, 348);
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_LEFT, 0);
@@ -1004,34 +1029,64 @@ static void show_home(void)
     lv_obj_set_style_text_font(title, &name3, 0);
     lv_obj_set_pos(title, 116, 7);
 
-    card = add_card(lv_screen_active(), 18, 96, 180, 210);
+    card = add_card(page_screen(), 18, 96, 180, 210);
     lv_obj_set_style_pad_all(card, 0, 0);
     add_robot_arm_image(card);
     add_label(card, "ROBOT ARM", lv_color_hex(0x77818C),
               &lv_font_montserrat_10, LV_ALIGN_BOTTOM_MID, 0, -3);
 
-    add_label(lv_screen_active(), "FLEXIBLE HARVEST ROBOT", lv_color_hex(0x1F7A5A),
+    add_label(page_screen(), "FLEXIBLE HARVEST ROBOT", lv_color_hex(0x1F7A5A),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 218, 94);
 
-    task_1_button = add_button(lv_screen_active(), "TASK 1  |  TOP", 236, 119, 224, 40,
+    task_1_button = add_button(page_screen(), "TASK 1  |  TOP", 236, 119, 224, 40,
                                on_task_select,
                                (void *) (uintptr_t) FRUIT_UI_TASK_TOP_ONLY);
-    task_2_button = add_button(lv_screen_active(), "TASK 2  |  TOP + SIDE", 236, 169, 224, 40,
+    task_2_button = add_button(page_screen(), "TASK 2  |  TOP + SIDE", 236, 169, 224, 40,
                                on_task_select,
                                (void *) (uintptr_t) FRUIT_UI_TASK_TOP_AND_SIDE);
-    add_small_button(lv_screen_active(), "CAMERA TEST", 236, 219, 108, 40, on_settings, NULL);
-    add_small_button(lv_screen_active(), "AXIS TEST", 352, 219, 108, 40,
+    add_small_button(page_screen(), "CAMERA TEST", 236, 219, 108, 40, on_settings, NULL);
+    add_small_button(page_screen(), "AXIS TEST", 352, 219, 108, 40,
                      on_axis_jog_page, NULL);
 
-    card = add_card(lv_screen_active(), 218, 269, 242, 39);
+    card = add_card(page_screen(), 218, 269, 242, 39);
     lv_obj_set_style_pad_all(card, 5, 0);
-    add_label(card, "SYSTEM", lv_color_hex(0x77818C),
+    add_label(card, "FLASH", lv_color_hex(0x77818C),
               &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 0);
-    (void) snprintf(status,
-                    sizeof(status),
-                    "D:%lu | Scale:%s",
-                    (unsigned long) g_detection_count,
-                    g_weight_valid ? "ready" : "waiting");
+    if (ospi_flash_is_ready()) {
+        if (ui_assets_is_ready()) {
+            (void) snprintf(status,
+                            sizeof(status),
+                            "UI READY | %06lX",
+                            (unsigned long) ospi_flash_jedec_id());
+        } else {
+            (void) snprintf(status,
+                            sizeof(status),
+                            "ASSET ERROR | %06lX",
+                            (unsigned long) ospi_flash_jedec_id());
+        }
+    } else {
+        switch (ospi_flash_status()) {
+            case OSPI_FLASH_STATUS_OPEN_FAILED:
+                (void) snprintf(status, sizeof(status), "OPEN ERROR");
+                break;
+
+            case OSPI_FLASH_STATUS_ID_READ_FAILED:
+                (void) snprintf(status, sizeof(status), "READ ERROR");
+                break;
+
+            case OSPI_FLASH_STATUS_ID_MISMATCH:
+                (void) snprintf(status,
+                                sizeof(status),
+                                "ID ERROR | %06lX",
+                                (unsigned long) (ospi_flash_jedec_raw() & 0x00FFFFFFU));
+                break;
+
+            case OSPI_FLASH_STATUS_NOT_INITIALIZED:
+            default:
+                (void) snprintf(status, sizeof(status), "NOT INITIALIZED");
+                break;
+        }
+    }
     add_label(card, status, lv_color_hex(0x435466),
               &lv_font_montserrat_10, LV_ALIGN_TOP_RIGHT, 0, 0);
 
@@ -1050,6 +1105,7 @@ static void show_home(void)
     }
 
     update_home_detection_widgets();
+    finish_screen_switch();
 }
 
 static void show_task_stream(void)
@@ -1061,7 +1117,7 @@ static void show_task_stream(void)
     g_task_stream_active = false;
     reset_preview_session();
 
-    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_home, NULL);
+    add_small_button(page_screen(), "HOME", 12, 12, 68, 30, on_home, NULL);
 
     if (FRUIT_UI_TASK_TOP_AND_SIDE == g_task_mode) {
         title = g_task_side_camera ? "TASK 2 - SIDE CAMERA" : "TASK 2 - TOP CAMERA";
@@ -1069,14 +1125,14 @@ static void show_task_stream(void)
         title = "TASK 1 - TOP CAMERA";
     }
 
-    g_task_camera_title = add_label(lv_screen_active(), title, lv_color_hex(0x20303F),
+    g_task_camera_title = add_label(page_screen(), title, lv_color_hex(0x20303F),
                                     &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 15);
-    g_task_camera_status = add_label(lv_screen_active(), "Recognizing fruit...",
+    g_task_camera_status = add_label(page_screen(), "Recognizing fruit...",
                                      lv_color_hex(0x1F7A5A), &lv_font_montserrat_12,
                                      LV_ALIGN_BOTTOM_MID, 0, -8);
 
-    add_preview_backdrop(lv_screen_active(), 80, 52);
-    g_task_preview_image = lv_image_create(lv_screen_active());
+    add_preview_backdrop(page_screen(), 80, 52);
+    g_task_preview_image = lv_image_create(page_screen());
     lv_obj_set_pos(g_task_preview_image, 80, 52);
     lv_obj_set_style_border_width(g_task_preview_image, 1, 0);
     lv_obj_set_style_border_color(g_task_preview_image, lv_color_hex(0x31445A), 0);
@@ -1085,6 +1141,7 @@ static void show_task_stream(void)
     taskENTER_CRITICAL();
     g_task_stream_active = true;
     taskEXIT_CRITICAL();
+    finish_screen_switch();
 }
 
 static void show_debug(void)
@@ -1099,23 +1156,23 @@ static void show_debug(void)
     g_debug_mode_active = false;
     reset_preview_session();
 
-    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_back_debug, NULL);
-    g_debug_camera_title = add_label(lv_screen_active(), "TOP CAMERA DEBUG", lv_color_hex(0x20303F),
+    add_small_button(page_screen(), "HOME", 12, 12, 68, 30, on_back_debug, NULL);
+    g_debug_camera_title = add_label(page_screen(), "TOP CAMERA DEBUG", lv_color_hex(0x20303F),
                                      &lv_font_montserrat_16, LV_ALIGN_TOP_MID, 0, 15);
-    g_debug_camera_button = add_small_button(lv_screen_active(), "SIDE", 84, 12, 76, 30,
+    g_debug_camera_button = add_small_button(page_screen(), "SIDE", 84, 12, 76, 30,
                                              on_debug_camera_toggle, NULL);
-    g_debug_light_button = add_small_button(lv_screen_active(), "LIGHT ON", 392, 12, 76, 30,
+    g_debug_light_button = add_small_button(page_screen(), "LIGHT ON", 392, 12, 76, 30,
                                             on_debug_light_toggle, NULL);
 
-    add_preview_backdrop(lv_screen_active(), 4, 52);
-    g_debug_preview_image = lv_image_create(lv_screen_active());
+    add_preview_backdrop(page_screen(), 4, 52);
+    g_debug_preview_image = lv_image_create(page_screen());
     lv_obj_set_pos(g_debug_preview_image, 4, 52);
     lv_obj_set_style_border_width(g_debug_preview_image, 1, 0);
     lv_obj_set_style_border_color(g_debug_preview_image, lv_color_hex(0x31445A), 0);
     lv_obj_add_flag(g_debug_preview_image, LV_OBJ_FLAG_HIDDEN);
 
     for (uint32_t i = 0U; i < FRUIT_UI_MAX_DETECTIONS; i++) {
-        g_debug_boxes[i] = lv_obj_create(lv_screen_active());
+        g_debug_boxes[i] = lv_obj_create(page_screen());
         lv_obj_remove_style_all(g_debug_boxes[i]);
         lv_obj_set_style_bg_opa(g_debug_boxes[i], LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(g_debug_boxes[i], 2, 0);
@@ -1133,7 +1190,7 @@ static void show_debug(void)
         lv_obj_add_flag(g_debug_boxes[i], LV_OBJ_FLAG_HIDDEN);
     }
 
-    card = add_card(lv_screen_active(), 328, 52, 148, 240);
+    card = add_card(page_screen(), 328, 52, 148, 240);
     lv_obj_set_style_pad_all(card, 6, 0);
     add_label(card, "G ratio threshold", lv_color_hex(0x687685),
               &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 0);
@@ -1167,11 +1224,12 @@ static void show_debug(void)
     taskENTER_CRITICAL();
     g_debug_mode_active = true;
     taskEXIT_CRITICAL();
+    finish_screen_switch();
 }
 
 static void add_fruit_column(fruit_ui_target_t target, int32_t x)
 {
-    lv_obj_t * card = add_card(lv_screen_active(), x, 72, 138, 210);
+    lv_obj_t * card = add_card(page_screen(), x, 72, 138, 210);
     target_view_t * info = get_target(target);
     uint32_t const index = target_index(target);
     target_pick_state_t const state = g_pick_state[index];
@@ -1229,10 +1287,10 @@ static void show_select(void)
     g_current_page = UI_PAGE_SELECT;
     g_task_stream_active = false;
 
-    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_home, NULL);
-    add_label(lv_screen_active(), "Pick Detected Fruit", lv_color_hex(0x20303F),
+    add_small_button(page_screen(), "HOME", 12, 12, 68, 30, on_home, NULL);
+    add_label(page_screen(), "Pick Detected Fruit", lv_color_hex(0x20303F),
               &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 16);
-    add_label(lv_screen_active(), "Choose a fruit; completed weights stay locked",
+    add_label(page_screen(), "Choose a fruit; completed weights stay locked",
               lv_color_hex(0x687685), &lv_font_montserrat_12, LV_ALIGN_TOP_MID, 0, 46);
 
     if (g_detection_count > 0U) {
@@ -1247,12 +1305,13 @@ static void show_select(void)
                              start_x + ((int32_t) i * (card_width + card_gap)));
         }
     } else {
-        add_label(lv_screen_active(), "No fruit detected", get_target(FRUIT_UI_TARGET_NONE)->color,
+        add_label(page_screen(), "No fruit detected", get_target(FRUIT_UI_TARGET_NONE)->color,
                   &lv_font_montserrat_18, LV_ALIGN_CENTER, 0, 12);
     }
 
-    add_label(lv_screen_active(), "Pick -> Confirm Pick -> IPC -> weighing",
+    add_label(page_screen(), "Pick -> Confirm Pick -> IPC -> weighing",
               lv_color_hex(0x77818C), &lv_font_montserrat_10, LV_ALIGN_BOTTOM_MID, 0, -5);
+    finish_screen_switch();
 }
 
 static void show_detail(fruit_ui_target_t target)
@@ -1265,18 +1324,18 @@ static void show_detail(fruit_ui_target_t target)
     g_current_page = UI_PAGE_DETAIL;
     g_task_stream_active = false;
 
-    add_small_button(lv_screen_active(), "BACK", 12, 12, 68, 30, on_back_select, NULL);
-    add_small_button(lv_screen_active(), "HOME", 400, 12, 68, 30, on_home, NULL);
-    add_label(lv_screen_active(), "Target Detail", lv_color_hex(0x20303F),
+    add_small_button(page_screen(), "BACK", 12, 12, 68, 30, on_back_select, NULL);
+    add_small_button(page_screen(), "HOME", 400, 12, 68, 30, on_home, NULL);
+    add_label(page_screen(), "Target Detail", lv_color_hex(0x20303F),
               &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 16);
 
-    card = add_card(lv_screen_active(), 20, 62, 150, 82);
+    card = add_card(page_screen(), 20, 62, 150, 82);
     add_label(card, "Fruit Type", lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
     g_detail_type_label = add_label(card, info->name, info->color,
                                     &lv_font_montserrat_18, LV_ALIGN_CENTER, 0, 12);
 
-    card = add_card(lv_screen_active(), 188, 62, 272, 82);
+    card = add_card(page_screen(), 188, 62, 272, 82);
     add_label(card, "Actual Coordinate", lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
     (void) snprintf(buf, sizeof(buf), "X: %ld mm   Y: %ld mm\nZ: %ld mm",
@@ -1284,14 +1343,15 @@ static void show_detail(fruit_ui_target_t target)
     g_detail_coordinate_label = add_label(card, buf, lv_color_hex(0x20303F),
                                           &lv_font_montserrat_16, LV_ALIGN_CENTER, 0, 14);
 
-    card = add_card(lv_screen_active(), 20, 164, 440, 86);
+    card = add_card(page_screen(), 20, 164, 440, 86);
     add_label(card, "Robot Plan", lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
     add_label(card, "1.lock target 2.solve arm pose 3.close gripper 4.detect weight",
               lv_color_hex(0x435466), &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 30);
 
-    g_confirm_pick_button = add_button(lv_screen_active(), "CONFIRM PICK", 138, 270, 204, 36,
+    g_confirm_pick_button = add_button(page_screen(), "CONFIRM PICK", 138, 270, 204, 36,
                                        on_confirm_pick, NULL);
+    finish_screen_switch();
 }
 
 void fruit_ui_create(void)
@@ -1701,16 +1761,16 @@ static void show_axis_jog(void)
     g_debug_light_requested = false;
     taskEXIT_CRITICAL();
 
-    add_small_button(lv_screen_active(), "HOME", 12, 12, 68, 30, on_back_debug, NULL);
-    add_small_button(lv_screen_active(), "ZERO", 84, 12, 68, 30, on_arm_zero, NULL);
-    add_label(lv_screen_active(), "SINGLE AXIS JOG  |  5 DEG",
+    add_small_button(page_screen(), "HOME", 12, 12, 68, 30, on_back_debug, NULL);
+    add_small_button(page_screen(), "ZERO", 84, 12, 68, 30, on_arm_zero, NULL);
+    add_label(page_screen(), "SINGLE AXIS JOG  |  5 DEG",
               lv_color_hex(0x20303F), &lv_font_montserrat_16,
               LV_ALIGN_TOP_RIGHT, -12, 18);
 
     for (uint32_t i = 0U; i < UI_AXIS_COUNT; i++) {
         int32_t const y = 56 + ((int32_t) i * 46);
         uint32_t const axis = i + 1U;
-        lv_obj_t * card = add_card(lv_screen_active(), 24, y, 432, 40);
+        lv_obj_t * card = add_card(page_screen(), 24, y, 432, 40);
         char axis_text[16];
 
         lv_obj_set_style_pad_all(card, 6, 0);
@@ -1723,11 +1783,12 @@ static void show_axis_jog(void)
                    (void *) (uintptr_t) ((axis << 1U) | 1U));
     }
 
-    g_axis_jog_status_label = add_label(lv_screen_active(),
+    g_axis_jog_status_label = add_label(page_screen(),
                                         "Tap once to move only that axis",
                                         lv_color_hex(0x77818C),
                                         &lv_font_montserrat_10,
                                         LV_ALIGN_BOTTOM_MID, 0, -4);
+    finish_screen_switch();
 }
 
 bool fruit_ui_debug_light_requested(void)
