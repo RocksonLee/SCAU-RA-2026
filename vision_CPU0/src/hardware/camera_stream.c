@@ -44,8 +44,10 @@
 #define CAMERA_SIDE_Z_SLOPE      (0.39634450194777904)
 #define CAMERA_SIDE_Z_OFFSET     (270.4756856225454)
 #define CAMERA_TOP_ONLY_Z_MM     (100.0)
-#define CAMERA_TOP_Z_LOW_MM      (275.0)
-#define CAMERA_TOP_Z_HIGH_MM     (425.0)
+#define CAMERA_TOP_Z_MIN_MM      (320.0)
+#define CAMERA_TOP_Z_MAX_MM      (400.0)
+#define CAMERA_TOP_CAL_Z_LOW_MM  (350.0)
+#define CAMERA_TOP_CAL_Z_HIGH_MM (395.0)
 #define CAMERA_HOMOGRAPHY_EPSILON (1.0e-9)
 
 /* Keep these coefficients synchronized with CPU1 handeye_transform.c. */
@@ -56,18 +58,18 @@ static double const g_camera_to_arm_homography_z0[3][3] =
     {0.000247, -0.000043,    1.000000},
 };
 
-static double const g_camera_to_arm_homography_z275[3][3] =
+static double const g_camera_to_arm_homography_z350[3][3] =
 {
-    {0.166329,  0.311028, 10.802838},
-    {0.796301, -0.114012, 26.787988},
-    {0.001480, -0.000806,  1.000000},
+    {-0.2000607037, 0.1045656660,  71.4690058254},
+    {-0.5734714204, 0.0847068612, 241.6668152189},
+    {-0.0024356818, 0.0005105174,   1.0000000000},
 };
 
-static double const g_camera_to_arm_homography_z425[3][3] =
+static double const g_camera_to_arm_homography_z395[3][3] =
 {
-    {0.127322, -0.270970,  96.431837},
-    {0.309648, -0.456334, 148.252655},
-    {0.001204, -0.002781,   1.000000},
+    {0.1773162865, -0.2346012824,   5.9725018660},
+    {0.2884252054, -0.7531133394, 136.9012811045},
+    {0.0006055682, -0.0037035465,   1.0000000000},
 };
 
 #if APP_DETECTION_MAX_RESULTS != FRUIT_UI_MAX_DETECTIONS
@@ -1529,7 +1531,7 @@ static bool camera_top_pixel_to_arm_xy(double   u,
                                         double * p_x_mm,
                                         double * p_y_mm)
 {
-    if ((z_mm < CAMERA_TOP_Z_LOW_MM) || (z_mm > CAMERA_TOP_Z_HIGH_MM))
+    if ((z_mm < CAMERA_TOP_Z_MIN_MM) || (z_mm > CAMERA_TOP_Z_MAX_MM))
     {
         return false;
     }
@@ -1539,14 +1541,14 @@ static bool camera_top_pixel_to_arm_xy(double   u,
     double x_high_mm;
     double y_high_mm;
 
-    if (!camera_project_top(g_camera_to_arm_homography_z275, u, v, &x_low_mm, &y_low_mm) ||
-        !camera_project_top(g_camera_to_arm_homography_z425, u, v, &x_high_mm, &y_high_mm))
+    if (!camera_project_top(g_camera_to_arm_homography_z350, u, v, &x_low_mm, &y_low_mm) ||
+        !camera_project_top(g_camera_to_arm_homography_z395, u, v, &x_high_mm, &y_high_mm))
     {
         return false;
     }
 
-    double const ratio = (z_mm - CAMERA_TOP_Z_LOW_MM) /
-                         (CAMERA_TOP_Z_HIGH_MM - CAMERA_TOP_Z_LOW_MM);
+    double const ratio = (z_mm - CAMERA_TOP_CAL_Z_LOW_MM) /
+                         (CAMERA_TOP_CAL_Z_HIGH_MM - CAMERA_TOP_CAL_Z_LOW_MM);
     *p_x_mm = x_low_mm + (ratio * (x_high_mm - x_low_mm));
     *p_y_mm = y_low_mm + (ratio * (y_high_mm - y_low_mm));
     return true;
