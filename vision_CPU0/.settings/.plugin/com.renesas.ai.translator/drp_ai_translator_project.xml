@@ -2,7 +2,7 @@
 <DrpAiTranslatorProjectSettings>
     <ProjectSettingsInfo>
         <framework>1</framework>
-        <modelfile>ra_yolo_fastest_256_heads.onnx</modelfile>
+        <modelfile>D:\ruisacup\nanodet-main\workspace\ra8p1_nanodet-plus-0.5x_256\nanodet_ra8p1_256.onnx</modelfile>
         <output_directory>conversion_results</output_directory>
         <product>RA8P1 (CPU+Ethos-U55)</product>
         <tool_name>RUHMI Framework AI Compiler</tool_name>
@@ -18,9 +18,11 @@
     <DRP-AI_TVMSettingInfo>
         <TransSettingInfo>
             <item key="ra_yolo_fastest_256_heads.onnx">conversion_results/conversion_tool_settings/ra_yolo_fastest_256_heads.onnx_trans_config.json</item>
+            <item key="D:\ruisacup\nanodet-main\workspace\ra8p1_nanodet-plus-0.5x_256\nanodet_ra8p1_256.onnx">conversion_results/conversion_tool_settings/nanodet_ra8p1_256.onnx_trans_config.json</item>
         </TransSettingInfo>
         <QuantizationSetting>
             <item key="ra_yolo_fastest_256_heads.onnx">conversion_results/conversion_tool_settings/ra_yolo_fastest_256_heads.onnx_quant_config.json</item>
+            <item key="D:\ruisacup\nanodet-main\workspace\ra8p1_nanodet-plus-0.5x_256\nanodet_ra8p1_256.onnx">conversion_results/conversion_tool_settings/nanodet_ra8p1_256.onnx_quant_config.json</item>
         </QuantizationSetting>
     </DRP-AI_TVMSettingInfo>
 </DrpAiTranslatorProjectSettings>

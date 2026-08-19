@@ -65,18 +65,18 @@ void compute_sub_0000(
 
   // inputs
   
-  const float images[196608], // 1,3,256,256
+  const float data[196608], // 1,3,256,256
   
 
   // outputs
   
-  int8_t images_70602_11151[196608]  // 1,256,256,3
+  int8_t data_71032_12024[196608]  // 1,256,256,3
   
 ) {
   // Buffers allocated on the main storage (note: depends on the execution order)
     
   
-  int8_t* images_11149 = (int8_t *) &main_storage[0]; // 1,3,256,256 == 196608
+  int8_t* data_12022 = (int8_t *) &main_storage[0]; // 1,3,256,256 == 196608
   
   
 
@@ -95,8 +95,8 @@ void compute_sub_0000(
 // Input  : float - 1,3,256,256
 // Output : int8_t - 1,3,256,256
 AffineQuantizeFloatToInt8(
-  images,   // input data
-  images_11149,   // output data
+  data,   // input data
+  data_12022,   // output data
   196608,   // size
   -1,   // output zeropoint
   0.007843137718737125);   // output scale
@@ -104,25 +104,25 @@ AffineQuantizeFloatToInt8(
 //
 // Transpose
 //
-// Input images_11149: int8_t - 1,3,256,256
-// Output images_70602_11151: int8_t - 1,256,256,3
+// Input data_12022: int8_t - 1,3,256,256
+// Output data_71032_12024: int8_t - 1,256,256,3
 // Perm: ( 0,  2,  3,  1, )
 
-int32_t strides_images_70602_11151[4] = { 196608, 256, 1, 65536,  };
+int32_t strides_data_71032_12024[4] = { 196608, 256, 1, 65536,  };
 
-int32_t next_dim_sizes_images_70602_11151[4] = { 196608, 196608, 768, 3,  };
+int32_t next_dim_sizes_data_71032_12024[4] = { 196608, 196608, 768, 3,  };
 
-int32_t dim_sizes_images_70602_11151[4] = { 196608, 768, 3, 1,  };
+int32_t dim_sizes_data_71032_12024[4] = { 196608, 768, 3, 1,  };
 
 
 Transpose(
-      images_11149
-    , images_70602_11151
+      data_12022
+    , data_71032_12024
     , 196608
     , 4
-    , strides_images_70602_11151
-    , next_dim_sizes_images_70602_11151
-    , dim_sizes_images_70602_11151
+    , strides_data_71032_12024
+    , next_dim_sizes_data_71032_12024
+    , dim_sizes_data_71032_12024
 );
 
 }

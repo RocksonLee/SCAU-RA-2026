@@ -53,8 +53,8 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "common_data.h"
 #include "model.h"
+#include "common_data.h"
 
 // CPU compute declarations
 #include "compute_sub_0000.h"
@@ -62,58 +62,170 @@
 #include "compute_sub_0002.h"
 #include "sub_0003_invoke.h"
 #include "compute_sub_0004.h"
+#include "sub_0005_invoke.h"
+#include "compute_sub_0006.h"
+#include "sub_0007_invoke.h"
+#include "compute_sub_0008.h"
+#include "sub_0009_invoke.h"
+#include "compute_sub_0010.h"
+#include "sub_0011_invoke.h"
+#include "compute_sub_0012.h"
+#include "sub_0013_invoke.h"
+#include "compute_sub_0014.h"
+#include "sub_0015_invoke.h"
+#include "compute_sub_0016.h"
+#include "sub_0017_invoke.h"
+#include "compute_sub_0018.h"
+#include "sub_0019_invoke.h"
+#include "compute_sub_0020.h"
+#include "sub_0021_invoke.h"
+#include "compute_sub_0022.h"
+#include "sub_0023_invoke.h"
+#include "compute_sub_0024.h"
+#include "sub_0025_invoke.h"
+#include "compute_sub_0026.h"
+#include "sub_0027_invoke.h"
+#include "compute_sub_0028.h"
+#include "sub_0029_invoke.h"
+#include "compute_sub_0030.h"
+#include "sub_0031_invoke.h"
+#include "compute_sub_0032.h"
+#include "sub_0033_invoke.h"
+#include "compute_sub_0034.h"
 
-// Buffers for CPU units
-float buf_images[196608]
+// Application-facing float buffers and the shared CPU scratch live in cached SDRAM.
+float buf_data[196608]
     BSP_PLACE_IN_SECTION(".sdram") BSP_ALIGN_VARIABLE(32);
-float buf_p4_16x16_70454[6144];
-float buf_p5_8x8_70436[1536];
-
-// Arenas for CPU units
-uint8_t compute_arena_sub_0000[kBufferSize_sub_0000]
+float buf_output_70634[47040]
     BSP_PLACE_IN_SECTION(".sdram") BSP_ALIGN_VARIABLE(32);
-uint8_t compute_arena_sub_0002[kBufferSize_sub_0002];
-uint8_t compute_arena_sub_0004[kBufferSize_sub_0004];
+static uint8_t g_compute_arena[kBufferSize_sub_0000]
+    BSP_PLACE_IN_SECTION(".sdram") BSP_ALIGN_VARIABLE(32);
 
-  // Model input pointers
-float* GetModelInputPtr_images() {
-  return buf_images;
+#define MODEL_ARENA_I8(arena, address) ((int8_t *) ((arena) + (address)))
+
+float* GetModelInputPtr_data(void) {
+  return buf_data;
 }
 
-
-  // Model output pointers
-float* GetModelOutputPtr_p4_16x16_70454() {
-  return buf_p4_16x16_70454;
+float* GetModelOutputPtr_output_70634(void) {
+  return buf_output_70634;
 }
 
-float* GetModelOutputPtr_p5_8x8_70436() {
-  return buf_p5_8x8_70436;
+bool RunModel(void) {
+  compute_sub_0000(
+      g_compute_arena,
+      buf_data,
+      MODEL_ARENA_I8(sub_0001_arena, sub_0001_address_data_71032_12024));
+  if (sub_0001_invoke(false) != 0) return false;
+
+  compute_sub_0002(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0001_arena, sub_0001_address__backbone_stage2_stage2_0_Concat_output_0_70304_71066_11740),
+      MODEL_ARENA_I8(sub_0003_arena, sub_0003_address__backbone_stage2_stage2_0_Reshape_1_output_0_70307_11416));
+  if (sub_0003_invoke(false) != 0) return false;
+
+  compute_sub_0004(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0003_arena, sub_0003_address__backbone_stage2_stage2_1_Concat_output_0_70317_71067_11748),
+      MODEL_ARENA_I8(sub_0005_arena, sub_0005_address__backbone_stage2_stage2_1_Reshape_1_output_0_70320_11424));
+  if (sub_0005_invoke(false) != 0) return false;
+
+  compute_sub_0006(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0005_arena, sub_0005_address__backbone_stage2_stage2_2_Concat_output_0_70330_71068_11764),
+      MODEL_ARENA_I8(sub_0007_arena, sub_0007_address__backbone_stage2_stage2_2_Reshape_1_output_0_70333_11432));
+  if (sub_0007_invoke(false) != 0) return false;
+
+  // The third branch is retained directly in sub_0033 until the final head invocation.
+  compute_sub_0008(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0007_arena, sub_0007_address__backbone_stage2_stage2_3_Concat_output_0_70343_71069_11780),
+      MODEL_ARENA_I8(sub_0009_arena, sub_0009_address__backbone_stage2_stage2_3_Reshape_1_output_0_70346_71039_11784_70431),
+      MODEL_ARENA_I8(sub_0009_arena, sub_0009_address__backbone_stage2_stage2_3_Reshape_1_output_0_70346_71040_11788_70437),
+      MODEL_ARENA_I8(sub_0033_arena, sub_0033_address__backbone_stage2_stage2_3_Reshape_1_output_0_70346_71063_11792_70443));
+  if (sub_0009_invoke(false) != 0) return false;
+
+  compute_sub_0010(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0009_arena, sub_0009_address__backbone_stage3_stage3_0_Concat_output_0_70355_71070_11808),
+      MODEL_ARENA_I8(sub_0011_arena, sub_0011_address__backbone_stage3_stage3_0_Reshape_1_output_0_70358_11448));
+  if (sub_0011_invoke(false) != 0) return false;
+
+  compute_sub_0012(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0011_arena, sub_0011_address__backbone_stage3_stage3_1_Concat_output_0_70368_71071_11816),
+      MODEL_ARENA_I8(sub_0013_arena, sub_0013_address__backbone_stage3_stage3_1_Reshape_1_output_0_70371_11456));
+  if (sub_0013_invoke(false) != 0) return false;
+
+  compute_sub_0014(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0013_arena, sub_0013_address__backbone_stage3_stage3_2_Concat_output_0_70381_71072_11832),
+      MODEL_ARENA_I8(sub_0015_arena, sub_0015_address__backbone_stage3_stage3_2_Reshape_1_output_0_70384_11464));
+  if (sub_0015_invoke(false) != 0) return false;
+
+  compute_sub_0016(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0015_arena, sub_0015_address__backbone_stage3_stage3_3_Concat_output_0_70394_71073_11848),
+      MODEL_ARENA_I8(sub_0017_arena, sub_0017_address__backbone_stage3_stage3_3_Reshape_1_output_0_70397_11472));
+  if (sub_0017_invoke(false) != 0) return false;
+
+  compute_sub_0018(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0017_arena, sub_0017_address__backbone_stage3_stage3_4_Concat_output_0_70407_71074_11864),
+      MODEL_ARENA_I8(sub_0019_arena, sub_0019_address__backbone_stage3_stage3_4_Reshape_1_output_0_70410_11480));
+  if (sub_0019_invoke(false) != 0) return false;
+
+  compute_sub_0020(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0019_arena, sub_0019_address__backbone_stage3_stage3_5_Concat_output_0_70420_71075_11880),
+      MODEL_ARENA_I8(sub_0021_arena, sub_0021_address__backbone_stage3_stage3_5_Reshape_1_output_0_70423_11488));
+  if (sub_0021_invoke(false) != 0) return false;
+
+  compute_sub_0022(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0021_arena, sub_0021_address__backbone_stage3_stage3_6_Concat_output_0_70433_71076_11896),
+      MODEL_ARENA_I8(sub_0023_arena, sub_0023_address__backbone_stage3_stage3_6_Reshape_1_output_0_70436_11496));
+  if (sub_0023_invoke(false) != 0) return false;
+
+  // The third branch is retained directly in sub_0033 until the final head invocation.
+  compute_sub_0024(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0023_arena, sub_0023_address__backbone_stage3_stage3_7_Concat_output_0_70446_71077_11912),
+      MODEL_ARENA_I8(sub_0025_arena, sub_0025_address__backbone_stage3_stage3_7_Reshape_1_output_0_70449_71055_11916_70581),
+      MODEL_ARENA_I8(sub_0025_arena, sub_0025_address__backbone_stage3_stage3_7_Reshape_1_output_0_70449_71056_11920_70587),
+      MODEL_ARENA_I8(sub_0033_arena, sub_0033_address__backbone_stage3_stage3_7_Reshape_1_output_0_70449_71064_11924_70593));
+  if (sub_0025_invoke(false) != 0) return false;
+
+  compute_sub_0026(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0025_arena, sub_0025_address__backbone_stage4_stage4_0_Concat_output_0_70458_71078_11940),
+      MODEL_ARENA_I8(sub_0027_arena, sub_0027_address__backbone_stage4_stage4_0_Reshape_1_output_0_70461_11512));
+  if (sub_0027_invoke(false) != 0) return false;
+
+  compute_sub_0028(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0027_arena, sub_0027_address__backbone_stage4_stage4_1_Concat_output_0_70471_71079_11948),
+      MODEL_ARENA_I8(sub_0029_arena, sub_0029_address__backbone_stage4_stage4_1_Reshape_1_output_0_70474_11520));
+  if (sub_0029_invoke(false) != 0) return false;
+
+  compute_sub_0030(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0029_arena, sub_0029_address__backbone_stage4_stage4_2_Concat_output_0_70484_71080_11964),
+      MODEL_ARENA_I8(sub_0031_arena, sub_0031_address__backbone_stage4_stage4_2_Reshape_1_output_0_70487_11528));
+  if (sub_0031_invoke(false) != 0) return false;
+
+  compute_sub_0032(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0031_arena, sub_0031_address__backbone_stage4_stage4_3_Concat_output_0_70497_71081_11980),
+      MODEL_ARENA_I8(sub_0033_arena, sub_0033_address__backbone_stage4_stage4_3_Reshape_1_output_0_70500_71065_11984_70659));
+  if (sub_0033_invoke(false) != 0) return false;
+
+  compute_sub_0034(
+      g_compute_arena,
+      MODEL_ARENA_I8(sub_0033_arena, sub_0033_address_output_70634_12028),
+      buf_output_70634);
+
+  return true;
 }
 
-
-void RunModel(bool clean_outputs) {
-  // Buffers for NPU units
-  int8_t* buf_images_70602_11151 = (int8_t*) (sub_0001_arena + sub_0001_address_images_70602_11151);
-  int8_t* buf__737_70388_11119 = (int8_t*) (sub_0001_arena + sub_0001_address__737_70388_11119);
-  int8_t* buf__837_70434_70603_11143 = (int8_t*) (sub_0001_arena + sub_0001_address__837_70434_70603_11143);
-  int8_t* buf__838_70438_10737 = (int8_t*) (sub_0001_arena + sub_0001_address__838_70438_10737);
-  int8_t* buf__843_70441_11067 = (int8_t*) (sub_0003_arena + sub_0003_address__843_70441_11067);
-  int8_t* buf__864_70452_70604_11147 = (int8_t*) (sub_0003_arena + sub_0003_address__864_70452_70604_11147);
-
-  // CPU Unit
-  compute_sub_0000(compute_arena_sub_0000, buf_images, buf_images_70602_11151  );
-
-  // NPU Unit
-  sub_0001_invoke(clean_outputs);
-
-  // CPU Unit
-  compute_sub_0002(compute_arena_sub_0002, buf__837_70434_70603_11143, buf__838_70438_10737, buf__843_70441_11067, buf_p5_8x8_70436  );
-
-  memcpy((sub_0003_arena + sub_0003_address__737_70388_11119), buf__737_70388_11119, 6144);
-  // NPU Unit
-  sub_0003_invoke(clean_outputs);
-
-  // CPU Unit
-  compute_sub_0004(compute_arena_sub_0004, buf__864_70452_70604_11147, buf_p4_16x16_70454  );
-
-}
+#undef MODEL_ARENA_I8

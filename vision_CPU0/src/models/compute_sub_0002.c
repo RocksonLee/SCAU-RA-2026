@@ -61,26 +61,22 @@
 
 void compute_sub_0002(
   // buffer for intermediate results
-  uint8_t* main_storage, // should provide at least 1541 bytes of storage
+  uint8_t* main_storage, // should provide at least 49157 bytes of storage
 
   // inputs
   
-  const int8_t _837_70434_70603_11143[1536], // 1,24,8,8
-  
-  const int8_t _838_70438_10737[6144], // 1,8,8,96
+  const int8_t _backbone_stage2_stage2_0_Concat_output_0_70304_71066_11740[49152], // 1,48,32,32
   
 
   // outputs
   
-  int8_t _843_70441_11067[24576] , // 1,16,16,96
-  
-  float p5_8x8_70436[1536]  // 1,3,8,8,8
+  int8_t _backbone_stage2_stage2_0_Reshape_1_output_0_70307_11416[49152]  // 1,48,32,32
   
 ) {
   // Buffers allocated on the main storage (note: depends on the execution order)
     
   
-  int8_t* p5_8x8_70436_11159 = (int8_t *) &main_storage[0]; // 1,3,8,8,8 == 1536
+  int8_t* _backbone_stage2_stage2_0_Transpose_output_0_70306_11744 = (int8_t *) &main_storage[0]; // 1,24,2,32,32 == 49152
   
   
 
@@ -94,13 +90,13 @@ void compute_sub_0002(
 
 
 //
-// Identity - bypassing _911_70435_10895 operation
+// Identity - bypassing _backbone_stage2_stage2_0_Reshape_output_0_70305_11420 operation
 //
-// Input _837_70434_70603_11143: int8_t - 1,24,8,8
-// Output _911_70435_10895: int8_t - 1,3,8,8,8
+// Input _backbone_stage2_stage2_0_Concat_output_0_70304_71066_11740: int8_t - 1,48,32,32
+// Output _backbone_stage2_stage2_0_Reshape_output_0_70305_11420: int8_t - 1,2,24,32,32
 
 
-const int8_t* _911_70435_10895 = _837_70434_70603_11143;
+const int8_t* _backbone_stage2_stage2_0_Reshape_output_0_70305_11420 = _backbone_stage2_stage2_0_Concat_output_0_70304_71066_11740;
 
 
 
@@ -109,55 +105,38 @@ const int8_t* _911_70435_10895 = _837_70434_70603_11143;
 //
 // Transpose
 //
-// Input _911_70435_10895: int8_t - 1,3,8,8,8
-// Output p5_8x8_70436_11159: int8_t - 1,3,8,8,8
-// Perm: ( 0,  1,  3,  4,  2, )
+// Input _backbone_stage2_stage2_0_Reshape_output_0_70305_11420: int8_t - 1,2,24,32,32
+// Output _backbone_stage2_stage2_0_Transpose_output_0_70306_11744: int8_t - 1,24,2,32,32
+// Perm: ( 0,  2,  1,  3,  4, )
 
-int32_t strides_p5_8x8_70436_11159[5] = { 1536, 512, 8, 1, 64,  };
+int32_t strides__backbone_stage2_stage2_0_Transpose_output_0_70306_11744[5] = { 49152, 1024, 24576, 32, 1,  };
 
-int32_t next_dim_sizes_p5_8x8_70436_11159[5] = { 1536, 1536, 512, 64, 8,  };
+int32_t next_dim_sizes__backbone_stage2_stage2_0_Transpose_output_0_70306_11744[5] = { 49152, 49152, 2048, 1024, 32,  };
 
-int32_t dim_sizes_p5_8x8_70436_11159[5] = { 1536, 512, 64, 8, 1,  };
+int32_t dim_sizes__backbone_stage2_stage2_0_Transpose_output_0_70306_11744[5] = { 49152, 2048, 1024, 32, 1,  };
 
 
 Transpose(
-      _911_70435_10895
-    , p5_8x8_70436_11159
-    , 1536
+      _backbone_stage2_stage2_0_Reshape_output_0_70305_11420
+    , _backbone_stage2_stage2_0_Transpose_output_0_70306_11744
+    , 49152
     , 5
-    , strides_p5_8x8_70436_11159
-    , next_dim_sizes_p5_8x8_70436_11159
-    , dim_sizes_p5_8x8_70436_11159
+    , strides__backbone_stage2_stage2_0_Transpose_output_0_70306_11744
+    , next_dim_sizes__backbone_stage2_stage2_0_Transpose_output_0_70306_11744
+    , dim_sizes__backbone_stage2_stage2_0_Transpose_output_0_70306_11744
 );
 
 //
-// Dequantize
+// Identity - bypassing _backbone_stage2_stage2_0_Reshape_1_output_0_70307_11416 operation
 //
-// Input  p5_8x8_70436_11159: int8_t - 1,3,8,8,8
-// Output p5_8x8_70436: float - 1,3,8,8,8
-AffineDequantizeInt8ToFloat(p5_8x8_70436_11159, p5_8x8_70436, 1536, 0, 0.6846159100532532);
+// Input _backbone_stage2_stage2_0_Transpose_output_0_70306_11744: int8_t - 1,24,2,32,32
+// Output _backbone_stage2_stage2_0_Reshape_1_output_0_70307_11416: int8_t - 1,48,32,32
+
+
+memcpy(_backbone_stage2_stage2_0_Reshape_1_output_0_70307_11416, _backbone_stage2_stage2_0_Transpose_output_0_70306_11744, 49152 * sizeof(int8_t));
 
 
 
-//
-// Upsampling Nearest Neighbor
-//
 
-// Input _838_70438_10737: int8_t - 1,8,8,96
-// Output _843_70441_11067: int8_t - 1,16,16,96
-
-const int32_t in_shape__843_70441_11067[4] = { 1, 8, 8, 96,  };
-
-const int32_t out_shape__843_70441_11067[4] = { 1, 16, 16, 96,  };
-
-
-UpsamplingNearestNeighbor(
-      _838_70438_10737
-    , _843_70441_11067
-    , in_shape__843_70441_11067
-    , out_shape__843_70441_11067
-    , false
-    , false
-);
 
 }

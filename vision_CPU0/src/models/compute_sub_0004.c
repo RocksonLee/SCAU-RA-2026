@@ -61,22 +61,22 @@
 
 void compute_sub_0004(
   // buffer for intermediate results
-  uint8_t* main_storage, // should provide at least 6149 bytes of storage
+  uint8_t* main_storage, // should provide at least 49157 bytes of storage
 
   // inputs
   
-  const int8_t _864_70452_70604_11147[6144], // 1,24,16,16
+  const int8_t _backbone_stage2_stage2_1_Concat_output_0_70317_71067_11748[49152], // 1,48,32,32
   
 
   // outputs
   
-  float p4_16x16_70454[6144]  // 1,3,16,16,8
+  int8_t _backbone_stage2_stage2_1_Reshape_1_output_0_70320_11424[49152]  // 1,48,32,32
   
 ) {
   // Buffers allocated on the main storage (note: depends on the execution order)
     
   
-  int8_t* p4_16x16_70454_11155 = (int8_t *) &main_storage[0]; // 1,3,16,16,8 == 6144
+  int8_t* _backbone_stage2_stage2_1_Transpose_output_0_70319_11760 = (int8_t *) &main_storage[0]; // 1,24,2,32,32 == 49152
   
   
 
@@ -90,13 +90,13 @@ void compute_sub_0004(
 
 
 //
-// Identity - bypassing _887_70453_10891 operation
+// Identity - bypassing _backbone_stage2_stage2_1_Reshape_output_0_70318_11428 operation
 //
-// Input _864_70452_70604_11147: int8_t - 1,24,16,16
-// Output _887_70453_10891: int8_t - 1,3,8,16,16
+// Input _backbone_stage2_stage2_1_Concat_output_0_70317_71067_11748: int8_t - 1,48,32,32
+// Output _backbone_stage2_stage2_1_Reshape_output_0_70318_11428: int8_t - 1,2,24,32,32
 
 
-const int8_t* _887_70453_10891 = _864_70452_70604_11147;
+const int8_t* _backbone_stage2_stage2_1_Reshape_output_0_70318_11428 = _backbone_stage2_stage2_1_Concat_output_0_70317_71067_11748;
 
 
 
@@ -105,33 +105,38 @@ const int8_t* _887_70453_10891 = _864_70452_70604_11147;
 //
 // Transpose
 //
-// Input _887_70453_10891: int8_t - 1,3,8,16,16
-// Output p4_16x16_70454_11155: int8_t - 1,3,16,16,8
-// Perm: ( 0,  1,  3,  4,  2, )
+// Input _backbone_stage2_stage2_1_Reshape_output_0_70318_11428: int8_t - 1,2,24,32,32
+// Output _backbone_stage2_stage2_1_Transpose_output_0_70319_11760: int8_t - 1,24,2,32,32
+// Perm: ( 0,  2,  1,  3,  4, )
 
-int32_t strides_p4_16x16_70454_11155[5] = { 6144, 2048, 16, 1, 256,  };
+int32_t strides__backbone_stage2_stage2_1_Transpose_output_0_70319_11760[5] = { 49152, 1024, 24576, 32, 1,  };
 
-int32_t next_dim_sizes_p4_16x16_70454_11155[5] = { 6144, 6144, 2048, 128, 8,  };
+int32_t next_dim_sizes__backbone_stage2_stage2_1_Transpose_output_0_70319_11760[5] = { 49152, 49152, 2048, 1024, 32,  };
 
-int32_t dim_sizes_p4_16x16_70454_11155[5] = { 6144, 2048, 128, 8, 1,  };
+int32_t dim_sizes__backbone_stage2_stage2_1_Transpose_output_0_70319_11760[5] = { 49152, 2048, 1024, 32, 1,  };
 
 
 Transpose(
-      _887_70453_10891
-    , p4_16x16_70454_11155
-    , 6144
+      _backbone_stage2_stage2_1_Reshape_output_0_70318_11428
+    , _backbone_stage2_stage2_1_Transpose_output_0_70319_11760
+    , 49152
     , 5
-    , strides_p4_16x16_70454_11155
-    , next_dim_sizes_p4_16x16_70454_11155
-    , dim_sizes_p4_16x16_70454_11155
+    , strides__backbone_stage2_stage2_1_Transpose_output_0_70319_11760
+    , next_dim_sizes__backbone_stage2_stage2_1_Transpose_output_0_70319_11760
+    , dim_sizes__backbone_stage2_stage2_1_Transpose_output_0_70319_11760
 );
 
 //
-// Dequantize
+// Identity - bypassing _backbone_stage2_stage2_1_Reshape_1_output_0_70320_11424 operation
 //
-// Input  p4_16x16_70454_11155: int8_t - 1,3,16,16,8
-// Output p4_16x16_70454: float - 1,3,16,16,8
-AffineDequantizeInt8ToFloat(p4_16x16_70454_11155, p4_16x16_70454, 6144, 0, 0.299101859331131);
+// Input _backbone_stage2_stage2_1_Transpose_output_0_70319_11760: int8_t - 1,24,2,32,32
+// Output _backbone_stage2_stage2_1_Reshape_1_output_0_70320_11424: int8_t - 1,48,32,32
+
+
+memcpy(_backbone_stage2_stage2_1_Reshape_1_output_0_70320_11424, _backbone_stage2_stage2_1_Transpose_output_0_70319_11760, 49152 * sizeof(int8_t));
+
+
+
 
 
 }

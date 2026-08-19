@@ -81,11 +81,11 @@ void compute_sub_0000(
 
   // inputs
   
-  const float images[196608], // 1,3,256,256
+  const float data[196608], // 1,3,256,256
   
 
   // outputs
   
-  int8_t images_70602_11151[196608]  // 1,256,256,3
+  int8_t data_71032_12024[196608]  // 1,256,256,3
   
 );

@@ -66,30 +66,26 @@
 enum BufferSize_sub_0002 {
 
 #if defined(ARM_MATH_MVEI)
-  kBufferSize_sub_0002 = 1541
+  kBufferSize_sub_0002 = 49157
 #elif defined(ARM_MATH_DSP)
-  kBufferSize_sub_0002 = 1541
+  kBufferSize_sub_0002 = 49157
 #else
-  kBufferSize_sub_0002 = 1541
+  kBufferSize_sub_0002 = 49157
 #endif
 
 };
 
 void compute_sub_0002(
   // buffer for intermediate results
-  uint8_t* main_storage, // should provide at least 1541 bytes of storage
+  uint8_t* main_storage, // should provide at least 49157 bytes of storage
 
   // inputs
   
-  const int8_t _837_70434_70603_11143[1536], // 1,24,8,8
-  
-  const int8_t _838_70438_10737[6144], // 1,8,8,96
+  const int8_t _backbone_stage2_stage2_0_Concat_output_0_70304_71066_11740[49152], // 1,48,32,32
   
 
   // outputs
   
-  int8_t _843_70441_11067[24576] , // 1,16,16,96
-  
-  float p5_8x8_70436[1536]  // 1,3,8,8,8
+  int8_t _backbone_stage2_stage2_0_Reshape_1_output_0_70307_11416[49152]  // 1,48,32,32
   
 );

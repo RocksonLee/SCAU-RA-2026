@@ -55,23 +55,51 @@
 // NPU unit addresses
 #include "sub_0001_tensors.h"
 #include "sub_0003_tensors.h"
+#include "sub_0005_tensors.h"
+#include "sub_0007_tensors.h"
+#include "sub_0009_tensors.h"
+#include "sub_0011_tensors.h"
+#include "sub_0013_tensors.h"
+#include "sub_0015_tensors.h"
+#include "sub_0017_tensors.h"
+#include "sub_0019_tensors.h"
+#include "sub_0021_tensors.h"
+#include "sub_0023_tensors.h"
+#include "sub_0025_tensors.h"
+#include "sub_0027_tensors.h"
+#include "sub_0029_tensors.h"
+#include "sub_0031_tensors.h"
+#include "sub_0033_tensors.h"
 
 // Arenas for NPU units
 extern uint8_t sub_0001_arena[kArenaSize_sub_0001];
 extern uint8_t sub_0003_arena[kArenaSize_sub_0003];
+extern uint8_t sub_0005_arena[kArenaSize_sub_0005];
+extern uint8_t sub_0007_arena[kArenaSize_sub_0007];
+extern uint8_t sub_0009_arena[kArenaSize_sub_0009];
+extern uint8_t sub_0011_arena[kArenaSize_sub_0011];
+extern uint8_t sub_0013_arena[kArenaSize_sub_0013];
+extern uint8_t sub_0015_arena[kArenaSize_sub_0015];
+extern uint8_t sub_0017_arena[kArenaSize_sub_0017];
+extern uint8_t sub_0019_arena[kArenaSize_sub_0019];
+extern uint8_t sub_0021_arena[kArenaSize_sub_0021];
+extern uint8_t sub_0023_arena[kArenaSize_sub_0023];
+extern uint8_t sub_0025_arena[kArenaSize_sub_0025];
+extern uint8_t sub_0027_arena[kArenaSize_sub_0027];
+extern uint8_t sub_0029_arena[kArenaSize_sub_0029];
+extern uint8_t sub_0031_arena[kArenaSize_sub_0031];
+extern uint8_t sub_0033_arena[kArenaSize_sub_0033];
 
 // Buffers
-extern float buf_images[196608];
-extern float buf_p4_16x16_70454[6144];
-extern float buf_p5_8x8_70436[1536];
+extern float buf_data[196608];
+extern float buf_output_70634[47040];
 
 
-void RunModel(bool clean_outputs);
+bool RunModel(void);
 
   // Model input pointers
-float* GetModelInputPtr_images();
+float* GetModelInputPtr_data(void);
 
   // Model output pointers
-float* GetModelOutputPtr_p4_16x16_70454();
-float* GetModelOutputPtr_p5_8x8_70436();
+float* GetModelOutputPtr_output_70634(void);
 

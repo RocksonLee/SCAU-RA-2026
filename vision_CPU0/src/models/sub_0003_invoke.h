@@ -4,14 +4,13 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "sub_0003_tensors.h"
 
 // Declare arenas
-extern uint8_t sub_0003_arena[kArenaSize_sub_0003];
+extern uint8_t sub_0003_arena[122880];
 
 // Fast scratch arena not used for Ethos-U55
 // We will not create it for now and reuse the address of the other arena
-extern uint8_t* sub_0003_fast_scratch; // size: 63488
+extern uint8_t* sub_0003_fast_scratch; // size: 122880
 
 int sub_0003_invoke(bool clean_outputs);
 

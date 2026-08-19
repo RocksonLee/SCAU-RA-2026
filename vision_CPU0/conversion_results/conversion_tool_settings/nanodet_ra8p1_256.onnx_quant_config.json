@@ -8,8 +8,8 @@
   "cpu_data_type": "float16",
   "nodes": [
     {
-      "name": "images",
-      "calibrate_sample_dir": "D:\\ruisacup\\ModelZoo-YOLOFastest-for-ARM-U55-M85-master\\ModelZoo-YOLOFastest-for-ARM-U55-M85-master\\ra8p1_quant_calib_200",
+      "name": "data",
+      "calibrate_sample_dir": "D:\\ruisacup\\nanodet-main\\RA_calibration_256",
       "mean": [
         0.0,
         0.0,

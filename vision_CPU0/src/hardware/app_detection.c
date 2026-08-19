@@ -1,5 +1,6 @@
 #include "app_detection.h"
 
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 
@@ -10,15 +11,12 @@
 #include "model.h"
 // 【34cm，112】，【36.5，146】[33,92] [37.5,172] [44,283] [47,338] [44.5,300] [40,219]
 #define DET_INPUT_SIZE              (256U)
-#define DET_NUM_ANCHORS             (3U)
-#define DET_NUM_VALUES              (8U)
-#define DET_P4_GRID                 (16U)
-#define DET_P5_GRID                 (8U)
-#define DET_P4_STRIDE               (16.0f)
-#define DET_P5_STRIDE               (32.0f)
-#define DET_ANCHOR_SCALE            ((float) DET_INPUT_SIZE / 256.0f)
-#define DET_CONF_THRESHOLD          (0.8f)
-#define DET_NMS_IOU_THRESHOLD       (0.20f)
+#define DET_NUM_CLASSES             (3U)
+#define DET_NUM_VALUES              (35U)
+#define DET_REG_BINS                (8U)
+#define DET_NUM_LEVELS              (3U)
+#define DET_CONF_THRESHOLD          (0.35f)
+#define DET_NMS_IOU_THRESHOLD       (0.60f)
 #define DET_MAX_CANDIDATES          (64U)
 #define DET_MAX_OUTPUTS             APP_DETECTION_MAX_RESULTS
 #define     DET_UART_LINE_BYTES         (96U)
@@ -283,43 +281,19 @@ bool app_detection_set_side_camera_light_default(bool enabled)
     return camera_light_settings_save();
 }
 
-static const float g_anchors_p4[DET_NUM_ANCHORS][2] =
+static const uint32_t g_nanodet_grids[DET_NUM_LEVELS] =
 {
-    {12.0f * DET_ANCHOR_SCALE, 18.0f * DET_ANCHOR_SCALE},
-    {37.0f * DET_ANCHOR_SCALE, 49.0f * DET_ANCHOR_SCALE},
-    {52.0f * DET_ANCHOR_SCALE, 132.0f * DET_ANCHOR_SCALE},
+    32U,
+    16U,
+    8U,
 };
 
-static const float g_anchors_p5[DET_NUM_ANCHORS][2] =
+static const float g_nanodet_strides[DET_NUM_LEVELS] =
 {
-    {115.0f * DET_ANCHOR_SCALE, 73.0f * DET_ANCHOR_SCALE},
-    {119.0f * DET_ANCHOR_SCALE, 199.0f * DET_ANCHOR_SCALE},
-    {242.0f * DET_ANCHOR_SCALE, 238.0f * DET_ANCHOR_SCALE},
+    8.0f,
+    16.0f,
+    32.0f,
 };
-
-static float det_absf(float value)
-{
-    return (value < 0.0f) ? -value : value;
-}
-
-static float det_sigmoid(float value)
-{
-    value = (value > 16.0f) ? 16.0f : value;
-    value = (value < -16.0f) ? -16.0f : value;
-
-    float const x = det_absf(value);
-    float y = 1.0f + (x / 16.0f);
-
-    y *= y;
-    y *= y;
-    y *= y;
-    y *= y;
-
-    float const exp_neg_abs = 1.0f / y;
-    float const sigmoid_abs = 1.0f / (1.0f + exp_neg_abs);
-
-    return (value >= 0.0f) ? sigmoid_abs : (1.0f - sigmoid_abs);
-}
 
 static float det_maxf(float a, float b)
 {
@@ -356,7 +330,7 @@ static uint8_t det_rgb565_b(uint16_t pixel)
 
 static void det_preprocess_rgb565(uint8_t const * p_frame)
 {
-    float * const p_input = GetModelInputPtr_images();
+    float * const p_input = GetModelInputPtr_data();
     uint32_t const crop_size = CAMERA_OV5640_HEIGHT;
     uint32_t const crop_x = (CAMERA_OV5640_WIDTH - crop_size) / 2U;
     uint32_t const crop_y = 0U;
@@ -373,9 +347,9 @@ static void det_preprocess_rgb565(uint8_t const * p_frame)
             uint16_t const pixel = (uint16_t) (p_frame[src_index] | ((uint16_t) p_frame[src_index + 1U] << 8));
             uint32_t const dst_index = (y * DET_INPUT_SIZE) + x;
 
-            p_input[dst_index] = (float) det_rgb565_r(pixel) / 255.0f;
+            p_input[dst_index] = (float) det_rgb565_b(pixel) / 255.0f;
             p_input[plane_size + dst_index] = (float) det_rgb565_g(pixel) / 255.0f;
-            p_input[(2U * plane_size) + dst_index] = (float) det_rgb565_b(pixel) / 255.0f;
+            p_input[(2U * plane_size) + dst_index] = (float) det_rgb565_r(pixel) / 255.0f;
         }
     }
 }
@@ -410,68 +384,81 @@ static void det_insert_candidate(detection_box_t const * p_box, uint32_t * p_cou
     }
 }
 
-static uint32_t det_head_index(uint32_t anchor, uint32_t gy, uint32_t gx, uint32_t grid, bool anchor_first)
+static float det_nanodet_distance(float const logits[DET_REG_BINS])
 {
-    if (anchor_first)
+    float maximum = logits[0];
+    for (uint32_t bin = 1U; bin < DET_REG_BINS; bin++)
     {
-        return ((((anchor * grid) + gy) * grid) + gx) * DET_NUM_VALUES;
+        maximum = det_maxf(maximum, logits[bin]);
     }
 
-    return ((((gy * grid) + gx) * DET_NUM_ANCHORS) + anchor) * DET_NUM_VALUES;
+    float sum = 0.0f;
+    float weighted_sum = 0.0f;
+    for (uint32_t bin = 0U; bin < DET_REG_BINS; bin++)
+    {
+        float const probability = expf(logits[bin] - maximum);
+        sum += probability;
+        weighted_sum += probability * (float) bin;
+    }
+
+    return (sum > 0.0f) ? (weighted_sum / sum) : 0.0f;
 }
 
-static void det_decode_head(float const * p_head,
-                            uint32_t grid,
-                            float stride,
-                            float const anchors[DET_NUM_ANCHORS][2],
-                            uint32_t * p_candidate_count)
+static void det_decode_nanodet(float const * p_output, uint32_t * p_candidate_count)
 {
-    for (uint32_t anchor = 0U; anchor < DET_NUM_ANCHORS; anchor++)
+    uint32_t point_offset = 0U;
+
+    for (uint32_t level = 0U; level < DET_NUM_LEVELS; level++)
     {
+        uint32_t const grid = g_nanodet_grids[level];
+        float const stride = g_nanodet_strides[level];
+
         for (uint32_t gy = 0U; gy < grid; gy++)
         {
             for (uint32_t gx = 0U; gx < grid; gx++)
             {
-                uint32_t const base = det_head_index(anchor, gy, gx, grid, true);
-                float const sx = det_sigmoid(p_head[base]);
-                float const sy = det_sigmoid(p_head[base + 1U]);
-                float const sw = det_sigmoid(p_head[base + 2U]);
-                float const sh = det_sigmoid(p_head[base + 3U]);
-                float const objectness = det_sigmoid(p_head[base + 4U]);
-                float cls = det_sigmoid(p_head[base + 5U]);
+                uint32_t const point = point_offset + (gy * grid) + gx;
+                float const * const values = &p_output[point * DET_NUM_VALUES];
+                float score = values[0];
                 uint32_t class_id = 0U;
 
-                for (uint32_t c = 1U; c < (DET_NUM_VALUES - 5U); c++)
+                for (uint32_t c = 1U; c < DET_NUM_CLASSES; c++)
                 {
-                    float const class_score = det_sigmoid(p_head[base + 5U + c]);
-
-                    if (class_score > cls)
+                    if (values[c] > score)
                     {
-                        cls = class_score;
+                        score = values[c];
                         class_id = c;
                     }
                 }
 
-                float const score = objectness * cls;
+                if (score < DET_CONF_THRESHOLD)
+                {
+                    continue;
+                }
 
-                float const cx = (((sx * 2.0f) - 0.5f) + (float) gx) * stride;
-                float const cy = (((sy * 2.0f) - 0.5f) + (float) gy) * stride;
-                float const aw = anchors[anchor][0];
-                float const ah = anchors[anchor][1];
-                float const ww = (sw * 2.0f) * (sw * 2.0f) * aw;
-                float const hh = (sh * 2.0f) * (sh * 2.0f) * ah;
+                float const center_x = (float) gx * stride;
+                float const center_y = (float) gy * stride;
+                float const left = det_nanodet_distance(&values[DET_NUM_CLASSES]) * stride;
+                float const top = det_nanodet_distance(&values[DET_NUM_CLASSES + DET_REG_BINS]) * stride;
+                float const right = det_nanodet_distance(&values[DET_NUM_CLASSES + (2U * DET_REG_BINS)]) * stride;
+                float const bottom = det_nanodet_distance(&values[DET_NUM_CLASSES + (3U * DET_REG_BINS)]) * stride;
 
                 detection_box_t box;
-                box.x1 = det_clampf(cx - (ww * 0.5f), 0.0f, (float) DET_INPUT_SIZE);
-                box.y1 = det_clampf(cy - (hh * 0.5f), 0.0f, (float) DET_INPUT_SIZE);
-                box.x2 = det_clampf(cx + (ww * 0.5f), 0.0f, (float) DET_INPUT_SIZE);
-                box.y2 = det_clampf(cy + (hh * 0.5f), 0.0f, (float) DET_INPUT_SIZE);
+                box.x1 = det_clampf(center_x - left, 0.0f, (float) DET_INPUT_SIZE);
+                box.y1 = det_clampf(center_y - top, 0.0f, (float) DET_INPUT_SIZE);
+                box.x2 = det_clampf(center_x + right, 0.0f, (float) DET_INPUT_SIZE);
+                box.y2 = det_clampf(center_y + bottom, 0.0f, (float) DET_INPUT_SIZE);
                 box.score = score;
                 box.class_id = class_id;
 
-                det_insert_candidate(&box, p_candidate_count);
+                if ((box.x2 > box.x1) && (box.y2 > box.y1))
+                {
+                    det_insert_candidate(&box, p_candidate_count);
+                }
             }
         }
+
+        point_offset += grid * grid;
     }
 }
 
@@ -879,11 +866,18 @@ bool app_detection_run_frame(uint8_t const                 * p_rgb565_frame,
     }
 
     det_preprocess_rgb565(p_rgb565_frame);
-    RunModel(true);
+    if (!RunModel())
+    {
+        if (NULL != write_text)
+        {
+            write_text("DET_ERR model_invoke\r\n");
+        }
+
+        return false;
+    }
 
     uint32_t candidate_count = 0U;
-    det_decode_head(GetModelOutputPtr_p4_16x16_70454(), DET_P4_GRID, DET_P4_STRIDE, g_anchors_p4, &candidate_count);
-    det_decode_head(GetModelOutputPtr_p5_8x8_70436(), DET_P5_GRID, DET_P5_STRIDE, g_anchors_p5, &candidate_count);
+    det_decode_nanodet(GetModelOutputPtr_output_70634(), &candidate_count);
 
     uint32_t const output_count = det_nms(candidate_count);
     uint32_t const result_count = (output_count < result_capacity) ? output_count : result_capacity;
