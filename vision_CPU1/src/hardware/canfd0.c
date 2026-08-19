@@ -6,13 +6,23 @@
 #define CANFD_INTERFRAME_DELAY_MS    (5U)
 #define CANFD_TX_TIMEOUT_MS          (20U)
 #define CANFD_TX_POLL_MS             (1U)
+#define CANFD_RX_TIMEOUT_MS          (50U)
+#define CANFD_STATUS_POLL_MS         (20U)
+#define CANFD_MOTION_START_DELAY_MS  (20U)
+#define CANFD_MOTOR_ADDRESS_MAX      (6U)
+#define CANFD_STATUS_ENABLED_MASK    (0x01U)
+#define CANFD_STATUS_REACHED_MASK    (0x02U)
+#define CANFD_STATUS_STALL_MASK      (0x0CU)
+#define CANFD_STATUS_COMMAND         (0x3AU)
+#define CANFD_COMMAND_COMPLETE       (0x9FU)
+#define CANFD_CHECK_BYTE             (0x6BU)
 
 #define uint8_t unsigned char
 can_frame_t canfd0_rx_frame;
 can_frame_t canfd0_tx_frame;
-volatile uint8_t canfd0_rx_cnt = 0;          // 已接收的返回帧计数
-can_frame_t canfd0_rx_frames[MAX_MOTOR_CNT];  // 缓存每个电机的返回帧
-//can_frame_t canfd0_rx_frames[MAX_MOTOR_CNT];  // 缓存每个电机的返回帧
+static volatile uint8_t g_motor_status[CANFD_MOTOR_ADDRESS_MAX + 1U];
+static volatile uint32_t g_motor_status_sequence[CANFD_MOTOR_ADDRESS_MAX + 1U];
+static volatile uint32_t g_claw_completion_sequence;
 
 void CANFD0_Init(void)
 {
@@ -45,7 +55,7 @@ const canfd_afl_entry_t p_canfd0_afl[CANFD_CFG_AFL_CH0_RULE_NUM] =
 			.destination =
 			{
 					/* If DLC checking is enabled any messages shorter than the below setting will be rejected. */
-					.minimum_dlc = CANFD_MINIMUM_DLC_4,
+					.minimum_dlc = CANFD_MINIMUM_DLC_3,
 
 					/* Optionally specify a Receive Message Buffer (RX MB) to store accepted frames. RX MBs do not have an
 					 * interrupt or overwrite protection and must be checked with R_CANFD_InfoGet and R_CANFD_Read. */
@@ -93,15 +103,34 @@ void canfd0_callback(can_callback_args_t *p_args)
 	{
 		case CAN_EVENT_RX_COMPLETE:	
 		{
+			can_frame_t const * p_frame = &(p_args->frame);
+			uint32_t const motor_address = (p_frame->id >> 8U) & 0xFFU;
+
 			canfd0_rx_complete_flag=true;
-//			memcpy(&canfd0_rx_frame,&(p_args->frame),sizeof(can_frame_t));
-			if(canfd0_rx_cnt < MAX_MOTOR_CNT)
+			memcpy(&canfd0_rx_frame, p_frame, sizeof(can_frame_t));
+
+			if ((motor_address >= 1U) &&
+			    (motor_address <= CANFD_MOTOR_ADDRESS_MAX))
 			{
-					memcpy(&canfd0_rx_frames[canfd0_rx_cnt], &(p_args->frame), sizeof(can_frame_t));
-					canfd0_rx_cnt++;  // 接收计数+1
-				  //只有夹爪会返回两个包，第一个8字节
-					//另一个5字节
-					//电流在第一个电机
+				if ((p_frame->data_length_code >= 3U) &&
+				    (CANFD_STATUS_COMMAND == p_frame->data[0]) &&
+				    (CANFD_CHECK_BYTE == p_frame->data[2]))
+				{
+					g_motor_status[motor_address] = p_frame->data[1];
+					g_motor_status_sequence[motor_address]++;
+				}
+
+				/* The gripper manual uses C6 for the open/close command, while
+				 * its Response description names F5 for the completion frame.
+				 * Accept both documented variants and either CAN packet index. */
+				if ((6U == motor_address) &&
+				    (p_frame->data_length_code >= 3U) &&
+				    ((0xC6U == p_frame->data[0]) || (0xF5U == p_frame->data[0])) &&
+				    (CANFD_COMMAND_COMPLETE == p_frame->data[1]) &&
+				    (CANFD_CHECK_BYTE == p_frame->data[2]))
+				{
+					g_claw_completion_sequence++;
+				}
 			}
 			break;
 		}
@@ -128,6 +157,117 @@ void canfd0_callback(can_callback_args_t *p_args)
 		}
 		default: break;
 	}
+}
+
+static bool canfd0_read_motor_status(uint8_t motor_address, uint8_t * p_status)
+{
+	uint32_t const start_sequence = g_motor_status_sequence[motor_address];
+	TickType_t const start_tick = xTaskGetTickCount();
+	fsp_err_t err;
+
+	canfd0_tx_frame.id = ((uint32_t) motor_address) << 8U;
+	canfd0_tx_frame.id_mode = CAN_ID_MODE_EXTENDED;
+	canfd0_tx_frame.type = CAN_FRAME_TYPE_DATA;
+	canfd0_tx_frame.data_length_code = CAN_DATA_LENGTH_CODE_CLAW;
+	canfd0_tx_frame.options = 0;
+	canfd0_tx_frame.data[0] = CANFD_STATUS_COMMAND;
+	canfd0_tx_frame.data[1] = CANFD_CHECK_BYTE;
+
+	canfd0_delay_ms(CANFD_INTERFRAME_DELAY_MS);
+	canfd0_tx_complete_flag = false;
+	err = R_CANFD_Write(&g_canfd0_ctrl, CAN_MAILBOX_NUMBER_0, &canfd0_tx_frame);
+	assert(err == FSP_SUCCESS);
+	if (!canfd0_wait_tx_complete())
+	{
+		return false;
+	}
+
+	while (start_sequence == g_motor_status_sequence[motor_address])
+	{
+		if ((xTaskGetTickCount() - start_tick) >= pdMS_TO_TICKS(CANFD_RX_TIMEOUT_MS))
+		{
+			return false;
+		}
+
+		vTaskDelay(pdMS_TO_TICKS(CANFD_TX_POLL_MS));
+	}
+
+	*p_status = g_motor_status[motor_address];
+	return true;
+}
+
+bool CANFD0_Wait_Motors_Reached(uint32_t motor_mask, uint32_t timeout_ms)
+{
+	TickType_t const start_tick = xTaskGetTickCount();
+
+	/* Give the drivers time to consume the synchronous trigger and clear the
+	 * previous position-reached flags before polling them. */
+	vTaskDelay(pdMS_TO_TICKS(CANFD_MOTION_START_DELAY_MS));
+
+	while ((xTaskGetTickCount() - start_tick) < pdMS_TO_TICKS(timeout_ms))
+	{
+		bool all_reached = true;
+
+		for (uint8_t motor_address = 1U;
+		     motor_address <= 5U;
+		     motor_address++)
+		{
+			uint8_t status;
+
+			if (0U == (motor_mask & (1UL << motor_address)))
+			{
+				continue;
+			}
+
+			if (!canfd0_read_motor_status(motor_address, &status))
+			{
+				all_reached = false;
+				continue;
+			}
+
+			if ((0U == (status & CANFD_STATUS_ENABLED_MASK)) ||
+			    (0U != (status & CANFD_STATUS_STALL_MASK)))
+			{
+				return false;
+			}
+
+			if (0U == (status & CANFD_STATUS_REACHED_MASK))
+			{
+				all_reached = false;
+			}
+		}
+
+		if (all_reached)
+		{
+			return true;
+		}
+
+		vTaskDelay(pdMS_TO_TICKS(CANFD_STATUS_POLL_MS));
+	}
+
+	return false;
+}
+
+uint32_t CANFD0_Claw_Completion_Snapshot(void)
+{
+	return g_claw_completion_sequence;
+}
+
+bool CANFD0_Wait_Claw_Complete(uint32_t completion_snapshot, uint32_t timeout_ms)
+{
+	TickType_t const start_tick = xTaskGetTickCount();
+
+	while (completion_snapshot == g_claw_completion_sequence)
+	{
+		if ((xTaskGetTickCount() - start_tick) >= pdMS_TO_TICKS(timeout_ms))
+		{
+			return false;
+		}
+
+		vTaskDelay(pdMS_TO_TICKS(CANFD_TX_POLL_MS));
+	}
+
+	return true;
 }
 //这个是测试用的
 uint32_t int32_abs(int32_t num) {

@@ -122,10 +122,18 @@ static void screen_process_arm_control_request(void)
 {
 	uint8_t axis;
 	int32_t angle_deg;
+	bool claw_open;
 
 	if (fruit_ui_take_arm_zero_request())
 	{
 		(void) ipc_detection_send_arm_zero();
+		return;
+	}
+
+	if (fruit_ui_take_claw_request(&claw_open))
+	{
+		bool const sent = ipc_detection_send_claw(claw_open);
+		fruit_ui_notify_claw_result(claw_open, sent);
 		return;
 	}
 

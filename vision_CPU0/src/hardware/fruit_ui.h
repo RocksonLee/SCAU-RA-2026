@@ -60,6 +60,8 @@ fruit_ui_task_mode_t fruit_ui_get_task_mode(void);
 uint32_t fruit_ui_get_task_generation(void);
 bool fruit_ui_take_frame_dump_request(void);
 bool fruit_ui_take_arm_zero_request(void);
+bool fruit_ui_take_claw_request(bool * p_open);
+void fruit_ui_notify_claw_result(bool open, bool sent);
 bool fruit_ui_take_task_joint5_request(int32_t * p_angle_deg);
 bool fruit_ui_take_axis_angle_request(uint8_t * p_axis, int32_t * p_angle_deg);
 void fruit_ui_notify_axis_angle_result(uint8_t axis, int32_t angle_deg, bool sent);

@@ -100,6 +100,8 @@ static volatile bool g_pending_task_side_camera;
 static volatile bool g_task_camera_update_pending;
 static volatile bool g_frame_dump_request_pending;
 static volatile bool g_arm_zero_request_pending;
+static volatile bool g_claw_request_pending;
+static volatile bool g_claw_open_requested;
 static volatile bool g_task_joint5_request_pending;
 static volatile int32_t g_task_joint5_angle_deg;
 static volatile axis_angle_request_t g_axis_angle_queue[UI_AXIS_ANGLE_QUEUE_LENGTH];
@@ -1050,6 +1052,25 @@ static void on_arm_zero(lv_event_t * e)
     }
 }
 
+static void on_claw_control(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        bool const open = 0U != (uintptr_t) lv_event_get_user_data(e);
+
+        taskENTER_CRITICAL();
+        g_claw_open_requested = open;
+        g_claw_request_pending = true;
+        taskEXIT_CRITICAL();
+
+        if (g_axis_angle_status_label != NULL) {
+            lv_label_set_text(g_axis_angle_status_label,
+                              open ? "Claw open queued" : "Claw close queued");
+            lv_obj_set_style_text_color(g_axis_angle_status_label,
+                                        lv_color_hex(0x1F7A5A), 0);
+        }
+    }
+}
+
 static void on_debug_light_toggle(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
@@ -1997,7 +2018,11 @@ static void show_axis_angle(void)
 
     add_small_button(page_screen(), "HOME", 12, 12, 68, 30, on_back_debug, NULL);
     add_small_button(page_screen(), "ZERO", 84, 12, 68, 30, on_arm_zero, NULL);
-    add_label(page_screen(), "ARM ANGLE SETTING  |  -180 TO 180 DEG",
+    add_small_button(page_screen(), "CLAW CLOSE", 156, 12, 98, 30,
+                     on_claw_control, (void *) (uintptr_t) false);
+    add_small_button(page_screen(), "CLAW OPEN", 258, 12, 98, 30,
+                     on_claw_control, (void *) (uintptr_t) true);
+    add_label(page_screen(), "ARM SETTING",
               lv_color_hex(0x20303F), &lv_font_montserrat_16,
               LV_ALIGN_TOP_RIGHT, -12, 18);
 
@@ -2117,6 +2142,42 @@ bool fruit_ui_take_arm_zero_request(void)
     g_arm_zero_request_pending = false;
     taskEXIT_CRITICAL();
     return requested;
+}
+
+bool fruit_ui_take_claw_request(bool * p_open)
+{
+    bool requested;
+
+    if (NULL == p_open) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    requested = g_claw_request_pending;
+    if (requested) {
+        *p_open = g_claw_open_requested;
+        g_claw_request_pending = false;
+    }
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+void fruit_ui_notify_claw_result(bool open, bool sent)
+{
+    if ((g_current_page == UI_PAGE_AXIS_ANGLE) &&
+        (g_axis_angle_status_label != NULL)) {
+        char status[40];
+
+        (void) snprintf(status, sizeof(status),
+                        "Claw %s command %s",
+                        open ? "open" : "close",
+                        sent ? "sent" : "failed");
+        lv_label_set_text(g_axis_angle_status_label, status);
+        lv_obj_set_style_text_color(g_axis_angle_status_label,
+                                    sent ? lv_color_hex(0x1F7A5A) :
+                                           lv_color_hex(0xD83B35),
+                                    0);
+    }
 }
 
 bool fruit_ui_take_task_joint5_request(int32_t * p_angle_deg)

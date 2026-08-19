@@ -15,6 +15,15 @@ void Claw_Control(void);
 void run(void);
 void Read_Claw(void);
 void Claw_Open(void);
+bool CANFD0_Wait_Motors_Reached(uint32_t motor_mask, uint32_t timeout_ms);
+uint32_t CANFD0_Claw_Completion_Snapshot(void);
+bool CANFD0_Wait_Claw_Complete(uint32_t completion_snapshot, uint32_t timeout_ms);
+
+#define CANFD0_MOTOR_1_MASK (1UL << 1U)
+#define CANFD0_MOTOR_2_MASK (1UL << 2U)
+#define CANFD0_MOTOR_3_MASK (1UL << 3U)
+#define CANFD0_MOTOR_4_MASK (1UL << 4U)
+#define CANFD0_MOTOR_5_MASK (1UL << 5U)
 
 
 #define MAX_MOTOR_CNT 5  // 电机数量

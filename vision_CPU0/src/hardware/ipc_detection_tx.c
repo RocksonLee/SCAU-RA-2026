@@ -79,6 +79,12 @@ bool ipc_detection_send_arm_zero(void)
     return ipc_detection_send_word(IPC_ARM_ZERO_COMMAND);
 }
 
+bool ipc_detection_send_claw(bool open)
+{
+    return ipc_detection_send_word(open ? IPC_CLAW_OPEN_COMMAND :
+                                          IPC_CLAW_CLOSE_COMMAND);
+}
+
 bool ipc_detection_send_task_joint5(int32_t angle_deg)
 {
     if (-30 == angle_deg)
