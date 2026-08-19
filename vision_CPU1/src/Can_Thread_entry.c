@@ -24,6 +24,7 @@ typedef enum e_ipc_coordinate_rx_state
 #define ARM_IK_ELBOW_DIRECTION  (1)
 #define ARM_JOINT_2_MAX_DEG     (10.0)
 #define ARM_JOINT_5_DELAY_MS    (2000U)
+#define ARM_RESET_ZERO_DELAY_MS (500U)
 #define ARM_TASK1_JOINT_5_DEG   (-30)
 #define ARM_TASK2_JOINT_5_DEG   (80)
 #define ARM_AXIS_COUNT           (5U)
@@ -517,6 +518,11 @@ void Can_Thread_entry(void *pvParameters) {
 
 #if !DM_COORDINATE_UART_ENABLE
 	CANFD0_Init();
+	/* A physical board reset restarts CPU1 while the motor drivers may still
+	 * be powered. Give them time to become ready, then perform the same ZERO
+	 * action as the screen button. */
+	vTaskDelay(pdMS_TO_TICKS(ARM_RESET_ZERO_DELAY_MS));
+	arm_move_to_zero();
 #endif
 	while (1)
 	{
