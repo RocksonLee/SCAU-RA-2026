@@ -272,6 +272,7 @@
             <slot name="IRQ13.CPU0" secure="true"/>
             <slot name="IRQ14.CPU0" secure="true"/>
             <slot name="IRQ15.CPU0" secure="true"/>
+            <slot name="IRQ16.CPU0" secure="true"/>
         </peripheral>
         <peripheral name="PORT4.CPU1" group="PORT">
             <slot name="P402.CPU1" secure="true"/>
@@ -474,6 +475,7 @@
             <assign peripheral="ICU.IRQ13"/>
             <assign peripheral="ICU.IRQ14"/>
             <assign peripheral="ICU.IRQ15"/>
+            <assign peripheral="ICU.IRQ16"/>
         </zone>
     </zones>
 </azone>

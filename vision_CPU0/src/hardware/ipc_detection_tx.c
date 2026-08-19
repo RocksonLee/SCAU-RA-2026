@@ -114,3 +114,8 @@ bool ipc_detection_send_axis_angle(uint8_t axis, int32_t angle_deg)
 
     return ipc_detection_send_word(command);
 }
+
+bool ipc_detection_send_arm_telemetry_request(void)
+{
+    return ipc_detection_send_word(IPC_ARM_TELEMETRY_REQUEST);
+}

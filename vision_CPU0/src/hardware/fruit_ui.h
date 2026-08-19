@@ -63,6 +63,13 @@ bool fruit_ui_take_arm_zero_request(void);
 bool fruit_ui_take_task_joint5_request(int32_t * p_angle_deg);
 bool fruit_ui_take_axis_angle_request(uint8_t * p_axis, int32_t * p_angle_deg);
 void fruit_ui_notify_axis_angle_result(uint8_t axis, int32_t angle_deg, bool sent);
+bool fruit_ui_is_arm_setting_active(void);
+void fruit_ui_set_arm_telemetry(uint32_t        valid_mask,
+                                int32_t const * p_angles_0p1deg,
+                                bool            coordinate_valid,
+                                int32_t         x_0p1mm,
+                                int32_t         y_0p1mm,
+                                int32_t         z_0p1mm);
 bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target);
 void fruit_ui_notify_pick_sent(fruit_ui_target_t target);
 void fruit_ui_set_weight(int32_t weight_0p1g, bool valid);

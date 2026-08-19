@@ -41,6 +41,20 @@
 #define DET_SETTINGS_BYTE_PERCENT   (3U)
 #define DET_SETTINGS_BYTE_INVERSE   (4U)
 #define DET_SETTINGS_BYTE_CHECK     (5U)
+/* VBTBKR[6..10] are reserved for the task-camera light setting. */
+#define CAMERA_LIGHT_SETTINGS_MAGIC_0      (0x4CU)
+#define CAMERA_LIGHT_SETTINGS_MAGIC_1      (0x54U)
+#define CAMERA_LIGHT_SETTINGS_VERSION      (2U)
+#define CAMERA_LIGHT_SETTINGS_VERSION_OLD  (1U)
+#define CAMERA_LIGHT_SETTINGS_CHECK_XOR    (0xA7U)
+#define CAMERA_LIGHT_SETTINGS_BYTE_MAGIC_0 (6U)
+#define CAMERA_LIGHT_SETTINGS_BYTE_MAGIC_1 (7U)
+#define CAMERA_LIGHT_SETTINGS_BYTE_VERSION (8U)
+#define CAMERA_LIGHT_SETTINGS_BYTE_FLAGS   (9U)
+#define CAMERA_LIGHT_SETTINGS_BYTE_CHECK   (10U)
+#define CAMERA_LIGHT_TOP_ENABLED            (0x01U)
+#define CAMERA_LIGHT_SIDE_ENABLED           (0x02U)
+#define CAMERA_LIGHT_FLAGS_MASK             (0x03U)
 
 typedef struct st_detection_box
 {
@@ -71,7 +85,10 @@ static uint32_t g_pigment_cell_samples[DET_PIGMENT_CELL_COUNT];
 static char g_det_line[DET_UART_LINE_BYTES];
 static bool g_detection_initialized;
 static bool g_detection_settings_initialized;
+static bool g_camera_light_settings_initialized;
 static volatile uint32_t g_green_ratio_threshold = APP_DETECTION_GREEN_RATIO_DEFAULT;
+static volatile bool g_top_camera_light_default = true;
+static volatile bool g_side_camera_light_default = true;
 
 static void det_settings_enable_backup_access(void)
 {
@@ -85,6 +102,57 @@ static uint8_t det_settings_check(uint8_t percent)
     return (uint8_t) (DET_SETTINGS_MAGIC_0 ^ DET_SETTINGS_MAGIC_1 ^
                       DET_SETTINGS_VERSION ^ percent ^ (uint8_t) ~percent ^
                       DET_SETTINGS_CHECK_XOR);
+}
+
+static uint8_t camera_light_settings_check(uint8_t version, uint8_t flags)
+{
+    return (uint8_t) (CAMERA_LIGHT_SETTINGS_MAGIC_0 ^ CAMERA_LIGHT_SETTINGS_MAGIC_1 ^
+                      version ^ flags ^ CAMERA_LIGHT_SETTINGS_CHECK_XOR);
+}
+
+static void camera_light_settings_init(void)
+{
+    taskENTER_CRITICAL();
+    if (g_camera_light_settings_initialized)
+    {
+        taskEXIT_CRITICAL();
+        return;
+    }
+
+    det_settings_enable_backup_access();
+
+    uint8_t const version = R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_VERSION];
+    uint8_t const flags = R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_FLAGS];
+    bool const header_valid =
+        (R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_MAGIC_0] ==
+         CAMERA_LIGHT_SETTINGS_MAGIC_0) &&
+        (R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_MAGIC_1] ==
+         CAMERA_LIGHT_SETTINGS_MAGIC_1) &&
+        (R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_CHECK] ==
+         camera_light_settings_check(version, flags));
+    bool const valid = header_valid &&
+                       (CAMERA_LIGHT_SETTINGS_VERSION == version) &&
+                       (0U == (flags & (uint8_t) ~CAMERA_LIGHT_FLAGS_MASK));
+    bool const old_valid = header_valid &&
+                           (CAMERA_LIGHT_SETTINGS_VERSION_OLD == version) &&
+                           (flags <= 1U);
+
+    if (valid)
+    {
+        g_top_camera_light_default =
+            (0U != (flags & CAMERA_LIGHT_TOP_ENABLED));
+        g_side_camera_light_default =
+            (0U != (flags & CAMERA_LIGHT_SIDE_ENABLED));
+    }
+    else if (old_valid)
+    {
+        /* Preserve the old shared task-light choice for top; side stays on. */
+        g_top_camera_light_default = (0U != flags);
+        g_side_camera_light_default = true;
+    }
+
+    g_camera_light_settings_initialized = true;
+    taskEXIT_CRITICAL();
 }
 
 void app_detection_settings_init(void)
@@ -154,6 +222,62 @@ bool app_detection_set_green_ratio_threshold(uint32_t percent)
            (R_SYSTEM->VBTBKR[DET_SETTINGS_BYTE_PERCENT] == value) &&
            (R_SYSTEM->VBTBKR[DET_SETTINGS_BYTE_INVERSE] == inverse) &&
            (R_SYSTEM->VBTBKR[DET_SETTINGS_BYTE_CHECK] == check);
+}
+
+static bool camera_light_settings_save(void)
+{
+    uint8_t const flags =
+        (g_top_camera_light_default ? CAMERA_LIGHT_TOP_ENABLED : 0U) |
+        (g_side_camera_light_default ? CAMERA_LIGHT_SIDE_ENABLED : 0U);
+    uint8_t const check =
+        camera_light_settings_check(CAMERA_LIGHT_SETTINGS_VERSION, flags);
+
+    R_BSP_RegisterProtectDisable(BSP_REG_PROTECT_OM_LPC_BATT);
+    R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_MAGIC_0] = 0U;
+    R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_VERSION] =
+        CAMERA_LIGHT_SETTINGS_VERSION;
+    R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_FLAGS] = flags;
+    R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_CHECK] = check;
+    R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_MAGIC_1] =
+        CAMERA_LIGHT_SETTINGS_MAGIC_1;
+    R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_MAGIC_0] =
+        CAMERA_LIGHT_SETTINGS_MAGIC_0;
+    R_BSP_RegisterProtectEnable(BSP_REG_PROTECT_OM_LPC_BATT);
+
+    return (R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_MAGIC_0] ==
+            CAMERA_LIGHT_SETTINGS_MAGIC_0) &&
+           (R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_MAGIC_1] ==
+            CAMERA_LIGHT_SETTINGS_MAGIC_1) &&
+           (R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_VERSION] ==
+            CAMERA_LIGHT_SETTINGS_VERSION) &&
+           (R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_FLAGS] == flags) &&
+           (R_SYSTEM->VBTBKR[CAMERA_LIGHT_SETTINGS_BYTE_CHECK] == check);
+}
+
+bool app_detection_get_top_camera_light_default(void)
+{
+    camera_light_settings_init();
+    return g_top_camera_light_default;
+}
+
+bool app_detection_set_top_camera_light_default(bool enabled)
+{
+    camera_light_settings_init();
+    g_top_camera_light_default = enabled;
+    return camera_light_settings_save();
+}
+
+bool app_detection_get_side_camera_light_default(void)
+{
+    camera_light_settings_init();
+    return g_side_camera_light_default;
+}
+
+bool app_detection_set_side_camera_light_default(bool enabled)
+{
+    camera_light_settings_init();
+    g_side_camera_light_default = enabled;
+    return camera_light_settings_save();
 }
 
 static const float g_anchors_p4[DET_NUM_ANCHORS][2] =

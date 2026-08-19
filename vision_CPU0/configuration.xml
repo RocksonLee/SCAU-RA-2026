@@ -517,8 +517,8 @@
     <module id="module.driver.ipc_on_ipc.1840296284">
       <property id="module.driver.ipc.name" value="g_ipc0"/>
       <property id="module.driver.ipc.channel" value="enum.driver.ipc.channel.0"/>
-      <property id="module.driver.ipc.callback" value="NULL"/>
-      <property id="module.driver.ipc.ipl" value="_disabled"/>
+      <property id="module.driver.ipc.callback" value="ipc0_callback"/>
+      <property id="module.driver.ipc.ipl" value="board.icu.common.irq.priority10"/>
     </module>
     <module id="module.google.tflm.core.lib.1745382523"/>
     <module id="module.google.flatbuffers.lib.2125707528"/>

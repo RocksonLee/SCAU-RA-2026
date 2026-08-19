@@ -34,7 +34,6 @@
 #define CAMERA_LED_RETRY_MS        (20U)
 #define CAMERA_DEBUG_LIGHT_SETTLE_MS (400U)
 #define CAMERA_DEBUG_LIGHT_DISCARD_FRAMES (3U)
-#define CAMERA_PREVIEW_PERIOD_MS (500U)
 #define CAMERA_TASK_PREVIEW_PERIOD_MS (150U)
 #define CAMERA_TASK_PREVIEW_MIN_MS (1000U)
 #define CAMERA_SIDE_SAMPLES      (5U)
@@ -929,7 +928,6 @@ static bool camera_stream_send_frame_dump(void)
 void camera_stream_task(void)
 {
     uint32_t batch_id = 0U;
-    TickType_t last_preview_tick = 0U;
     TickType_t last_task_preview_tick = 0U;
     TickType_t task_preview_start_tick = 0U;
     uint32_t active_task_generation = 0U;
@@ -966,9 +964,12 @@ void camera_stream_task(void)
         }
     }
 
-    if (!camera_set_illumination(false))
+    bool const initial_task_light =
+        (FRUIT_UI_TASK_NONE != fruit_ui_get_task_mode()) &&
+        app_detection_get_top_camera_light_default();
+    if (!camera_set_illumination(initial_task_light))
     {
-        camera_uart_send_text("CAM_INIT_ERR top_light_off\r\n");
+        camera_uart_send_text("CAM_INIT_ERR top_light\r\n");
     }
 
     if (!app_detection_init())
@@ -1031,7 +1032,6 @@ void camera_stream_task(void)
             }
 
             camera_side_active = debug_side_requested;
-            last_preview_tick = 0U;
         }
 
         if (debug_active)
@@ -1052,15 +1052,43 @@ void camera_stream_task(void)
                                       "CAM_LED DEBUG ON\r\n" :
                                       "CAM_LED DEBUG OFF\r\n");
                 (void) camera_settle_debug_light(debug_light_requested);
-                last_preview_tick = 0U;
                 continue;
             }
         }
-        else if (!camera_set_illumination(false))
+        else
         {
-            /* Production top-camera recognition must never use illumination. */
-            vTaskDelay(pdMS_TO_TICKS(100U));
-            continue;
+            bool const task_light_requested =
+                (FRUIT_UI_TASK_NONE != fruit_ui_get_task_mode()) &&
+                !recognition_complete &&
+                app_detection_get_top_camera_light_default();
+            bool const light_changed = !g_camera_illumination_state_valid ||
+                                       (task_light_requested !=
+                                        g_camera_illumination_enabled);
+
+            if (light_changed)
+            {
+                if (!camera_set_illumination(task_light_requested))
+                {
+                    vTaskDelay(pdMS_TO_TICKS(100U));
+                    continue;
+                }
+
+                camera_uart_send_text(task_light_requested ?
+                                      "CAM_LED TASK TOP ON\r\n" :
+                                      "CAM_LED TASK TOP OFF\r\n");
+                if (task_light_requested)
+                {
+                    vTaskDelay(pdMS_TO_TICKS(CAMERA_DEBUG_LIGHT_SETTLE_MS));
+                    for (uint32_t frame = 0U;
+                         frame < CAMERA_DEBUG_LIGHT_DISCARD_FRAMES;
+                         frame++)
+                    {
+                        (void) camera_capture_frame_with_retry(g_camera_frame);
+                        vTaskDelay(pdMS_TO_TICKS(CAMERA_CAPTURE_RETRY_MS));
+                    }
+                }
+                continue;
+            }
         }
 
         if ((FRUIT_UI_TASK_NONE == fruit_ui_get_task_mode()) &&
@@ -1106,23 +1134,15 @@ void camera_stream_task(void)
 
         if (fruit_ui_is_debug_mode_active())
         {
-            TickType_t const now = xTaskGetTickCount();
-            if ((now - last_preview_tick) >= pdMS_TO_TICKS(CAMERA_PREVIEW_PERIOD_MS))
-            {
-                if (camera_publish_snapshot(g_camera_frame,
-                                            g_detection_results,
-                                            result_count,
-                                            camera_side_active,
-                                            true))
-                {
-                    last_preview_tick = now;
-                }
-            }
+            (void) camera_publish_snapshot(g_camera_frame,
+                                           g_detection_results,
+                                           result_count,
+                                           camera_side_active,
+                                           true);
             if (fruit_ui_take_frame_dump_request())
             {
                 (void) camera_stream_send_frame_dump();
             }
-            vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }
 
@@ -1200,6 +1220,10 @@ void camera_stream_task(void)
         ipc_camera_coordinate_item_t selectable_items[FRUIT_UI_MAX_DETECTIONS];
         uint32_t paired_detection_count = 0U;
         fruit_ui_task_mode_t const task_mode = fruit_ui_get_task_mode();
+        bool const task_top_light_enabled =
+            app_detection_get_top_camera_light_default();
+        bool const task_side_light_enabled =
+            app_detection_get_side_camera_light_default();
 
         if (fruit_ui_is_debug_mode_active())
         {
@@ -1208,6 +1232,9 @@ void camera_stream_task(void)
 
         if (FRUIT_UI_TASK_TOP_ONLY == task_mode)
         {
+            /* Task 1 no longer needs illumination after top detection. */
+            (void) camera_set_illumination(false);
+
             for (uint32_t i = 0U;
                  (i < top_result_count) && (paired_detection_count < FRUIT_UI_MAX_DETECTIONS);
                  i++)
@@ -1242,10 +1269,10 @@ void camera_stream_task(void)
         {
             fruit_ui_set_task_camera(true);
 
-            if (!camera_switch_to(true, true))
+            if (!camera_switch_to(true, task_side_light_enabled))
             {
                 camera_uart_send_text("CAM_SWITCH_ERR side\r\n");
-                (void) camera_switch_to(false, false);
+                (void) camera_switch_to(false, task_top_light_enabled);
                 fruit_ui_set_task_camera(false);
                 continue;
             }
@@ -1269,7 +1296,7 @@ void camera_stream_task(void)
                     continue;
                 }
 
-                while (!camera_switch_to(false, false))
+                while (!camera_switch_to(false, task_top_light_enabled))
                 {
                     vTaskDelay(pdMS_TO_TICKS(1000U));
                 }
@@ -1289,7 +1316,7 @@ void camera_stream_task(void)
                     continue;
                 }
 
-                while (!camera_switch_to(false, false))
+                while (!camera_switch_to(false, task_top_light_enabled))
                 {
                     vTaskDelay(pdMS_TO_TICKS(1000U));
                 }

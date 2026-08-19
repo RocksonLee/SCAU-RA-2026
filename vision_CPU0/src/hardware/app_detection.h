@@ -37,6 +37,10 @@ bool app_detection_init(void);
 void app_detection_settings_init(void);
 uint32_t app_detection_get_green_ratio_threshold(void);
 bool app_detection_set_green_ratio_threshold(uint32_t percent);
+bool app_detection_get_top_camera_light_default(void);
+bool app_detection_set_top_camera_light_default(bool enabled);
+bool app_detection_get_side_camera_light_default(void);
+bool app_detection_set_side_camera_light_default(bool enabled);
 bool app_detection_run_frame(uint8_t const                 * p_rgb565_frame,
                              app_detection_result_t        * p_results,
                              uint32_t                        result_capacity,

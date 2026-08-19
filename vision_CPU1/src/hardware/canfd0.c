@@ -214,9 +214,9 @@ void CANFD0_Operation_2(int32_t angle)
 	//减速加速度
 		canfd0_tx_frame.data[4]=0x02;
 		canfd0_tx_frame.data[5]=0x58;
-	//速度(5000)
-		canfd0_tx_frame.data[6]=0x13;
-		canfd0_tx_frame.data[7]=0x88;
+	//速度(10000)，与第一轴一致
+		canfd0_tx_frame.data[6]=0x27;
+		canfd0_tx_frame.data[7]=0x10;
 	err=R_CANFD_Write(&g_canfd0_ctrl,CAN_MAILBOX_NUMBER_0,&canfd0_tx_frame);
 	assert(err==FSP_SUCCESS);
 	

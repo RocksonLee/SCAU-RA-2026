@@ -8,6 +8,7 @@
 #include "hardware/lv_port_indev.h"
 #include "hardware/ospi_flash.h"
 #include "hardware/ui_assets.h"
+#include "ipc_detection_protocol.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -15,6 +16,100 @@
 #pragma GCC diagnostic pop
 
 extern TaskHandle_t Touch_Thread;
+
+#define ARM_TELEMETRY_POLL_MS (500U)
+
+typedef enum e_arm_telemetry_rx_state
+{
+	ARM_TELEMETRY_RX_WAIT_BEGIN = 0,
+	ARM_TELEMETRY_RX_VALID_MASK,
+	ARM_TELEMETRY_RX_ANGLES,
+	ARM_TELEMETRY_RX_X,
+	ARM_TELEMETRY_RX_Y,
+	ARM_TELEMETRY_RX_Z,
+	ARM_TELEMETRY_RX_WAIT_END,
+} arm_telemetry_rx_state_t;
+
+static volatile uint32_t g_arm_telemetry_pending_valid_mask;
+static volatile int32_t g_arm_telemetry_pending_angles[IPC_ARM_TELEMETRY_AXIS_COUNT];
+static volatile int32_t g_arm_telemetry_pending_x_0p1mm;
+static volatile int32_t g_arm_telemetry_pending_y_0p1mm;
+static volatile int32_t g_arm_telemetry_pending_z_0p1mm;
+static volatile bool g_arm_telemetry_update_pending;
+
+void ipc0_callback(ipc_callback_args_t * p_args)
+{
+	static arm_telemetry_rx_state_t state = ARM_TELEMETRY_RX_WAIT_BEGIN;
+	static uint32_t valid_mask;
+	static int32_t angles[IPC_ARM_TELEMETRY_AXIS_COUNT];
+	static int32_t x_0p1mm;
+	static int32_t y_0p1mm;
+	static int32_t z_0p1mm;
+	static uint32_t angle_index;
+
+	if ((NULL == p_args) || (IPC_EVENT_MESSAGE_RECEIVED != p_args->event))
+	{
+		return;
+	}
+
+	if (IPC_ARM_TELEMETRY_BEGIN == p_args->message)
+	{
+		angle_index = 0U;
+		state = ARM_TELEMETRY_RX_VALID_MASK;
+		return;
+	}
+
+	switch (state)
+	{
+		case ARM_TELEMETRY_RX_VALID_MASK:
+			valid_mask = p_args->message;
+			state = ARM_TELEMETRY_RX_ANGLES;
+			break;
+
+		case ARM_TELEMETRY_RX_ANGLES:
+			angles[angle_index++] = (int32_t) p_args->message;
+			if (angle_index >= IPC_ARM_TELEMETRY_AXIS_COUNT)
+			{
+				state = ARM_TELEMETRY_RX_X;
+			}
+			break;
+
+		case ARM_TELEMETRY_RX_X:
+			x_0p1mm = (int32_t) p_args->message;
+			state = ARM_TELEMETRY_RX_Y;
+			break;
+
+		case ARM_TELEMETRY_RX_Y:
+			y_0p1mm = (int32_t) p_args->message;
+			state = ARM_TELEMETRY_RX_Z;
+			break;
+
+		case ARM_TELEMETRY_RX_Z:
+			z_0p1mm = (int32_t) p_args->message;
+			state = ARM_TELEMETRY_RX_WAIT_END;
+			break;
+
+		case ARM_TELEMETRY_RX_WAIT_END:
+			if (IPC_ARM_TELEMETRY_END == p_args->message)
+			{
+				g_arm_telemetry_pending_valid_mask = valid_mask;
+				for (uint32_t i = 0U; i < IPC_ARM_TELEMETRY_AXIS_COUNT; i++)
+				{
+					g_arm_telemetry_pending_angles[i] = angles[i];
+				}
+				g_arm_telemetry_pending_x_0p1mm = x_0p1mm;
+				g_arm_telemetry_pending_y_0p1mm = y_0p1mm;
+				g_arm_telemetry_pending_z_0p1mm = z_0p1mm;
+				g_arm_telemetry_update_pending = true;
+			}
+			state = ARM_TELEMETRY_RX_WAIT_BEGIN;
+			break;
+
+		case ARM_TELEMETRY_RX_WAIT_BEGIN:
+		default:
+			break;
+	}
+}
 
 /* Screen_Thread entry function */
 /* pvParameters contains TaskHandle_t */
@@ -38,6 +133,60 @@ static void screen_process_arm_control_request(void)
 	{
 		bool const sent = ipc_detection_send_axis_angle(axis, angle_deg);
 		fruit_ui_notify_axis_angle_result(axis, angle_deg, sent);
+	}
+}
+
+static void screen_process_arm_telemetry(void)
+{
+	static TickType_t last_request_tick;
+	int32_t angles[IPC_ARM_TELEMETRY_AXIS_COUNT];
+	uint32_t valid_mask = 0U;
+	int32_t x_0p1mm = 0;
+	int32_t y_0p1mm = 0;
+	int32_t z_0p1mm = 0;
+	bool update_pending;
+
+	taskENTER_CRITICAL();
+	update_pending = g_arm_telemetry_update_pending;
+	if (update_pending)
+	{
+		valid_mask = g_arm_telemetry_pending_valid_mask;
+		for (uint32_t i = 0U; i < IPC_ARM_TELEMETRY_AXIS_COUNT; i++)
+		{
+			angles[i] = g_arm_telemetry_pending_angles[i];
+		}
+		x_0p1mm = g_arm_telemetry_pending_x_0p1mm;
+		y_0p1mm = g_arm_telemetry_pending_y_0p1mm;
+		z_0p1mm = g_arm_telemetry_pending_z_0p1mm;
+		g_arm_telemetry_update_pending = false;
+	}
+	taskEXIT_CRITICAL();
+
+	if (update_pending)
+	{
+		fruit_ui_set_arm_telemetry(valid_mask,
+		                           angles,
+		                           (valid_mask & 0x07U) == 0x07U,
+		                           x_0p1mm,
+		                           y_0p1mm,
+		                           z_0p1mm);
+	}
+
+	if (fruit_ui_is_arm_setting_active())
+	{
+		TickType_t const now = xTaskGetTickCount();
+		if ((0U == last_request_tick) ||
+		    ((now - last_request_tick) >= pdMS_TO_TICKS(ARM_TELEMETRY_POLL_MS)))
+		{
+			if (ipc_detection_send_arm_telemetry_request())
+			{
+				last_request_tick = now;
+			}
+		}
+	}
+	else
+	{
+		last_request_tick = 0U;
 	}
 }
 
@@ -67,6 +216,7 @@ void Screen_Thread_entry(void *pvParameters)
 		fruit_ui_process();
 		(void) lv_timer_handler();
 		screen_process_arm_control_request();
+		screen_process_arm_telemetry();
 
 		vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(5U));
 	}

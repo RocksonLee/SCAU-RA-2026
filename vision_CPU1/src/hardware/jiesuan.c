@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <math.h>
 #include "jiesuan.h"
-#define M_PI 3.14159
+#define M_PI 3.14159265358979323846
 // ==========================================================
 // 5轴机械臂正运动学（4轴锁死 | 5轴自动补偿保持夹爪水平）
 // ==========================================================
@@ -15,9 +15,9 @@ void forward_kinematics_5dof(double q1, double q2, double q3, Pose* out) {
     const double L_gripper = 80.00; // 夹爪水平延伸量
 
     // 【硬件映射层：电机角度 -> 数学模型角度】
-    // 说明：1轴和3轴的电机物理方向与数学正方向相反，此处转回数学模型
+    // 说明：逆解输出层对1、2、3轴都做了方向映射，正解时必须完整映射回来
     double math_q1 = -q1; 
-    double math_q2 =  q2;
+    double math_q2 = -q2;
     double math_q3 = -q3;
 
     double q23 = math_q2 + math_q3;
@@ -108,10 +108,12 @@ int inverse_kinematics_5dof(double x, double y, double z, int elbow_dir,
     // 【硬件映射层：数学模型角度 -> 电机实际角度】
     // 说明：按需求对 1轴、2轴、3轴进行取反输出，5轴保持数学模型方向
     // ==================================================
-    *q1 = round(-math_q1 * 180.0 / M_PI);
-    *q2 = round(-math_q2 * 180.0 / M_PI);
-    *q3 = round(-math_q3 * 180.0 / M_PI);
-    *q5 = round( math_q5 * 180.0 / M_PI);
+    /* Keep the fractional IK result. Motor command quantization belongs in
+     * the CAN control layer; rounding here breaks the IK -> FK round trip. */
+    *q1 = -math_q1 * 180.0 / M_PI;
+    *q2 = -math_q2 * 180.0 / M_PI;
+    *q3 = -math_q3 * 180.0 / M_PI;
+    *q5 =  math_q5 * 180.0 / M_PI;
 
     return 1; // 解算成功
 }

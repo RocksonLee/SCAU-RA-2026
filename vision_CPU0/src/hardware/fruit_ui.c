@@ -105,6 +105,12 @@ static volatile int32_t g_task_joint5_angle_deg;
 static volatile axis_angle_request_t g_axis_angle_queue[UI_AXIS_ANGLE_QUEUE_LENGTH];
 static volatile uint32_t g_axis_angle_queue_write;
 static volatile uint32_t g_axis_angle_queue_read;
+static uint32_t g_arm_telemetry_valid_mask;
+static int32_t g_arm_telemetry_angles_0p1deg[UI_AXIS_COUNT];
+static bool g_arm_coordinate_valid;
+static int32_t g_arm_x_0p1mm;
+static int32_t g_arm_y_0p1mm;
+static int32_t g_arm_z_0p1mm;
 static uint16_t g_debug_preview_pixels[2][UI_PREVIEW_PIXELS]
     BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
 static lv_image_dsc_t g_debug_preview_dsc[2];
@@ -142,11 +148,15 @@ static lv_obj_t * g_debug_preview_image;
 static lv_obj_t * g_debug_camera_title;
 static lv_obj_t * g_debug_camera_button;
 static lv_obj_t * g_debug_light_button;
+static lv_obj_t * g_top_light_default_button;
+static lv_obj_t * g_side_light_default_button;
 static lv_obj_t * g_axis_angle_inputs[UI_AXIS_COUNT];
+static lv_obj_t * g_axis_current_labels[UI_AXIS_COUNT];
 static lv_obj_t * g_axis_angle_dialog;
 static lv_obj_t * g_axis_angle_editor;
 static lv_obj_t * g_axis_angle_keyboard;
 static lv_obj_t * g_axis_angle_status_label;
+static lv_obj_t * g_axis_coordinate_label;
 static uint32_t g_axis_angle_edit_index;
 static lv_obj_t * g_task_preview_image;
 static lv_obj_t * g_task_camera_title;
@@ -383,13 +393,17 @@ static void prepare_screen(void)
     g_debug_camera_title = NULL;
     g_debug_camera_button = NULL;
     g_debug_light_button = NULL;
+    g_top_light_default_button = NULL;
+    g_side_light_default_button = NULL;
     for (uint32_t i = 0U; i < UI_AXIS_COUNT; i++) {
         g_axis_angle_inputs[i] = NULL;
+        g_axis_current_labels[i] = NULL;
     }
     g_axis_angle_dialog = NULL;
     g_axis_angle_editor = NULL;
     g_axis_angle_keyboard = NULL;
     g_axis_angle_status_label = NULL;
+    g_axis_coordinate_label = NULL;
     g_task_preview_image = NULL;
     g_task_camera_title = NULL;
     g_task_camera_status = NULL;
@@ -1058,6 +1072,57 @@ static void on_debug_light_toggle(lv_event_t * e)
     }
 }
 
+static void update_camera_light_default_button(lv_obj_t * button,
+                                               char const * camera_name,
+                                               bool enabled)
+{
+    if (button != NULL) {
+        char text[24];
+        lv_obj_t * label = lv_obj_get_child(button, 0);
+
+        (void) snprintf(text, sizeof(text), "%s: %s",
+                        camera_name, enabled ? "ON" : "OFF");
+        if (label != NULL) {
+            lv_label_set_text(label, text);
+        }
+        lv_obj_set_style_bg_color(button,
+                                  enabled ? lv_color_hex(0x1F7A5A) :
+                                            lv_color_hex(0x31445A),
+                                  0);
+    }
+}
+
+static void on_camera_light_default_toggle(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        bool const side_camera =
+            (0U != (uint32_t) (uintptr_t) lv_event_get_user_data(e));
+        bool enabled;
+        bool saved;
+
+        if (side_camera) {
+            enabled = !app_detection_get_side_camera_light_default();
+            saved = app_detection_set_side_camera_light_default(enabled);
+            update_camera_light_default_button(g_side_light_default_button,
+                                               "SIDE", enabled);
+        } else {
+            enabled = !app_detection_get_top_camera_light_default();
+            saved = app_detection_set_top_camera_light_default(enabled);
+            update_camera_light_default_button(g_top_light_default_button,
+                                               "TOP", enabled);
+        }
+
+        if (g_debug_save_label != NULL) {
+            lv_label_set_text(g_debug_save_label,
+                              saved ? "Camera light saved" : "Save failed");
+            lv_obj_set_style_text_color(g_debug_save_label,
+                                        saved ? lv_color_hex(0x1F7A5A) :
+                                                lv_color_hex(0xD83B35),
+                                        0);
+        }
+    }
+}
+
 static void on_confirm_pick(lv_event_t * e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
@@ -1249,6 +1314,10 @@ static void show_debug(void)
 {
     lv_obj_t * card;
     uint32_t const percent = app_detection_get_green_ratio_threshold();
+    bool const top_light_default =
+        app_detection_get_top_camera_light_default();
+    bool const side_light_default =
+        app_detection_get_side_camera_light_default();
     char threshold_text[24];
 
     prepare_screen();
@@ -1316,8 +1385,24 @@ static void show_debug(void)
     add_label(card, "Detections / ROI", lv_color_hex(0x687685),
               &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 100);
     g_debug_results_label = add_label(card, "No fruit detected", lv_color_hex(0x77818C),
-                                      &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 116);
+                                       &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 116);
     lv_obj_set_width(g_debug_results_label, 134);
+    lv_obj_set_height(g_debug_results_label, 38);
+    lv_label_set_long_mode(g_debug_results_label, LV_LABEL_LONG_CLIP);
+
+    g_top_light_default_button =
+        add_small_button(card, "TOP", 0, 160, 64, 28,
+                         on_camera_light_default_toggle,
+                         (void *) (uintptr_t) 0U);
+    update_camera_light_default_button(g_top_light_default_button,
+                                       "TOP", top_light_default);
+
+    g_side_light_default_button =
+        add_small_button(card, "SIDE", 70, 160, 64, 28,
+                         on_camera_light_default_toggle,
+                         (void *) (uintptr_t) 1U);
+    update_camera_light_default_button(g_side_light_default_button,
+                                       "SIDE", side_light_default);
 
     add_small_button(card, "UART DUMP", 20, 194, 94, 26, on_debug_uart_dump, NULL);
     update_debug_results_widget();
@@ -1848,6 +1933,54 @@ bool fruit_ui_debug_side_camera_requested(void)
     return g_debug_side_camera_requested;
 }
 
+static void format_0p1(char * text, size_t text_size, int32_t value)
+{
+    long const magnitude = (value < 0) ? -(long) value : (long) value;
+
+    (void) snprintf(text, text_size, "%s%ld.%ld",
+                    (value < 0) ? "-" : "",
+                    magnitude / 10L,
+                    magnitude % 10L);
+}
+
+static void update_arm_telemetry_widgets(void)
+{
+    for (uint32_t i = 0U; i < UI_AXIS_COUNT; i++) {
+        if (g_axis_current_labels[i] != NULL) {
+            if (0U != (g_arm_telemetry_valid_mask & (1UL << i))) {
+                char angle[16];
+                char text[24];
+
+                format_0p1(angle, sizeof(angle),
+                            g_arm_telemetry_angles_0p1deg[i]);
+                (void) snprintf(text, sizeof(text), "CALC %s", angle);
+                lv_label_set_text(g_axis_current_labels[i], text);
+            } else {
+                lv_label_set_text(g_axis_current_labels[i], "CALC --.-");
+            }
+        }
+    }
+
+    if (g_axis_coordinate_label != NULL) {
+        if (g_arm_coordinate_valid) {
+            char x[16];
+            char y[16];
+            char z[16];
+            char text[72];
+
+            format_0p1(x, sizeof(x), g_arm_x_0p1mm);
+            format_0p1(y, sizeof(y), g_arm_y_0p1mm);
+            format_0p1(z, sizeof(z), g_arm_z_0p1mm);
+            (void) snprintf(text, sizeof(text),
+                            "XYZ: %s / %s / %s mm", x, y, z);
+            lv_label_set_text(g_axis_coordinate_label, text);
+        } else {
+            lv_label_set_text(g_axis_coordinate_label,
+                              "XYZ: --.- / --.- / --.- mm");
+        }
+    }
+}
+
 static void show_axis_angle(void)
 {
     prepare_screen();
@@ -1879,9 +2012,13 @@ static void show_axis_angle(void)
         add_label(card, axis_text, lv_color_hex(0x20303F),
                   &lv_font_montserrat_14, LV_ALIGN_LEFT_MID, 8, 0);
 
+        g_axis_current_labels[i] =
+            add_label(card, "CALC --.-", lv_color_hex(0x1F7A5A),
+                      &lv_font_montserrat_10, LV_ALIGN_LEFT_MID, 72, 0);
+
         g_axis_angle_inputs[i] = lv_textarea_create(card);
-        lv_obj_set_pos(g_axis_angle_inputs[i], 142, 2);
-        lv_obj_set_size(g_axis_angle_inputs[i], 154, 28);
+        lv_obj_set_pos(g_axis_angle_inputs[i], 156, 2);
+        lv_obj_set_size(g_axis_angle_inputs[i], 140, 28);
         lv_textarea_set_one_line(g_axis_angle_inputs[i], true);
         lv_textarea_set_accepted_chars(g_axis_angle_inputs[i], "-0123456789");
         lv_textarea_set_max_length(g_axis_angle_inputs[i], 4U);
@@ -1900,7 +2037,13 @@ static void show_axis_angle(void)
                                           "Tap a value, enter angle, then MOVE",
                                           lv_color_hex(0x77818C),
                                           &lv_font_montserrat_10,
-                                          LV_ALIGN_BOTTOM_MID, 0, -4);
+                                          LV_ALIGN_BOTTOM_MID, 0, -19);
+    g_axis_coordinate_label = add_label(page_screen(),
+                                        "XYZ: --.- / --.- / --.- mm",
+                                        lv_color_hex(0x20303F),
+                                        &lv_font_montserrat_10,
+                                        LV_ALIGN_BOTTOM_MID, 0, -4);
+    update_arm_telemetry_widgets();
 
     g_axis_angle_dialog = lv_obj_create(page_screen());
     lv_obj_remove_style_all(g_axis_angle_dialog);
@@ -2032,6 +2175,36 @@ void fruit_ui_notify_axis_angle_result(uint8_t axis, int32_t angle_deg, bool sen
                                 sent ? lv_color_hex(0x1F7A5A) :
                                        lv_color_hex(0xD83B35),
                                 0);
+}
+
+bool fruit_ui_is_arm_setting_active(void)
+{
+    return UI_PAGE_AXIS_ANGLE == g_current_page;
+}
+
+void fruit_ui_set_arm_telemetry(uint32_t        valid_mask,
+                                int32_t const * p_angles_0p1deg,
+                                bool            coordinate_valid,
+                                int32_t         x_0p1mm,
+                                int32_t         y_0p1mm,
+                                int32_t         z_0p1mm)
+{
+    if (NULL == p_angles_0p1deg) {
+        return;
+    }
+
+    g_arm_telemetry_valid_mask = valid_mask & ((1UL << UI_AXIS_COUNT) - 1UL);
+    for (uint32_t i = 0U; i < UI_AXIS_COUNT; i++) {
+        g_arm_telemetry_angles_0p1deg[i] = p_angles_0p1deg[i];
+    }
+    g_arm_coordinate_valid = coordinate_valid;
+    g_arm_x_0p1mm = x_0p1mm;
+    g_arm_y_0p1mm = y_0p1mm;
+    g_arm_z_0p1mm = z_0p1mm;
+
+    if (UI_PAGE_AXIS_ANGLE == g_current_page) {
+        update_arm_telemetry_widgets();
+    }
 }
 
 bool fruit_ui_take_pick_request(fruit_ui_target_t * p_target)

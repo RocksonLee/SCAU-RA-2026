@@ -78,8 +78,8 @@ extern const ipc_instance_t g_ipc0;
 extern ipc_instance_ctrl_t g_ipc0_ctrl;
 extern const ipc_cfg_t g_ipc0_cfg;
 
-#ifndef NULL
-void NULL(ipc_callback_args_t *p_args);
+#ifndef ipc0_callback
+void ipc0_callback(ipc_callback_args_t *p_args);
 #endif
 /** UART on SCI Instance. */
 extern const uart_instance_t g_uart9;
