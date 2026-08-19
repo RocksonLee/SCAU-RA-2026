@@ -26,7 +26,7 @@ static uint32_t lvgl_freertos_tick_ms(void)
 static void screen_process_arm_control_request(void)
 {
 	uint8_t axis;
-	int32_t delta_deg;
+	int32_t angle_deg;
 
 	if (fruit_ui_take_arm_zero_request())
 	{
@@ -34,10 +34,10 @@ static void screen_process_arm_control_request(void)
 		return;
 	}
 
-	if (fruit_ui_take_axis_jog_request(&axis, &delta_deg))
+	if (fruit_ui_take_axis_angle_request(&axis, &angle_deg))
 	{
-		bool const sent = ipc_detection_send_axis_jog(axis, delta_deg);
-		fruit_ui_notify_axis_jog_result(axis, delta_deg, sent);
+		bool const sent = ipc_detection_send_axis_angle(axis, angle_deg);
+		fruit_ui_notify_axis_angle_result(axis, angle_deg, sent);
 	}
 }
 

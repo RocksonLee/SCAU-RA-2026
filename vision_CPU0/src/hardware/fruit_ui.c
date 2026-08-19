@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "FreeRTOS.h"
@@ -29,8 +30,9 @@
 #define UI_WEIGHT_STABLE_TOLERANCE_0P1G (5)
 #define UI_WEIGHT_MIN_VALID_0P1G (20)
 #define UI_AXIS_COUNT (5U)
-#define UI_AXIS_JOG_STEP_DEG (5)
-#define UI_AXIS_JOG_QUEUE_LENGTH (16U)
+#define UI_AXIS_ANGLE_MIN_DEG (-180)
+#define UI_AXIS_ANGLE_MAX_DEG (180)
+#define UI_AXIS_ANGLE_QUEUE_LENGTH (16U)
 
 typedef struct st_target_view
 {
@@ -50,14 +52,14 @@ typedef enum e_ui_page
     UI_PAGE_SELECT,
     UI_PAGE_DETAIL,
     UI_PAGE_DEBUG,
-    UI_PAGE_AXIS_JOG,
+    UI_PAGE_AXIS_ANGLE,
 } ui_page_t;
 
-typedef struct st_axis_jog_request
+typedef struct st_axis_angle_request
 {
     uint8_t axis;
-    int32_t delta_deg;
-} axis_jog_request_t;
+    int32_t angle_deg;
+} axis_angle_request_t;
 
 typedef enum e_target_pick_state
 {
@@ -100,9 +102,9 @@ static volatile bool g_frame_dump_request_pending;
 static volatile bool g_arm_zero_request_pending;
 static volatile bool g_task_joint5_request_pending;
 static volatile int32_t g_task_joint5_angle_deg;
-static volatile axis_jog_request_t g_axis_jog_queue[UI_AXIS_JOG_QUEUE_LENGTH];
-static volatile uint32_t g_axis_jog_queue_write;
-static volatile uint32_t g_axis_jog_queue_read;
+static volatile axis_angle_request_t g_axis_angle_queue[UI_AXIS_ANGLE_QUEUE_LENGTH];
+static volatile uint32_t g_axis_angle_queue_write;
+static volatile uint32_t g_axis_angle_queue_read;
 static uint16_t g_debug_preview_pixels[2][UI_PREVIEW_PIXELS]
     BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
 static lv_image_dsc_t g_debug_preview_dsc[2];
@@ -140,7 +142,12 @@ static lv_obj_t * g_debug_preview_image;
 static lv_obj_t * g_debug_camera_title;
 static lv_obj_t * g_debug_camera_button;
 static lv_obj_t * g_debug_light_button;
-static lv_obj_t * g_axis_jog_status_label;
+static lv_obj_t * g_axis_angle_inputs[UI_AXIS_COUNT];
+static lv_obj_t * g_axis_angle_dialog;
+static lv_obj_t * g_axis_angle_editor;
+static lv_obj_t * g_axis_angle_keyboard;
+static lv_obj_t * g_axis_angle_status_label;
+static uint32_t g_axis_angle_edit_index;
 static lv_obj_t * g_task_preview_image;
 static lv_obj_t * g_task_camera_title;
 static lv_obj_t * g_task_camera_status;
@@ -153,12 +160,28 @@ static lv_style_t g_style_card;
 static lv_style_t g_style_button;
 static lv_style_t g_style_button_alt;
 
+static char const * const g_axis_angle_keyboard_map[] =
+{
+    "1", "2", "3", LV_SYMBOL_BACKSPACE, "\n",
+    "4", "5", "6", "-",                 "\n",
+    "7", "8", "9", LV_SYMBOL_CLOSE,     "\n",
+    "0", LV_SYMBOL_OK, ""
+};
+
+static lv_buttonmatrix_ctrl_t const g_axis_angle_keyboard_ctrl[] =
+{
+    1, 1, 1, 2,
+    1, 1, 1, 2,
+    1, 1, 1, 2,
+    2, 2
+};
+
 static void show_home(void);
 static void show_task_stream(void);
 static void show_select(void);
 static void show_detail(fruit_ui_target_t target);
 static void show_debug(void);
-static void show_axis_jog(void);
+static void show_axis_angle(void);
 
 static void init_debug_preview(void)
 {
@@ -360,7 +383,13 @@ static void prepare_screen(void)
     g_debug_camera_title = NULL;
     g_debug_camera_button = NULL;
     g_debug_light_button = NULL;
-    g_axis_jog_status_label = NULL;
+    for (uint32_t i = 0U; i < UI_AXIS_COUNT; i++) {
+        g_axis_angle_inputs[i] = NULL;
+    }
+    g_axis_angle_dialog = NULL;
+    g_axis_angle_editor = NULL;
+    g_axis_angle_keyboard = NULL;
+    g_axis_angle_status_label = NULL;
     g_task_preview_image = NULL;
     g_task_camera_title = NULL;
     g_task_camera_status = NULL;
@@ -776,52 +805,123 @@ static void on_back_debug(lv_event_t * e)
     }
 }
 
-static void on_axis_jog_page(lv_event_t * e)
+static void on_axis_angle_page(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         taskENTER_CRITICAL();
         g_debug_side_camera_requested = false;
         g_debug_light_requested = false;
         taskEXIT_CRITICAL();
-        show_axis_jog();
+        show_axis_angle();
     }
 }
 
-static void on_axis_jog(lv_event_t * e)
+static void on_axis_angle_input(lv_event_t * e)
+{
+    if ((lv_event_get_code(e) == LV_EVENT_CLICKED) &&
+        (g_axis_angle_dialog != NULL) &&
+        (g_axis_angle_editor != NULL) &&
+        (g_axis_angle_keyboard != NULL)) {
+        uint32_t const index = (uint32_t) (uintptr_t) lv_event_get_user_data(e);
+
+        if ((index >= UI_AXIS_COUNT) || (g_axis_angle_inputs[index] == NULL)) {
+            return;
+        }
+
+        g_axis_angle_edit_index = index;
+        lv_textarea_set_text(g_axis_angle_editor,
+                             lv_textarea_get_text(g_axis_angle_inputs[index]));
+        lv_keyboard_set_textarea(g_axis_angle_keyboard, g_axis_angle_editor);
+        lv_obj_remove_flag(g_axis_angle_dialog, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(g_axis_angle_dialog);
+    }
+}
+
+static void on_axis_angle_keyboard(lv_event_t * e)
+{
+    lv_event_code_t const code = lv_event_get_code(e);
+
+    if (((LV_EVENT_READY == code) || (LV_EVENT_CANCEL == code)) &&
+        (g_axis_angle_dialog != NULL) &&
+        (g_axis_angle_editor != NULL) &&
+        (g_axis_angle_keyboard != NULL)) {
+        if ((LV_EVENT_READY == code) &&
+            (g_axis_angle_edit_index < UI_AXIS_COUNT) &&
+            (g_axis_angle_inputs[g_axis_angle_edit_index] != NULL)) {
+            lv_textarea_set_text(g_axis_angle_inputs[g_axis_angle_edit_index],
+                                 lv_textarea_get_text(g_axis_angle_editor));
+        }
+        lv_keyboard_set_textarea(g_axis_angle_keyboard, NULL);
+        lv_obj_add_flag(g_axis_angle_dialog, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static bool parse_axis_angle(char const * text, int32_t * p_angle_deg)
+{
+    char * end;
+    long value;
+
+    if ((NULL == text) || ('\0' == text[0]) || (NULL == p_angle_deg)) {
+        return false;
+    }
+
+    value = strtol(text, &end, 10);
+    if (('\0' != *end) ||
+        (value < UI_AXIS_ANGLE_MIN_DEG) ||
+        (value > UI_AXIS_ANGLE_MAX_DEG)) {
+        return false;
+    }
+
+    *p_angle_deg = (int32_t) value;
+    return true;
+}
+
+static void on_axis_angle_send(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
-        uint32_t const token = (uint32_t) (uintptr_t) lv_event_get_user_data(e);
-        uint8_t const axis = (uint8_t) (token >> 1U);
-        int32_t const delta_deg = (0U != (token & 1U)) ?
-                                  UI_AXIS_JOG_STEP_DEG : -UI_AXIS_JOG_STEP_DEG;
+        uint8_t const axis = (uint8_t) (uintptr_t) lv_event_get_user_data(e);
+        int32_t angle_deg;
         uint32_t next;
         bool queued = false;
+        bool valid = false;
 
-        taskENTER_CRITICAL();
-        next = (g_axis_jog_queue_write + 1U) % UI_AXIS_JOG_QUEUE_LENGTH;
-        if (next != g_axis_jog_queue_read) {
-            g_axis_jog_queue[g_axis_jog_queue_write].axis = axis;
-            g_axis_jog_queue[g_axis_jog_queue_write].delta_deg = delta_deg;
-            g_axis_jog_queue_write = next;
-            queued = true;
+        if ((axis >= 1U) && (axis <= UI_AXIS_COUNT) &&
+            (g_axis_angle_inputs[axis - 1U] != NULL)) {
+            valid = parse_axis_angle(
+                lv_textarea_get_text(g_axis_angle_inputs[axis - 1U]),
+                &angle_deg);
         }
-        taskEXIT_CRITICAL();
 
-        if (g_axis_jog_status_label != NULL) {
-            char status[48];
-            if (queued) {
+        if (valid) {
+            taskENTER_CRITICAL();
+            next = (g_axis_angle_queue_write + 1U) % UI_AXIS_ANGLE_QUEUE_LENGTH;
+            if (next != g_axis_angle_queue_read) {
+                g_axis_angle_queue[g_axis_angle_queue_write].axis = axis;
+                g_axis_angle_queue[g_axis_angle_queue_write].angle_deg = angle_deg;
+                g_axis_angle_queue_write = next;
+                queued = true;
+            }
+            taskEXIT_CRITICAL();
+        }
+
+        if (g_axis_angle_status_label != NULL) {
+            char status[56];
+
+            if (!valid) {
                 (void) snprintf(status, sizeof(status),
-                                "Axis %u: %s5 deg queued",
-                                (unsigned int) axis,
-                                (delta_deg > 0) ? "+" : "-");
-                lv_obj_set_style_text_color(g_axis_jog_status_label,
-                                            lv_color_hex(0x1F7A5A), 0);
+                                "Enter an integer from -180 to 180 deg");
+            } else if (queued) {
+                (void) snprintf(status, sizeof(status),
+                                "Axis %u: %ld deg queued",
+                                (unsigned int) axis, (long) angle_deg);
             } else {
                 (void) snprintf(status, sizeof(status), "Command queue full");
-                lv_obj_set_style_text_color(g_axis_jog_status_label,
-                                            lv_color_hex(0xD83B35), 0);
             }
-            lv_label_set_text(g_axis_jog_status_label, status);
+            lv_label_set_text(g_axis_angle_status_label, status);
+            lv_obj_set_style_text_color(g_axis_angle_status_label,
+                                        queued ? lv_color_hex(0x1F7A5A) :
+                                                 lv_color_hex(0xD83B35),
+                                        0);
         }
     }
 }
@@ -930,6 +1030,7 @@ static void on_arm_zero(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         taskENTER_CRITICAL();
+        g_axis_angle_queue_read = g_axis_angle_queue_write;
         g_arm_zero_request_pending = true;
         taskEXIT_CRITICAL();
     }
@@ -1045,8 +1146,8 @@ static void show_home(void)
                                on_task_select,
                                (void *) (uintptr_t) FRUIT_UI_TASK_TOP_AND_SIDE);
     add_small_button(page_screen(), "CAMERA TEST", 236, 219, 108, 40, on_settings, NULL);
-    add_small_button(page_screen(), "AXIS TEST", 352, 219, 108, 40,
-                     on_axis_jog_page, NULL);
+    add_small_button(page_screen(), "ARM SETTING", 352, 219, 108, 40,
+                     on_axis_angle_page, NULL);
 
     card = add_card(page_screen(), 218, 269, 242, 39);
     lv_obj_set_style_pad_all(card, 5, 0);
@@ -1747,14 +1848,14 @@ bool fruit_ui_debug_side_camera_requested(void)
     return g_debug_side_camera_requested;
 }
 
-static void show_axis_jog(void)
+static void show_axis_angle(void)
 {
     prepare_screen();
-    g_current_page = UI_PAGE_AXIS_JOG;
+    g_current_page = UI_PAGE_AXIS_ANGLE;
     g_task_stream_active = false;
     reset_preview_session();
 
-    /* Axis test is independent of camera debug mode. */
+    /* Manual arm control is independent of camera debug mode. */
     taskENTER_CRITICAL();
     g_debug_mode_active = false;
     g_debug_side_camera_requested = false;
@@ -1763,7 +1864,7 @@ static void show_axis_jog(void)
 
     add_small_button(page_screen(), "HOME", 12, 12, 68, 30, on_back_debug, NULL);
     add_small_button(page_screen(), "ZERO", 84, 12, 68, 30, on_arm_zero, NULL);
-    add_label(page_screen(), "SINGLE AXIS JOG  |  5 DEG",
+    add_label(page_screen(), "ARM ANGLE SETTING  |  -180 TO 180 DEG",
               lv_color_hex(0x20303F), &lv_font_montserrat_16,
               LV_ALIGN_TOP_RIGHT, -12, 18);
 
@@ -1777,17 +1878,64 @@ static void show_axis_jog(void)
         (void) snprintf(axis_text, sizeof(axis_text), "AXIS %lu", (unsigned long) axis);
         add_label(card, axis_text, lv_color_hex(0x20303F),
                   &lv_font_montserrat_14, LV_ALIGN_LEFT_MID, 8, 0);
-        add_small_button(card, "-5 DEG", 218, 2, 90, 28, on_axis_jog,
-                         (void *) (uintptr_t) (axis << 1U));
-        add_button(card, "+5 DEG", 316, 2, 90, 28, on_axis_jog,
-                   (void *) (uintptr_t) ((axis << 1U) | 1U));
+
+        g_axis_angle_inputs[i] = lv_textarea_create(card);
+        lv_obj_set_pos(g_axis_angle_inputs[i], 142, 2);
+        lv_obj_set_size(g_axis_angle_inputs[i], 154, 28);
+        lv_textarea_set_one_line(g_axis_angle_inputs[i], true);
+        lv_textarea_set_accepted_chars(g_axis_angle_inputs[i], "-0123456789");
+        lv_textarea_set_max_length(g_axis_angle_inputs[i], 4U);
+        lv_textarea_set_placeholder_text(g_axis_angle_inputs[i], "0");
+        lv_textarea_set_align(g_axis_angle_inputs[i], LV_TEXT_ALIGN_CENTER);
+        lv_obj_set_style_text_font(g_axis_angle_inputs[i], &lv_font_montserrat_14, 0);
+        lv_obj_set_style_pad_all(g_axis_angle_inputs[i], 4, 0);
+        lv_obj_add_event_cb(g_axis_angle_inputs[i], on_axis_angle_input,
+                            LV_EVENT_CLICKED, (void *) (uintptr_t) i);
+
+        add_button(card, "MOVE", 308, 2, 98, 28, on_axis_angle_send,
+                   (void *) (uintptr_t) axis);
     }
 
-    g_axis_jog_status_label = add_label(page_screen(),
-                                        "Tap once to move only that axis",
-                                        lv_color_hex(0x77818C),
-                                        &lv_font_montserrat_10,
-                                        LV_ALIGN_BOTTOM_MID, 0, -4);
+    g_axis_angle_status_label = add_label(page_screen(),
+                                          "Tap a value, enter angle, then MOVE",
+                                          lv_color_hex(0x77818C),
+                                          &lv_font_montserrat_10,
+                                          LV_ALIGN_BOTTOM_MID, 0, -4);
+
+    g_axis_angle_dialog = lv_obj_create(page_screen());
+    lv_obj_remove_style_all(g_axis_angle_dialog);
+    lv_obj_set_pos(g_axis_angle_dialog, 0, 0);
+    lv_obj_set_size(g_axis_angle_dialog, UI_W, UI_H);
+    lv_obj_set_style_bg_color(g_axis_angle_dialog, lv_color_hex(0xF4F7F5), 0);
+    lv_obj_set_style_bg_opa(g_axis_angle_dialog, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(g_axis_angle_dialog, LV_OBJ_FLAG_SCROLLABLE);
+
+    add_label(g_axis_angle_dialog, "ENTER ANGLE  |  -180 TO 180 DEG",
+              lv_color_hex(0x20303F), &lv_font_montserrat_16,
+              LV_ALIGN_TOP_MID, 0, 10);
+    g_axis_angle_editor = lv_textarea_create(g_axis_angle_dialog);
+    lv_obj_set_pos(g_axis_angle_editor, 120, 38);
+    lv_obj_set_size(g_axis_angle_editor, 240, 48);
+    lv_textarea_set_one_line(g_axis_angle_editor, true);
+    lv_textarea_set_accepted_chars(g_axis_angle_editor, "-0123456789");
+    lv_textarea_set_max_length(g_axis_angle_editor, 4U);
+    lv_textarea_set_placeholder_text(g_axis_angle_editor, "0");
+    lv_textarea_set_align(g_axis_angle_editor, LV_TEXT_ALIGN_CENTER);
+    lv_obj_set_style_text_font(g_axis_angle_editor, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_all(g_axis_angle_editor, 10, 0);
+
+    g_axis_angle_keyboard = lv_keyboard_create(g_axis_angle_dialog);
+    lv_keyboard_set_map(g_axis_angle_keyboard, LV_KEYBOARD_MODE_NUMBER,
+                        g_axis_angle_keyboard_map,
+                        g_axis_angle_keyboard_ctrl);
+    lv_keyboard_set_mode(g_axis_angle_keyboard, LV_KEYBOARD_MODE_NUMBER);
+    lv_obj_set_size(g_axis_angle_keyboard, UI_W, 220);
+    lv_obj_align(g_axis_angle_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_add_event_cb(g_axis_angle_keyboard, on_axis_angle_keyboard,
+                        LV_EVENT_READY, NULL);
+    lv_obj_add_event_cb(g_axis_angle_keyboard, on_axis_angle_keyboard,
+                        LV_EVENT_CANCEL, NULL);
+    lv_obj_add_flag(g_axis_angle_dialog, LV_OBJ_FLAG_HIDDEN);
     finish_screen_switch();
 }
 
@@ -1846,41 +1994,41 @@ bool fruit_ui_take_task_joint5_request(int32_t * p_angle_deg)
     return requested;
 }
 
-bool fruit_ui_take_axis_jog_request(uint8_t * p_axis, int32_t * p_delta_deg)
+bool fruit_ui_take_axis_angle_request(uint8_t * p_axis, int32_t * p_angle_deg)
 {
     bool requested = false;
 
-    if ((NULL == p_axis) || (NULL == p_delta_deg)) {
+    if ((NULL == p_axis) || (NULL == p_angle_deg)) {
         return false;
     }
 
     taskENTER_CRITICAL();
-    if (g_axis_jog_queue_read != g_axis_jog_queue_write) {
-        *p_axis = g_axis_jog_queue[g_axis_jog_queue_read].axis;
-        *p_delta_deg = g_axis_jog_queue[g_axis_jog_queue_read].delta_deg;
-        g_axis_jog_queue_read = (g_axis_jog_queue_read + 1U) % UI_AXIS_JOG_QUEUE_LENGTH;
+    if (g_axis_angle_queue_read != g_axis_angle_queue_write) {
+        *p_axis = g_axis_angle_queue[g_axis_angle_queue_read].axis;
+        *p_angle_deg = g_axis_angle_queue[g_axis_angle_queue_read].angle_deg;
+        g_axis_angle_queue_read = (g_axis_angle_queue_read + 1U) %
+                                  UI_AXIS_ANGLE_QUEUE_LENGTH;
         requested = true;
     }
     taskEXIT_CRITICAL();
     return requested;
 }
 
-void fruit_ui_notify_axis_jog_result(uint8_t axis, int32_t delta_deg, bool sent)
+void fruit_ui_notify_axis_angle_result(uint8_t axis, int32_t angle_deg, bool sent)
 {
     char status[48];
 
-    if ((UI_PAGE_AXIS_JOG != g_current_page) ||
-        (NULL == g_axis_jog_status_label)) {
+    if ((UI_PAGE_AXIS_ANGLE != g_current_page) ||
+        (NULL == g_axis_angle_status_label)) {
         return;
     }
 
     (void) snprintf(status, sizeof(status),
-                    sent ? "Axis %u: %s5 deg IPC sent" :
-                           "Axis %u: %s5 deg send failed",
-                    (unsigned int) axis,
-                    (delta_deg > 0) ? "+" : "-");
-    lv_label_set_text(g_axis_jog_status_label, status);
-    lv_obj_set_style_text_color(g_axis_jog_status_label,
+                    sent ? "Axis %u: %ld deg sent" :
+                           "Axis %u: %ld deg send failed",
+                    (unsigned int) axis, (long) angle_deg);
+    lv_label_set_text(g_axis_angle_status_label, status);
+    lv_obj_set_style_text_color(g_axis_angle_status_label,
                                 sent ? lv_color_hex(0x1F7A5A) :
                                        lv_color_hex(0xD83B35),
                                 0);

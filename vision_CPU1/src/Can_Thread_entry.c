@@ -26,7 +26,7 @@ typedef enum e_ipc_coordinate_rx_state
 #define ARM_TASK1_JOINT_5_DEG   (-30)
 #define ARM_TASK2_JOINT_5_DEG   (80)
 #define ARM_AXIS_COUNT           (5U)
-#define ARM_AXIS_JOG_QUEUE_LENGTH (16U)
+#define ARM_AXIS_ANGLE_QUEUE_LENGTH (16U)
 
 typedef struct st_ipc_arm_result
 {
@@ -45,9 +45,9 @@ static volatile uint32_t g_arm_queue_read;
 static volatile bool g_arm_zero_request_pending;
 static volatile bool g_task_joint5_request_pending;
 static volatile int32_t g_task_joint5_angle_deg;
-static volatile uint32_t g_axis_jog_queue[ARM_AXIS_JOG_QUEUE_LENGTH];
-static volatile uint32_t g_axis_jog_queue_write;
-static volatile uint32_t g_axis_jog_queue_read;
+static volatile uint32_t g_axis_angle_queue[ARM_AXIS_ANGLE_QUEUE_LENGTH];
+static volatile uint32_t g_axis_angle_queue_write;
+static volatile uint32_t g_axis_angle_queue_read;
 
 #if DM_COORDINATE_UART_ENABLE
 extern TaskHandle_t Uart_dm_thread;
@@ -113,15 +113,15 @@ static void arm_prepare_task(int32_t joint5_angle_deg)
     run();
 }
 
-static void arm_jog_axis(uint8_t axis, int32_t delta_deg)
+static void arm_set_axis_angle(uint8_t axis, int32_t angle_deg)
 {
     switch (axis)
     {
-        case 1U: CANFD0_Operation_1(delta_deg); run(); break;
-        case 2U: CANFD0_Operation_2(delta_deg); run(); break;
-        case 3U: CANFD0_Operation_3(delta_deg); run(); break;
-        case 4U: CANFD0_Operation_4(delta_deg); run(); break;
-        case 5U: CANFD0_Operation_5(delta_deg); run(); break;
+        case 1U: CANFD0_Operation_1(angle_deg); run(); break;
+        case 2U: CANFD0_Operation_2(angle_deg); run(); break;
+        case 3U: CANFD0_Operation_3(angle_deg); run(); break;
+        case 4U: CANFD0_Operation_4(angle_deg); run(); break;
+        case 5U: CANFD0_Operation_5(angle_deg); run(); break;
         default: return;
     }
 }
@@ -210,6 +210,7 @@ void ipc0_callback(ipc_callback_args_t *p_args)
 
     if (IPC_ARM_ZERO_COMMAND == p_args->message)
     {
+        g_axis_angle_queue_read = g_axis_angle_queue_write;
         g_arm_zero_request_pending = true;
         ipc_coordinate_rx_reset(&receive_state);
         return;
@@ -231,18 +232,25 @@ void ipc0_callback(ipc_callback_args_t *p_args)
         return;
     }
 
-    if (IPC_AXIS_JOG_COMMAND_PREFIX ==
-        (p_args->message & IPC_AXIS_JOG_COMMAND_MASK))
+    if (IPC_AXIS_ANGLE_COMMAND_PREFIX ==
+        (p_args->message & IPC_AXIS_ANGLE_COMMAND_MASK))
     {
-        uint32_t const axis = p_args->message & IPC_AXIS_JOG_AXIS_MASK;
-        uint32_t const next = (g_axis_jog_queue_write + 1U) %
-                              ARM_AXIS_JOG_QUEUE_LENGTH;
+        uint32_t const axis = p_args->message & IPC_AXIS_ANGLE_AXIS_MASK;
+        uint32_t const encoded_angle =
+            (p_args->message & IPC_AXIS_ANGLE_VALUE_MASK) >>
+            IPC_AXIS_ANGLE_VALUE_SHIFT;
+        int32_t const angle_deg = (int32_t) encoded_angle +
+                                  IPC_AXIS_ANGLE_MIN_DEG;
+        uint32_t const next = (g_axis_angle_queue_write + 1U) %
+                              ARM_AXIS_ANGLE_QUEUE_LENGTH;
 
         if ((axis >= 1U) && (axis <= ARM_AXIS_COUNT) &&
-            (next != g_axis_jog_queue_read))
+            (angle_deg >= IPC_AXIS_ANGLE_MIN_DEG) &&
+            (angle_deg <= IPC_AXIS_ANGLE_MAX_DEG) &&
+            (next != g_axis_angle_queue_read))
         {
-            g_axis_jog_queue[g_axis_jog_queue_write] = p_args->message;
-            g_axis_jog_queue_write = next;
+            g_axis_angle_queue[g_axis_angle_queue_write] = p_args->message;
+            g_axis_angle_queue_write = next;
         }
         ipc_coordinate_rx_reset(&receive_state);
         return;
@@ -399,8 +407,8 @@ void Can_Thread_entry(void *pvParameters) {
         bool arm_zero_requested;
         bool task_joint5_requested;
         int32_t task_joint5_angle_deg = 0;
-        bool axis_jog_requested;
-        uint32_t axis_jog_command = 0U;
+        bool axis_angle_requested;
+        uint32_t axis_angle_command = 0U;
 
         taskENTER_CRITICAL();
         arm_zero_requested = g_arm_zero_request_pending;
@@ -412,13 +420,13 @@ void Can_Thread_entry(void *pvParameters) {
             task_joint5_angle_deg = g_task_joint5_angle_deg;
             g_task_joint5_request_pending = false;
         }
-        axis_jog_requested = !arm_zero_requested && !task_joint5_requested &&
-                             (g_axis_jog_queue_read != g_axis_jog_queue_write);
-        if (axis_jog_requested)
+        axis_angle_requested = !arm_zero_requested && !task_joint5_requested &&
+                               (g_axis_angle_queue_read != g_axis_angle_queue_write);
+        if (axis_angle_requested)
         {
-            axis_jog_command = g_axis_jog_queue[g_axis_jog_queue_read];
-            g_axis_jog_queue_read = (g_axis_jog_queue_read + 1U) %
-                                    ARM_AXIS_JOG_QUEUE_LENGTH;
+            axis_angle_command = g_axis_angle_queue[g_axis_angle_queue_read];
+            g_axis_angle_queue_read = (g_axis_angle_queue_read + 1U) %
+                                      ARM_AXIS_ANGLE_QUEUE_LENGTH;
         }
         taskEXIT_CRITICAL();
 
@@ -436,14 +444,17 @@ void Can_Thread_entry(void *pvParameters) {
             continue;
         }
 
-        if (axis_jog_requested)
+        if (axis_angle_requested)
         {
-            uint8_t const axis = (uint8_t) (axis_jog_command & IPC_AXIS_JOG_AXIS_MASK);
-            int32_t const delta_deg =
-                (0U != (axis_jog_command & IPC_AXIS_JOG_DIRECTION_POSITIVE)) ?
-                IPC_AXIS_JOG_STEP_DEG : -IPC_AXIS_JOG_STEP_DEG;
+            uint8_t const axis = (uint8_t) (axis_angle_command &
+                                            IPC_AXIS_ANGLE_AXIS_MASK);
+            uint32_t const encoded_angle =
+                (axis_angle_command & IPC_AXIS_ANGLE_VALUE_MASK) >>
+                IPC_AXIS_ANGLE_VALUE_SHIFT;
+            int32_t const angle_deg = (int32_t) encoded_angle +
+                                      IPC_AXIS_ANGLE_MIN_DEG;
 
-            arm_jog_axis(axis, delta_deg);
+            arm_set_axis_angle(axis, angle_deg);
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }
