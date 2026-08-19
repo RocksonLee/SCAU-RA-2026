@@ -36,6 +36,9 @@
 #define CAMERA_DEBUG_LIGHT_DISCARD_FRAMES (3U)
 #define CAMERA_TASK_PREVIEW_PERIOD_MS (150U)
 #define CAMERA_TASK_PREVIEW_MIN_MS (1000U)
+#define CAMERA_TOP_BOX_FILTER_SAMPLES (3U)
+#define CAMERA_TOP_BOX_PADDING_DIVISOR (8)
+#define CAMERA_TOP_SAMPLES       (5U)
 #define CAMERA_SIDE_SAMPLES      (5U)
 #define CAMERA_SIDE_MAX_FRAMES   (90U)
 #define CAMERA_SIDE_Y_MIN_PX     (50)
@@ -44,8 +47,8 @@
 #define CAMERA_SIDE_Z_SLOPE      (0.39634450194777904)
 #define CAMERA_SIDE_Z_OFFSET     (270.4756856225454)
 #define CAMERA_TOP_ONLY_Z_MM     (100.0)
-#define CAMERA_TOP_Z_MIN_MM      (320.0)
-#define CAMERA_TOP_Z_MAX_MM      (400.0)
+#define CAMERA_TOP_Z_MIN_MM      (250.0)
+#define CAMERA_TOP_Z_MAX_MM      (450.0)
 #define CAMERA_TOP_CAL_Z_LOW_MM  (350.0)
 #define CAMERA_TOP_CAL_Z_HIGH_MM (395.0)
 #define CAMERA_HOMOGRAPHY_EPSILON (1.0e-9)
@@ -84,6 +87,27 @@ static char g_uart_line[CAMERA_UART_LINE_BYTES];
 static app_detection_result_t g_detection_results[APP_DETECTION_MAX_RESULTS];
 static bool g_camera_illumination_enabled;
 static bool g_camera_illumination_state_valid;
+
+typedef struct st_camera_top_samples
+{
+    int32_t  x[CAMERA_TOP_SAMPLES];
+    int32_t  y[CAMERA_TOP_SAMPLES];
+    uint32_t count;
+    uint32_t next;
+} camera_top_samples_t;
+
+typedef struct st_camera_top_box_filter
+{
+    int32_t  x1[CAMERA_TOP_BOX_FILTER_SAMPLES];
+    int32_t  y1[CAMERA_TOP_BOX_FILTER_SAMPLES];
+    int32_t  x2[CAMERA_TOP_BOX_FILTER_SAMPLES];
+    int32_t  y2[CAMERA_TOP_BOX_FILTER_SAMPLES];
+    uint32_t count;
+    uint32_t next;
+} camera_top_box_filter_t;
+
+static camera_top_samples_t g_camera_top_samples[APP_DETECTION_MAX_RESULTS];
+static camera_top_box_filter_t g_camera_top_box_filters[APP_DETECTION_MAX_RESULTS];
 
 static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_pair,
                                         fruit_ui_detection_t                * p_detection);
@@ -405,6 +429,141 @@ static int32_t camera_median_5(int32_t const samples[CAMERA_SIDE_SAMPLES])
     return sorted[CAMERA_SIDE_SAMPLES / 2U];
 }
 
+static int32_t camera_median_recent_3(int32_t const samples[CAMERA_TOP_BOX_FILTER_SAMPLES],
+                                     uint32_t      count)
+{
+    int32_t sorted[CAMERA_TOP_BOX_FILTER_SAMPLES];
+
+    for (uint32_t i = 0U; i < count; i++)
+    {
+        sorted[i] = samples[i];
+    }
+
+    for (uint32_t i = 1U; i < count; i++)
+    {
+        int32_t const value = sorted[i];
+        uint32_t j = i;
+
+        while ((j > 0U) && (sorted[j - 1U] > value))
+        {
+            sorted[j] = sorted[j - 1U];
+            j--;
+        }
+        sorted[j] = value;
+    }
+
+    if (2U == count)
+    {
+        return (sorted[0] + sorted[1]) / 2;
+    }
+
+    return sorted[count / 2U];
+}
+
+static void camera_reset_top_box_filters(void)
+{
+    memset(g_camera_top_box_filters, 0, sizeof(g_camera_top_box_filters));
+}
+
+static void camera_filter_top_box(app_detection_result_t const * p_result,
+                                  fruit_ui_detection_t          * p_detection)
+{
+    if (p_result->class_id >= APP_DETECTION_MAX_RESULTS)
+    {
+        return;
+    }
+
+    camera_top_box_filter_t * p_filter = &g_camera_top_box_filters[p_result->class_id];
+    uint32_t const sample = p_filter->next;
+    p_filter->x1[sample] = p_result->x1;
+    p_filter->y1[sample] = p_result->y1;
+    p_filter->x2[sample] = p_result->x2;
+    p_filter->y2[sample] = p_result->y2;
+    p_filter->next = (sample + 1U) % CAMERA_TOP_BOX_FILTER_SAMPLES;
+    if (p_filter->count < CAMERA_TOP_BOX_FILTER_SAMPLES)
+    {
+        p_filter->count++;
+    }
+
+    p_detection->x1 = camera_median_recent_3(p_filter->x1, p_filter->count);
+    p_detection->y1 = camera_median_recent_3(p_filter->y1, p_filter->count);
+    p_detection->x2 = camera_median_recent_3(p_filter->x2, p_filter->count);
+    p_detection->y2 = camera_median_recent_3(p_filter->y2, p_filter->count);
+
+    int32_t const center_x = (p_detection->x1 + p_detection->x2) / 2;
+    int32_t const center_y = (p_detection->y1 + p_detection->y2) / 2;
+    int32_t const padding_x = ((p_detection->x2 - p_detection->x1) +
+                               CAMERA_TOP_BOX_PADDING_DIVISOR - 1) /
+                              CAMERA_TOP_BOX_PADDING_DIVISOR;
+    int32_t const padding_y = ((p_detection->y2 - p_detection->y1) +
+                               CAMERA_TOP_BOX_PADDING_DIVISOR - 1) /
+                              CAMERA_TOP_BOX_PADDING_DIVISOR;
+    p_detection->x1 = (p_detection->x1 > padding_x) ? (p_detection->x1 - padding_x) : 0;
+    p_detection->y1 = (p_detection->y1 > padding_y) ? (p_detection->y1 - padding_y) : 0;
+    p_detection->x2 = ((p_detection->x2 + padding_x) < (int32_t) CAMERA_OV5640_WIDTH) ?
+                      (p_detection->x2 + padding_x) : (int32_t) CAMERA_OV5640_WIDTH;
+    p_detection->y2 = ((p_detection->y2 + padding_y) < (int32_t) CAMERA_OV5640_HEIGHT) ?
+                      (p_detection->y2 + padding_y) : (int32_t) CAMERA_OV5640_HEIGHT;
+    p_detection->x = center_x;
+    p_detection->y = center_y;
+}
+
+static void camera_reset_top_samples(void)
+{
+    memset(g_camera_top_samples, 0, sizeof(g_camera_top_samples));
+}
+
+static void camera_record_top_samples(app_detection_result_t const * p_results,
+                                      uint32_t                       result_count)
+{
+    bool sampled_this_frame[APP_DETECTION_MAX_RESULTS] = {false};
+
+    for (uint32_t i = 0U; i < result_count; i++)
+    {
+        uint32_t const class_id = p_results[i].class_id;
+
+        if ((class_id >= APP_DETECTION_MAX_RESULTS) || sampled_this_frame[class_id])
+        {
+            continue;
+        }
+
+        camera_top_samples_t * p_samples = &g_camera_top_samples[class_id];
+        uint32_t const sample = p_samples->next;
+        p_samples->x[sample] = p_results[i].x;
+        p_samples->y[sample] = p_results[i].y;
+        p_samples->next = (sample + 1U) % CAMERA_TOP_SAMPLES;
+        if (p_samples->count < CAMERA_TOP_SAMPLES)
+        {
+            p_samples->count++;
+        }
+        sampled_this_frame[class_id] = true;
+    }
+}
+
+static uint32_t camera_get_stable_top_results(app_detection_result_t * p_results)
+{
+    uint32_t result_count = 0U;
+
+    for (uint32_t class_id = 0U;
+         (class_id < APP_DETECTION_MAX_RESULTS) && (result_count < APP_DETECTION_MAX_RESULTS);
+         class_id++)
+    {
+        camera_top_samples_t const * p_samples = &g_camera_top_samples[class_id];
+        if (CAMERA_TOP_SAMPLES != p_samples->count)
+        {
+            continue;
+        }
+
+        p_results[result_count] = (app_detection_result_t) {0};
+        p_results[result_count].class_id = class_id;
+        p_results[result_count].x = camera_median_5(p_samples->x);
+        p_results[result_count].y = camera_median_5(p_samples->y);
+        result_count++;
+    }
+
+    return result_count;
+}
+
 static void camera_discard_settle_frames(void)
 {
     vTaskDelay(pdMS_TO_TICKS(CAMERA_SWITCH_SETTLE_MS));
@@ -533,6 +692,7 @@ static bool camera_switch_to(bool side_camera, bool illumination_enabled)
         }
 
         camera_discard_settle_frames();
+        camera_reset_top_box_filters();
         camera_uart_send_text("CAM_ACTIVE TOP\r\n");
         return true;
     }
@@ -586,6 +746,10 @@ static bool camera_publish_snapshot(uint8_t const                 * p_rgb565_fra
         detections[detection_count].mean_g = p_results[i].mean_g;
         detections[detection_count].mean_b = p_results[i].mean_b;
         detections[detection_count].green_ratio_0p1 = p_results[i].green_ratio_0p1;
+        if (!side_camera)
+        {
+            camera_filter_top_box(&p_results[i], &detections[detection_count]);
+        }
         detection_count++;
     }
 
@@ -1008,6 +1172,8 @@ void camera_stream_task(void)
             task_preview_started = false;
             task_preview_start_tick = 0U;
             last_task_preview_tick = 0U;
+            camera_reset_top_samples();
+            camera_reset_top_box_filters();
         }
 
         bool const debug_active = fruit_ui_is_debug_mode_active();
@@ -1148,6 +1314,8 @@ void camera_stream_task(void)
             continue;
         }
 
+        camera_record_top_samples(g_detection_results, result_count);
+
         TickType_t const task_preview_now = xTaskGetTickCount();
         if (!task_preview_started)
         {
@@ -1175,42 +1343,12 @@ void camera_stream_task(void)
             continue;
         }
 
-        if (0U == result_count)
-        {
-            camera_uart_send_text("FRAME_OK NO_DET\r\n");
-            vTaskDelay(pdMS_TO_TICKS(10U));
-            continue;
-        }
-
         app_detection_result_t top_results[APP_DETECTION_MAX_RESULTS];
-        uint32_t top_result_count = 0U;
-
-        for (uint32_t i = 0U; i < result_count; i++)
-        {
-            if (FRUIT_UI_TARGET_NONE == camera_stream_target_from_class(g_detection_results[i].class_id))
-            {
-                continue;
-            }
-
-            bool class_already_added = false;
-            for (uint32_t saved = 0U; saved < top_result_count; saved++)
-            {
-                if (top_results[saved].class_id == g_detection_results[i].class_id)
-                {
-                    class_already_added = true;
-                    break;
-                }
-            }
-
-            if (!class_already_added)
-            {
-                top_results[top_result_count] = g_detection_results[i];
-                top_result_count++;
-            }
-        }
+        uint32_t const top_result_count = camera_get_stable_top_results(top_results);
 
         if (0U == top_result_count)
         {
+            camera_uart_send_text("TOP_DET_WAIT stable_samples\r\n");
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }

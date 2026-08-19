@@ -30,6 +30,9 @@
 #define DET_PIGMENT_MIN_PIXELS      (6U)
 #define DET_CHROMA_MIN_PERMILLE     (12U)
 #define DET_DARK_MIN_PERMILLE       (30U)
+#define DET_REFINED_BOX_SCALE_NUM   (3U)
+#define DET_REFINED_BOX_SCALE_DEN   (2U)
+#define DET_MIN_BOX_SIDE_PX         (36)
 /* VBTBKR[0..5]w are reserved for the detection settings record. */
 #define DET_SETTINGS_MAGIC_0        (0x47U)
 #define DET_SETTINGS_MAGIC_1        (0x50U)
@@ -537,6 +540,47 @@ static int32_t det_clampi32(int32_t value, int32_t low, int32_t high)
     return (value < low) ? low : ((value > high) ? high : value);
 }
 
+static void det_enforce_min_interval(int32_t * p_low,
+                                     int32_t * p_high,
+                                     int32_t   bound_low,
+                                     int32_t   bound_high)
+{
+    if ((*p_high - *p_low) >= DET_MIN_BOX_SIDE_PX)
+    {
+        return;
+    }
+
+    int32_t const center = (*p_low + *p_high) / 2;
+    int32_t low = center - (DET_MIN_BOX_SIDE_PX / 2);
+    int32_t high = low + DET_MIN_BOX_SIDE_PX;
+
+    if (low < bound_low)
+    {
+        low = bound_low;
+        high = bound_low + DET_MIN_BOX_SIDE_PX;
+    }
+    if (high > bound_high)
+    {
+        high = bound_high;
+        low = bound_high - DET_MIN_BOX_SIDE_PX;
+    }
+
+    *p_low = low;
+    *p_high = high;
+}
+
+static void det_enforce_min_box_area(int32_t * p_x1,
+                                     int32_t * p_y1,
+                                     int32_t * p_x2,
+                                     int32_t * p_y2)
+{
+    int32_t const crop_x1 = ((int32_t) CAMERA_OV5640_WIDTH - (int32_t) CAMERA_OV5640_HEIGHT) / 2;
+    int32_t const crop_x2 = crop_x1 + (int32_t) CAMERA_OV5640_HEIGHT;
+
+    det_enforce_min_interval(p_x1, p_x2, crop_x1, crop_x2);
+    det_enforce_min_interval(p_y1, p_y2, 0, (int32_t) CAMERA_OV5640_HEIGHT);
+}
+
 static uint32_t det_isqrt_u64(uint64_t value)
 {
     uint64_t result = 0U;
@@ -778,6 +822,10 @@ static bool det_refine_by_pigment(uint8_t const * p_rgb565_frame,
 
     half_w = (half_w < 2U) ? 2U : half_w;
     half_h = (half_h < 2U) ? 2U : half_h;
+    half_w = ((half_w * DET_REFINED_BOX_SCALE_NUM) + DET_REFINED_BOX_SCALE_DEN - 1U) /
+             DET_REFINED_BOX_SCALE_DEN;
+    half_h = ((half_h * DET_REFINED_BOX_SCALE_NUM) + DET_REFINED_BOX_SCALE_DEN - 1U) /
+             DET_REFINED_BOX_SCALE_DEN;
     det_pigment_cell_bounds(*p_x1, *p_y1, box_w, box_h, best_cell,
                             &cell_x1, &cell_y1, &cell_x2, &cell_y2);
     *p_x1 = det_clampi32((int32_t) mean_x - (int32_t) half_w, cell_x1, cell_x2 - 1);
@@ -859,6 +907,7 @@ bool app_detection_run_frame(uint8_t const                 * p_rgb565_frame,
                                      &p_results[i].mean_g,
                                      &p_results[i].mean_b,
                                      &p_results[i].green_ratio_0p1);
+        det_enforce_min_box_area(&x1, &y1, &x2, &y2);
 
         p_results[i].class_id = class_id;
         p_results[i].x        = (x1 + x2) / 2;
