@@ -185,7 +185,8 @@ static lv_obj_t * g_claw_current_input;
 static lv_obj_t * g_claw_current_status_label;
 static lv_obj_t * g_claw_current_dialog;
 static lv_obj_t * g_claw_current_editor;
-static lv_obj_t * g_claw_current_keyboard;
+static lv_obj_t * g_claw_current_dialog_status;
+static bool g_claw_current_edit_replace;
 static uint32_t g_axis_angle_edit_index;
 static lv_obj_t * g_task_preview_image;
 static lv_obj_t * g_task_camera_title;
@@ -500,7 +501,7 @@ static void prepare_screen(void)
     g_claw_current_status_label = NULL;
     g_claw_current_dialog = NULL;
     g_claw_current_editor = NULL;
-    g_claw_current_keyboard = NULL;
+    g_claw_current_dialog_status = NULL;
     g_task_preview_image = NULL;
     g_task_camera_title = NULL;
     g_task_camera_status = NULL;
@@ -1010,32 +1011,81 @@ static void on_claw_current_input(lv_event_t * e)
     if ((LV_EVENT_CLICKED == lv_event_get_code(e)) &&
         (NULL != g_claw_current_input) &&
         (NULL != g_claw_current_dialog) &&
-        (NULL != g_claw_current_editor) &&
-        (NULL != g_claw_current_keyboard)) {
+        (NULL != g_claw_current_editor)) {
         lv_textarea_set_text(g_claw_current_editor,
                              lv_textarea_get_text(g_claw_current_input));
-        lv_keyboard_set_textarea(g_claw_current_keyboard,
-                                 g_claw_current_editor);
+        g_claw_current_edit_replace = true;
+        if (NULL != g_claw_current_dialog_status) {
+            lv_label_set_text(g_claw_current_dialog_status,
+                              "Tap digits, then SAVE");
+            lv_obj_set_style_text_color(g_claw_current_dialog_status,
+                                        lv_color_hex(0x77818C), 0);
+        }
         lv_obj_remove_flag(g_claw_current_dialog, LV_OBJ_FLAG_HIDDEN);
         lv_obj_move_foreground(g_claw_current_dialog);
     }
 }
 
-static void on_claw_current_keyboard(lv_event_t * e)
+static void on_claw_current_dialog_back(lv_event_t * e)
 {
-    lv_event_code_t const code = lv_event_get_code(e);
-
-    if (((LV_EVENT_READY == code) || (LV_EVENT_CANCEL == code)) &&
-        (NULL != g_claw_current_dialog) &&
-        (NULL != g_claw_current_editor) &&
-        (NULL != g_claw_current_keyboard)) {
-        if ((LV_EVENT_READY == code) && (NULL != g_claw_current_input)) {
-            lv_textarea_set_text(g_claw_current_input,
-                                 lv_textarea_get_text(g_claw_current_editor));
-        }
-        lv_keyboard_set_textarea(g_claw_current_keyboard, NULL);
+    if ((LV_EVENT_CLICKED == lv_event_get_code(e)) &&
+        (NULL != g_claw_current_dialog)) {
         lv_obj_add_flag(g_claw_current_dialog, LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+static void on_claw_current_digit(lv_event_t * e)
+{
+    if ((LV_EVENT_CLICKED == lv_event_get_code(e)) &&
+        (NULL != g_claw_current_editor)) {
+        uint32_t const digit =
+            (uint32_t) (uintptr_t) lv_event_get_user_data(e);
+        char text[5];
+
+        if (digit > 9U) {
+            return;
+        }
+
+        if (g_claw_current_edit_replace) {
+            text[0] = (char) ('0' + digit);
+            text[1] = '\0';
+            lv_textarea_set_text(g_claw_current_editor, text);
+            g_claw_current_edit_replace = false;
+        } else {
+            char const * current = lv_textarea_get_text(g_claw_current_editor);
+            size_t const length = strlen(current);
+
+            if (length < 4U) {
+                memcpy(text, current, length);
+                text[length] = (char) ('0' + digit);
+                text[length + 1U] = '\0';
+                lv_textarea_set_text(g_claw_current_editor, text);
+            }
+        }
+    }
+}
+
+static void on_claw_current_delete(lv_event_t * e)
+{
+    if ((LV_EVENT_CLICKED == lv_event_get_code(e)) &&
+        (NULL != g_claw_current_editor)) {
+        g_claw_current_edit_replace = false;
+        lv_textarea_delete_char(g_claw_current_editor);
+    }
+}
+
+static bool apply_claw_current(uint16_t new_current)
+{
+    if (!claw_current_settings_save(new_current)) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    g_claw_close_current_ma = new_current;
+    g_claw_current_request_pending = true;
+    taskEXIT_CRITICAL();
+    update_claw_current_widget();
+    return true;
 }
 
 static void on_claw_current_save(lv_event_t * e)
@@ -1057,18 +1107,12 @@ static void on_claw_current_save(lv_event_t * e)
             return;
         }
 
-        if (!claw_current_settings_save(new_current)) {
+        if (!apply_claw_current(new_current)) {
             lv_label_set_text(g_claw_current_status_label, "Flash save failed");
             lv_obj_set_style_text_color(g_claw_current_status_label,
                                         lv_color_hex(0xD83B35), 0);
             return;
         }
-
-        taskENTER_CRITICAL();
-        g_claw_close_current_ma = new_current;
-        g_claw_current_request_pending = true;
-        taskEXIT_CRITICAL();
-        update_claw_current_widget();
 
         if (g_claw_current_status_label != NULL) {
             lv_label_set_text(g_claw_current_status_label,
@@ -1076,6 +1120,39 @@ static void on_claw_current_save(lv_event_t * e)
             lv_obj_set_style_text_color(g_claw_current_status_label,
                                         lv_color_hex(0x1F7A5A), 0);
         }
+    }
+}
+
+static void on_claw_current_dialog_save(lv_event_t * e)
+{
+    if ((LV_EVENT_CLICKED == lv_event_get_code(e)) &&
+        (NULL != g_claw_current_editor)) {
+        uint16_t new_current;
+
+        if (!parse_claw_current(lv_textarea_get_text(g_claw_current_editor),
+                                &new_current)) {
+            lv_label_set_text(g_claw_current_dialog_status,
+                              "Enter a value from 0 to 5000 mA");
+            lv_obj_set_style_text_color(g_claw_current_dialog_status,
+                                        lv_color_hex(0xD83B35), 0);
+            return;
+        }
+
+        if (!apply_claw_current(new_current)) {
+            lv_label_set_text(g_claw_current_dialog_status,
+                              "Flash save failed");
+            lv_obj_set_style_text_color(g_claw_current_dialog_status,
+                                        lv_color_hex(0xD83B35), 0);
+            return;
+        }
+
+        if (NULL != g_claw_current_status_label) {
+            lv_label_set_text(g_claw_current_status_label,
+                              "Saved to flash; applying...");
+            lv_obj_set_style_text_color(g_claw_current_status_label,
+                                        lv_color_hex(0x1F7A5A), 0);
+        }
+        lv_obj_add_flag(g_claw_current_dialog, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -2314,7 +2391,7 @@ static void show_arm_debug(void)
     update_claw_current_widget();
 
     g_claw_current_status_label = add_label(page_screen(),
-                                             "Changes are saved after each step",
+                                             "Enter a value and tap SAVE",
                                              lv_color_hex(0x77818C),
                                              &lv_font_montserrat_10,
                                              LV_ALIGN_BOTTOM_MID, 0, -10);
@@ -2326,12 +2403,14 @@ static void show_arm_debug(void)
     lv_obj_set_style_bg_color(g_claw_current_dialog, lv_color_hex(0xF4F7F5), 0);
     lv_obj_set_style_bg_opa(g_claw_current_dialog, LV_OPA_COVER, 0);
     lv_obj_remove_flag(g_claw_current_dialog, LV_OBJ_FLAG_SCROLLABLE);
-    add_label(g_claw_current_dialog, "ENTER GRIP CURRENT  |  0 TO 5000 mA",
+    add_small_button(g_claw_current_dialog, "BACK", 10, 8, 68, 30,
+                     on_claw_current_dialog_back, NULL);
+    add_label(g_claw_current_dialog, "GRIP CURRENT  |  0 TO 5000 mA",
               lv_color_hex(0x20303F), &lv_font_montserrat_16,
-              LV_ALIGN_TOP_MID, 0, 10);
+              LV_ALIGN_TOP_MID, 18, 14);
 
     g_claw_current_editor = lv_textarea_create(g_claw_current_dialog);
-    lv_obj_set_pos(g_claw_current_editor, 120, 38);
+    lv_obj_set_pos(g_claw_current_editor, 120, 48);
     lv_obj_set_size(g_claw_current_editor, 240, 48);
     lv_textarea_set_one_line(g_claw_current_editor, true);
     lv_textarea_set_accepted_chars(g_claw_current_editor, "0123456789");
@@ -2340,15 +2419,34 @@ static void show_arm_debug(void)
     lv_obj_set_style_text_font(g_claw_current_editor, &lv_font_montserrat_16, 0);
     lv_obj_set_style_pad_all(g_claw_current_editor, 10, 0);
 
-    g_claw_current_keyboard = lv_keyboard_create(g_claw_current_dialog);
-    lv_keyboard_set_map(g_claw_current_keyboard, LV_KEYBOARD_MODE_NUMBER,
-                        g_axis_angle_keyboard_map,
-                        g_axis_angle_keyboard_ctrl);
-    lv_keyboard_set_mode(g_claw_current_keyboard, LV_KEYBOARD_MODE_NUMBER);
-    lv_obj_set_pos(g_claw_current_keyboard, 70, 96);
-    lv_obj_set_size(g_claw_current_keyboard, 340, 210);
-    lv_obj_add_event_cb(g_claw_current_keyboard, on_claw_current_keyboard,
-                        LV_EVENT_ALL, NULL);
+    add_button(g_claw_current_dialog, "1", 78, 102, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 1U);
+    add_button(g_claw_current_dialog, "2", 195, 102, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 2U);
+    add_button(g_claw_current_dialog, "3", 312, 102, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 3U);
+    add_button(g_claw_current_dialog, "4", 78, 150, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 4U);
+    add_button(g_claw_current_dialog, "5", 195, 150, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 5U);
+    add_button(g_claw_current_dialog, "6", 312, 150, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 6U);
+    add_button(g_claw_current_dialog, "7", 78, 198, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 7U);
+    add_button(g_claw_current_dialog, "8", 195, 198, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 8U);
+    add_button(g_claw_current_dialog, "9", 312, 198, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 9U);
+    add_button(g_claw_current_dialog, "DEL", 78, 246, 90, 40,
+               on_claw_current_delete, NULL);
+    add_button(g_claw_current_dialog, "0", 195, 246, 90, 40,
+               on_claw_current_digit, (void *) (uintptr_t) 0U);
+    add_button(g_claw_current_dialog, "SAVE", 312, 246, 90, 40,
+               on_claw_current_dialog_save, NULL);
+    g_claw_current_dialog_status =
+        add_label(g_claw_current_dialog, "Tap digits, then SAVE",
+                  lv_color_hex(0x77818C), &lv_font_montserrat_10,
+                  LV_ALIGN_BOTTOM_MID, 0, -5);
     lv_obj_add_flag(g_claw_current_dialog, LV_OBJ_FLAG_HIDDEN);
     finish_screen_switch();
 }
