@@ -26,6 +26,10 @@ typedef enum e_ipc_coordinate_rx_state
     IPC_RX_WAIT_CAL_MOVE_END,
     IPC_RX_READ_CAL_CONFIG,
     IPC_RX_WAIT_CAL_CONFIG_END,
+    IPC_RX_READ_MANUAL_X,
+    IPC_RX_READ_MANUAL_Y,
+    IPC_RX_READ_MANUAL_Z,
+    IPC_RX_WAIT_MANUAL_END,
 } ipc_coordinate_rx_state_t;
 
 #define IPC_RESULT_QUEUE_LENGTH (4U)
@@ -74,6 +78,8 @@ static volatile uint32_t g_axis_angle_queue[ARM_AXIS_ANGLE_QUEUE_LENGTH];
 static volatile uint32_t g_axis_angle_queue_write;
 static volatile uint32_t g_axis_angle_queue_read;
 static volatile bool g_arm_telemetry_request_pending;
+static volatile ipc_manual_coordinate_t g_manual_coordinate_request;
+static volatile bool g_manual_coordinate_request_pending;
 static double g_arm_solved_angles_deg[IPC_ARM_TELEMETRY_AXIS_COUNT];
 static uint32_t g_arm_solved_angle_valid_mask = 0x1FU;
 static volatile bool g_calibration_move_request_pending;
@@ -559,6 +565,7 @@ void ipc0_callback(ipc_callback_args_t *p_args)
     static ipc_coordinate_rx_state_t receive_state = IPC_RX_WAIT_BEGIN;
     static uint32_t receive_item_index;
     static uint32_t receive_calibration_word_index;
+    static ipc_manual_coordinate_t manual_coordinate;
 
 	if ((NULL == p_args) || (IPC_EVENT_MESSAGE_RECEIVED != p_args->event))
 	{
@@ -600,6 +607,12 @@ void ipc0_callback(ipc_callback_args_t *p_args)
     {
         receive_calibration_word_index = 0U;
         receive_state = IPC_RX_READ_CAL_CONFIG;
+        return;
+    }
+
+    if (IPC_MANUAL_COORDINATE_BEGIN == p_args->message)
+    {
+        receive_state = IPC_RX_READ_MANUAL_X;
         return;
     }
 
@@ -758,7 +771,7 @@ void ipc0_callback(ipc_callback_args_t *p_args)
             break;
         }
 
-		case IPC_RX_WAIT_END:
+        case IPC_RX_WAIT_END:
 		{
 			if (IPC_COORDINATE_BATCH_END == p_args->message)
             {
@@ -830,6 +843,56 @@ void ipc0_callback(ipc_callback_args_t *p_args)
             ipc_coordinate_rx_reset(&receive_state);
             break;
         }
+
+        case IPC_RX_READ_MANUAL_X:
+        {
+            manual_coordinate.x_0p1mm = (int32_t) p_args->message;
+            receive_state = IPC_RX_READ_MANUAL_Y;
+            break;
+        }
+
+        case IPC_RX_READ_MANUAL_Y:
+        {
+            manual_coordinate.y_0p1mm = (int32_t) p_args->message;
+            receive_state = IPC_RX_READ_MANUAL_Z;
+            break;
+        }
+
+        case IPC_RX_READ_MANUAL_Z:
+        {
+            manual_coordinate.z_0p1mm = (int32_t) p_args->message;
+            receive_state = IPC_RX_WAIT_MANUAL_END;
+            break;
+        }
+
+        case IPC_RX_WAIT_MANUAL_END:
+        {
+            if ((IPC_MANUAL_COORDINATE_END == p_args->message) &&
+                (manual_coordinate.x_0p1mm >=
+                     IPC_MANUAL_COORDINATE_MIN_0P1MM) &&
+                (manual_coordinate.x_0p1mm <=
+                     IPC_MANUAL_COORDINATE_MAX_0P1MM) &&
+                (manual_coordinate.y_0p1mm >=
+                     IPC_MANUAL_COORDINATE_MIN_0P1MM) &&
+                (manual_coordinate.y_0p1mm <=
+                     IPC_MANUAL_COORDINATE_MAX_0P1MM) &&
+                (manual_coordinate.z_0p1mm >=
+                     IPC_MANUAL_COORDINATE_MIN_0P1MM) &&
+                (manual_coordinate.z_0p1mm <=
+                     IPC_MANUAL_COORDINATE_MAX_0P1MM))
+            {
+                g_manual_coordinate_request.x_0p1mm =
+                    manual_coordinate.x_0p1mm;
+                g_manual_coordinate_request.y_0p1mm =
+                    manual_coordinate.y_0p1mm;
+                g_manual_coordinate_request.z_0p1mm =
+                    manual_coordinate.z_0p1mm;
+                g_manual_coordinate_request_pending = true;
+            }
+
+            ipc_coordinate_rx_reset(&receive_state);
+            break;
+		}
 
 		default:
 		{
@@ -1065,6 +1128,42 @@ void Can_Thread_entry(void *pvParameters) {
             continue;
         }
 #endif
+
+        bool manual_coordinate_requested;
+        ipc_manual_coordinate_t manual_coordinate;
+
+        taskENTER_CRITICAL();
+        manual_coordinate_requested = g_manual_coordinate_request_pending;
+        if (manual_coordinate_requested)
+        {
+            manual_coordinate.x_0p1mm =
+                g_manual_coordinate_request.x_0p1mm;
+            manual_coordinate.y_0p1mm =
+                g_manual_coordinate_request.y_0p1mm;
+            manual_coordinate.z_0p1mm =
+                g_manual_coordinate_request.z_0p1mm;
+            g_manual_coordinate_request_pending = false;
+        }
+        taskEXIT_CRITICAL();
+
+        if (manual_coordinate_requested)
+        {
+            handeye_arm_point_t arm_point;
+
+            arm_point.x_mm = (double) manual_coordinate.x_0p1mm / 10.0;
+            arm_point.y_mm = (double) manual_coordinate.y_0p1mm / 10.0;
+            arm_point.z_mm = (double) manual_coordinate.z_0p1mm / 10.0;
+#if DM_COORDINATE_UART_ENABLE
+            if (ipc_arm_point_publish(&arm_point, 0U, 0U))
+            {
+                xTaskNotifyGive(Uart_dm_thread);
+            }
+#else
+            (void) arm_move_to_point(&arm_point);
+#endif
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
 
         ipc_camera_coordinate_pair_t pair;
 

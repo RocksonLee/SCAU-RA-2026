@@ -178,6 +178,9 @@ static void screen_process_arm_control_request(void)
 	static TickType_t claw_current_retry_tick;
 	uint8_t axis;
 	int32_t angle_deg;
+	int32_t x_0p1mm;
+	int32_t y_0p1mm;
+	int32_t z_0p1mm;
 	bool claw_open;
 	bool debug_stop_enabled;
 	uint16_t claw_current_ma;
@@ -211,6 +214,20 @@ static void screen_process_arm_control_request(void)
 	{
 		bool const sent = ipc_detection_send_claw(claw_open);
 		fruit_ui_notify_claw_result(claw_open, sent);
+		return;
+	}
+
+	if (fruit_ui_take_manual_coordinate_request(&x_0p1mm,
+	                                            &y_0p1mm,
+	                                            &z_0p1mm))
+	{
+		bool const sent = ipc_detection_send_manual_coordinate(x_0p1mm,
+		                                                         y_0p1mm,
+		                                                         z_0p1mm);
+		fruit_ui_notify_manual_coordinate_result(x_0p1mm,
+		                                         y_0p1mm,
+		                                         z_0p1mm,
+		                                         sent);
 		return;
 	}
 

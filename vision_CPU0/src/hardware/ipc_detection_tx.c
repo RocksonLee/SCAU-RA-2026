@@ -139,6 +139,27 @@ bool ipc_detection_send_axis_angle(uint8_t axis, int32_t angle_deg)
     return ipc_detection_send_word(command);
 }
 
+bool ipc_detection_send_manual_coordinate(int32_t x_0p1mm,
+                                          int32_t y_0p1mm,
+                                          int32_t z_0p1mm)
+{
+    if ((x_0p1mm < IPC_MANUAL_COORDINATE_MIN_0P1MM) ||
+        (x_0p1mm > IPC_MANUAL_COORDINATE_MAX_0P1MM) ||
+        (y_0p1mm < IPC_MANUAL_COORDINATE_MIN_0P1MM) ||
+        (y_0p1mm > IPC_MANUAL_COORDINATE_MAX_0P1MM) ||
+        (z_0p1mm < IPC_MANUAL_COORDINATE_MIN_0P1MM) ||
+        (z_0p1mm > IPC_MANUAL_COORDINATE_MAX_0P1MM))
+    {
+        return false;
+    }
+
+    return ipc_detection_send_word(IPC_MANUAL_COORDINATE_BEGIN) &&
+           ipc_detection_send_word((uint32_t) x_0p1mm) &&
+           ipc_detection_send_word((uint32_t) y_0p1mm) &&
+           ipc_detection_send_word((uint32_t) z_0p1mm) &&
+           ipc_detection_send_word(IPC_MANUAL_COORDINATE_END);
+}
+
 bool ipc_detection_send_arm_telemetry_request(void)
 {
     return ipc_detection_send_word(IPC_ARM_TELEMETRY_REQUEST);
