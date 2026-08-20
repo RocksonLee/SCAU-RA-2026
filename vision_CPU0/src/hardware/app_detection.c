@@ -16,7 +16,8 @@
 #define DET_REG_BINS                (8U)
 #define DET_NUM_LEVELS              (3U)
 #define DET_CONF_THRESHOLD          (0.35f)
-#define DET_NMS_IOU_THRESHOLD       (0.60f)
+#define DET_PURPLE_CONF_THRESHOLD   (0.30f)
+#define DET_NMS_IOU_THRESHOLD       (0.30f)
 #define DET_MAX_CANDIDATES          (64U)
 #define DET_MAX_OUTPUTS             APP_DETECTION_MAX_RESULTS
 #define     DET_UART_LINE_BYTES         (96U)
@@ -31,6 +32,7 @@
 #define DET_REFINED_BOX_SCALE_NUM   (3U)
 #define DET_REFINED_BOX_SCALE_DEN   (2U)
 #define DET_MIN_BOX_SIDE_PX         (36)
+#define DET_PIGMENT_CENTER_LIMIT_DIVISOR (8)
 /* VBTBKR[0..5]w are reserved for the detection settings record. */
 #define DET_SETTINGS_MAGIC_0        (0x47U)
 #define DET_SETTINGS_MAGIC_1        (0x50U)
@@ -354,9 +356,15 @@ static void det_preprocess_rgb565(uint8_t const * p_frame)
     }
 }
 
+static float det_class_conf_threshold(uint32_t class_id)
+{
+    return (APP_DETECTION_CLASS_PURPLE_GRAPE == class_id) ?
+           DET_PURPLE_CONF_THRESHOLD : DET_CONF_THRESHOLD;
+}
+
 static void det_insert_candidate(detection_box_t const * p_box, uint32_t * p_count)
 {
-    if (p_box->score < DET_CONF_THRESHOLD)
+    if (p_box->score < det_class_conf_threshold(p_box->class_id))
     {
         return;
     }
@@ -431,7 +439,7 @@ static void det_decode_nanodet(float const * p_output, uint32_t * p_candidate_co
                     }
                 }
 
-                if (score < DET_CONF_THRESHOLD)
+                if (score < det_class_conf_threshold(class_id))
                 {
                     continue;
                 }
@@ -556,10 +564,10 @@ static void det_enforce_min_interval(int32_t * p_low,
     *p_high = high;
 }
 
-static void det_enforce_min_box_area(int32_t * p_x1,
-                                     int32_t * p_y1,
-                                     int32_t * p_x2,
-                                     int32_t * p_y2)
+static void __attribute__((unused)) det_enforce_min_box_area(int32_t * p_x1,
+                                                             int32_t * p_y1,
+                                                             int32_t * p_x2,
+                                                             int32_t * p_y2)
 {
     int32_t const crop_x1 = ((int32_t) CAMERA_OV5640_WIDTH - (int32_t) CAMERA_OV5640_HEIGHT) / 2;
     int32_t const crop_x2 = crop_x1 + (int32_t) CAMERA_OV5640_HEIGHT;
@@ -833,6 +841,64 @@ static bool det_refine_by_pigment(uint8_t const * p_rgb565_frame,
     return true;
 }
 
+static void det_correct_center_by_pigment(uint8_t const          * p_rgb565_frame,
+                                          detection_box_t const  * p_model_box,
+                                          int32_t                * p_x1,
+                                          int32_t                * p_y1,
+                                          int32_t                * p_x2,
+                                          int32_t                * p_y2,
+                                          app_detection_result_t * p_result)
+{
+    int32_t refined_x1 = *p_x1;
+    int32_t refined_y1 = *p_y1;
+    int32_t refined_x2 = *p_x2;
+    int32_t refined_y2 = *p_y2;
+    uint32_t refined_class = p_model_box->class_id;
+
+    bool const refined = det_refine_by_pigment(p_rgb565_frame,
+                                                p_model_box->class_id,
+                                                &refined_x1,
+                                                &refined_y1,
+                                                &refined_x2,
+                                                &refined_y2,
+                                                &refined_class,
+                                                &p_result->mean_r,
+                                                &p_result->mean_g,
+                                                &p_result->mean_b,
+                                                &p_result->green_ratio_0p1);
+
+    /* Pigment is only a bounded center hint.  It never replaces the model
+     * class or size, which keeps isolated colour noise from moving the box. */
+    if (!refined || (refined_class != p_model_box->class_id))
+    {
+        p_result->mean_r = -1;
+        p_result->mean_g = -1;
+        p_result->mean_b = -1;
+        p_result->green_ratio_0p1 = -1;
+        return;
+    }
+
+    int32_t const width = *p_x2 - *p_x1;
+    int32_t const height = *p_y2 - *p_y1;
+    int32_t const model_center_x = (*p_x1 + *p_x2) / 2;
+    int32_t const model_center_y = (*p_y1 + *p_y2) / 2;
+    int32_t const refined_center_x = (refined_x1 + refined_x2) / 2;
+    int32_t const refined_center_y = (refined_y1 + refined_y2) / 2;
+    int32_t const max_dx = ((width / DET_PIGMENT_CENTER_LIMIT_DIVISOR) > 2) ?
+                           (width / DET_PIGMENT_CENTER_LIMIT_DIVISOR) : 2;
+    int32_t const max_dy = ((height / DET_PIGMENT_CENTER_LIMIT_DIVISOR) > 2) ?
+                           (height / DET_PIGMENT_CENTER_LIMIT_DIVISOR) : 2;
+    int32_t const dx = det_clampi32(refined_center_x - model_center_x, -max_dx, max_dx);
+    int32_t const dy = det_clampi32(refined_center_y - model_center_y, -max_dy, max_dy);
+    int32_t const crop_x1 = ((int32_t) CAMERA_OV5640_WIDTH - (int32_t) CAMERA_OV5640_HEIGHT) / 2;
+    int32_t const crop_x2 = crop_x1 + (int32_t) CAMERA_OV5640_HEIGHT;
+
+    *p_x1 = det_clampi32(*p_x1 + dx, crop_x1, crop_x2 - width);
+    *p_y1 = det_clampi32(*p_y1 + dy, 0, (int32_t) CAMERA_OV5640_HEIGHT - height);
+    *p_x2 = *p_x1 + width;
+    *p_y2 = *p_y1 + height;
+}
+
 bool app_detection_init(void)
 {
     app_detection_settings_init();
@@ -888,22 +954,22 @@ bool app_detection_run_frame(uint8_t const                 * p_rgb565_frame,
         int32_t y1;
         int32_t x2;
         int32_t y2;
-        uint32_t class_id;
         det_to_camera_coords(&g_outputs[i], &x1, &y1, &x2, &y2);
-        (void) det_refine_by_pigment(p_rgb565_frame,
-                                     g_outputs[i].class_id,
-                                     &x1,
-                                     &y1,
-                                     &x2,
-                                     &y2,
-                                     &class_id,
-                                     &p_results[i].mean_r,
-                                     &p_results[i].mean_g,
-                                     &p_results[i].mean_b,
-                                     &p_results[i].green_ratio_0p1);
-        det_enforce_min_box_area(&x1, &y1, &x2, &y2);
 
-        p_results[i].class_id = class_id;
+        p_results[i].mean_r = -1;
+        p_results[i].mean_g = -1;
+        p_results[i].mean_b = -1;
+        p_results[i].green_ratio_0p1 = -1;
+        det_correct_center_by_pigment(p_rgb565_frame,
+                                      &g_outputs[i],
+                                      &x1,
+                                      &y1,
+                                      &x2,
+                                      &y2,
+                                      &p_results[i]);
+
+        /* NanoDet remains authoritative for class and box size. */
+        p_results[i].class_id = g_outputs[i].class_id;
         p_results[i].x        = (x1 + x2) / 2;
         p_results[i].y        = (y1 + y2) / 2;
         p_results[i].x1       = x1;
