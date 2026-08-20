@@ -8,8 +8,8 @@
 #define HANDEYE_TOP_CAL_Z_LOW_MM      (325.0)
 #define HANDEYE_TOP_CAL_Z_HIGH_MM     (385.0)
 #define HANDEYE_DENOMINATOR_EPSILON   (1.0e-9)
-#define HANDEYE_SIDE_Z_SLOPE_MM_PX    (0.39634450194777904)
-#define HANDEYE_SIDE_Z_OFFSET_MM      (270.4756856225454)
+#define HANDEYE_SIDE_Z_SLOPE_MM_PX    (0.39999866495781267)
+#define HANDEYE_SIDE_Z_OFFSET_MM      (273.64030625867775)
 
 /* Z=0 top-camera homography used by the top-only task. */
 static double const g_camera_to_arm_homography_z0[3][3] =
