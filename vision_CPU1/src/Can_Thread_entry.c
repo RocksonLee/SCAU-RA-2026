@@ -28,6 +28,7 @@ typedef enum e_ipc_coordinate_rx_state
 #define ARM_CLAW_SETTLE_DELAY_MS (3000U)
 #define ARM_CLAW_OPEN_DELAY_MS   (3000U)
 #define ARM_RESET_ZERO_DELAY_MS  (500U)
+#define ARM_DROP_AXIS_5_DELAY_MS (1000U)
 #define ARM_DROP_AXIS_1_DEG      (0)
 #define ARM_DROP_AXIS_2_DEG      (-50)
 #define ARM_DROP_AXIS_3_DEG      (15)
@@ -153,8 +154,16 @@ static bool arm_move_to_drop_pose(void)
     if (!CANFD0_Operation_1(ARM_DROP_AXIS_1_DEG) ||
         !CANFD0_Operation_2(ARM_DROP_AXIS_2_DEG) ||
         !CANFD0_Operation_3(ARM_DROP_AXIS_3_DEG) ||
-        !CANFD0_Operation_5(ARM_DROP_AXIS_5_DEG) ||
         !run())
+    {
+        return false;
+    }
+
+    /* Start the turntable after the arm links have already been moving for
+     * about one second, rather than triggering all four axes together. */
+    vTaskDelay(pdMS_TO_TICKS(ARM_DROP_AXIS_5_DELAY_MS));
+
+    if (!CANFD0_Operation_5(ARM_DROP_AXIS_5_DEG) || !run())
     {
         return false;
     }
