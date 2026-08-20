@@ -1,8 +1,10 @@
 #include "camera_stream.h"
 
 #include <stdbool.h>
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "FreeRTOS.h"
@@ -12,6 +14,7 @@
 #include "fruit_ui.h"
 #include "hal_data.h"
 #include "ipc_detection_tx.h"
+#include "ospi_flash.h"
 
 #define CAMERA_UART_CHUNK_BYTES (1024U)
 #define CAMERA_FRAME_HEADER_BYTES (24U)
@@ -51,12 +54,25 @@
 #define CAMERA_SIDE_SAMPLE_MAX_DEVIATION_PX (60)
 #define CAMERA_SIDE_MAX_FRAMES   (90U)
 #define CAMERA_SIDE_Y_MIN_PX     (50)
-#define CAMERA_SIDE_Z_SLOPE      (0.39999866495781267)
-#define CAMERA_SIDE_Z_OFFSET     (278.64030625867775)
+#define CAMERA_SIDE_Z_SLOPE_DEFAULT  (0.39999866495781267)
+#define CAMERA_SIDE_Z_OFFSET_DEFAULT (278.64030625867775)
 #define CAMERA_TOP_ONLY_Z_MM     (100.0)
 #define CAMERA_TOP_CAL_Z_LOW_MM  (325.0)
 #define CAMERA_TOP_CAL_Z_HIGH_MM (385.0)
 #define CAMERA_HOMOGRAPHY_EPSILON (1.0e-9)
+#define CAMERA_CALIBRATION_MAGIC (0x4843414CU) /* "HCAL" */
+#define CAMERA_CALIBRATION_VERSION (2U)
+#define CAMERA_CALIBRATION_SLOT_A (0x00013000UL)
+#define CAMERA_CALIBRATION_SLOT_B (0x00014000UL)
+#define CAMERA_CALIBRATION_TOP_POINTS_PER_LAYER (9U)
+#define CAMERA_CALIBRATION_TOP_POINTS (18U)
+#define CAMERA_CALIBRATION_POINT_COUNT (18U)
+#define CAMERA_CALIBRATION_OBSERVATIONS (9U)
+#define CAMERA_CALIBRATION_MIN_INLIERS (5U)
+#define CAMERA_CALIBRATION_MAX_DEVIATION_PX (15)
+#define CAMERA_CALIBRATION_MAX_FRAMES (90U)
+#define CAMERA_CALIBRATION_ARM_TIMEOUT_MS (10000U)
+#define CAMERA_CALIBRATION_TOP_MAX_RMSE_MM (12.0)
 
 /* Keep these coefficients synchronized with CPU1 handeye_transform.c. */
 static double const g_camera_to_arm_homography_z0[3][3] =
@@ -66,19 +82,120 @@ static double const g_camera_to_arm_homography_z0[3][3] =
     {0.000247, -0.000043,    1.000000},
 };
 
-static double const g_camera_to_arm_homography_z325[3][3] =
+static double g_camera_to_arm_homography_z_low[3][3] =
 {
     {-0.0050620485,  0.2640889468, 38.1704684559},
     { 0.3836043009, -0.0242952309, 75.9593991709},
     { 0.0002450191, -0.0002921146,  1.0000000000},
 };
 
-static double const g_camera_to_arm_homography_z385[3][3] =
+static double g_camera_to_arm_homography_z_high[3][3] =
 {
     {0.1914500083, 0.4343906439, 62.3737818695},
     {0.9075307303, 0.2533455801, 42.1344710727},
     {0.0025644552, 0.0008938283,  1.0000000000},
 };
+
+static double g_camera_top_cal_z_low_mm = CAMERA_TOP_CAL_Z_LOW_MM;
+static double g_camera_top_cal_z_high_mm = CAMERA_TOP_CAL_Z_HIGH_MM;
+static double g_camera_side_z_slope_mm_px = CAMERA_SIDE_Z_SLOPE_DEFAULT;
+static double g_camera_side_z_offset_mm = CAMERA_SIDE_Z_OFFSET_DEFAULT;
+
+typedef struct st_camera_calibration_target
+{
+    int32_t x_0p1mm;
+    int32_t y_0p1mm;
+    int32_t z_0p1mm;
+    uint8_t camera;
+    uint8_t layer;
+    uint16_t reserved;
+} camera_calibration_target_t;
+
+typedef struct st_camera_calibration_sample
+{
+    int32_t pixel_x;
+    int32_t pixel_y;
+    int32_t arm_x_0p1mm;
+    int32_t arm_y_0p1mm;
+    int32_t arm_z_0p1mm;
+    uint8_t camera;
+    uint8_t layer;
+    uint16_t reserved;
+} camera_calibration_sample_t;
+
+typedef struct st_camera_calibration_record
+{
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    uint32_t sequence;
+    uint32_t sample_count;
+    ipc_handeye_calibration_t config;
+    camera_calibration_sample_t samples[CAMERA_CALIBRATION_POINT_COUNT];
+    float top_low_rmse_mm;
+    float top_high_rmse_mm;
+    float side_rmse_mm;
+    uint32_t crc32;
+} camera_calibration_record_t;
+
+_Static_assert(sizeof(camera_calibration_record_t) <= OSPI_FLASH_SECTOR_SIZE,
+               "Calibration record must fit in one OSPI sector.");
+
+typedef enum e_camera_calibration_state
+{
+    CAMERA_CALIBRATION_IDLE = 0,
+    CAMERA_CALIBRATION_SEND_MOVE,
+    CAMERA_CALIBRATION_WAIT_ARM,
+    CAMERA_CALIBRATION_WAIT_CONFIRM,
+    CAMERA_CALIBRATION_COLLECT,
+} camera_calibration_state_t;
+
+static camera_calibration_target_t const g_camera_calibration_targets[CAMERA_CALIBRATION_POINT_COUNT] =
+{
+    /* Z=325 mm: selected from and inside the previous calibrated workspace. */
+    {IPC_CALIBRATION_FIRST_X_0P1MM,
+     IPC_CALIBRATION_FIRST_Y_0P1MM,
+     IPC_CALIBRATION_FIRST_Z_0P1MM, 0U, 0U, 0U},
+    { 950, 2450, 3250, 0U, 0U, 0U},
+    { 550, 2350, 3250, 0U, 0U, 0U},
+    {1550, 2030, 3250, 0U, 0U, 0U},
+    {1400, 1900, 3250, 0U, 0U, 0U},
+    { 600, 2300, 3250, 0U, 0U, 0U},
+    {1200, 2300, 3250, 0U, 0U, 0U},
+    {1000, 2200, 3250, 0U, 0U, 0U},
+    { 750, 2250, 3250, 0U, 0U, 0U},
+    /* Z=385 mm. */
+    {1150, 2230, 3850, 0U, 1U, 0U},
+    { 830, 2230, 3850, 0U, 1U, 0U},
+    {1190, 2020, 3850, 0U, 1U, 0U},
+    {1510, 1700, 3850, 0U, 1U, 0U},
+    {1100, 2000, 3850, 0U, 1U, 0U},
+    {1400, 1900, 3850, 0U, 1U, 0U},
+    { 900, 2200, 3850, 0U, 1U, 0U},
+    {1300, 2100, 3850, 0U, 1U, 0U},
+    {1000, 2100, 3850, 0U, 1U, 0U},
+};
+
+static camera_calibration_sample_t g_camera_calibration_samples[CAMERA_CALIBRATION_POINT_COUNT];
+static camera_calibration_state_t g_camera_calibration_state;
+static bool g_camera_calibration_active;
+static uint32_t g_camera_calibration_index;
+static uint32_t g_camera_calibration_sequence;
+static TickType_t g_camera_calibration_deadline;
+static uint32_t g_camera_calibration_frame_count;
+static int32_t g_camera_calibration_observation_x[CAMERA_CALIBRATION_OBSERVATIONS];
+static int32_t g_camera_calibration_observation_y[CAMERA_CALIBRATION_OBSERVATIONS];
+static uint32_t g_camera_calibration_observation_count;
+static int32_t g_camera_calibration_arm_x_0p1mm;
+static int32_t g_camera_calibration_arm_y_0p1mm;
+static int32_t g_camera_calibration_arm_z_0p1mm;
+static uint32_t g_camera_calibration_flash_sequence;
+static volatile bool g_camera_calibration_arm_result_pending;
+static volatile uint32_t g_camera_calibration_arm_result_sequence;
+static volatile bool g_camera_calibration_arm_result_success;
+static volatile int32_t g_camera_calibration_arm_result_x_0p1mm;
+static volatile int32_t g_camera_calibration_arm_result_y_0p1mm;
+static volatile int32_t g_camera_calibration_arm_result_z_0p1mm;
 
 #if APP_DETECTION_MAX_RESULTS != FRUIT_UI_MAX_DETECTIONS
  #error "Detection result capacity does not match the UI capacity."
@@ -124,6 +241,11 @@ static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_p
                                          fruit_ui_detection_t                * p_detection);
 static bool camera_frame_has_visible_content(uint8_t const * p_rgb565_frame);
 static bool camera_set_illumination(bool enabled);
+static bool camera_project_top(double const homography[3][3],
+                               double u,
+                               double v,
+                               double * p_x_mm,
+                               double * p_y_mm);
 
 static fruit_ui_target_t camera_stream_target_from_class(uint32_t class_id)
 {
@@ -265,6 +387,801 @@ static uint32_t camera_crc32(uint8_t const * p_data, uint32_t bytes)
     }
 
     return ~crc;
+}
+
+static bool camera_calibration_config_valid(ipc_handeye_calibration_t const * p_config)
+{
+    if ((NULL == p_config) ||
+        !isfinite(p_config->top_z_low_mm) ||
+        !isfinite(p_config->top_z_high_mm) ||
+        !isfinite(p_config->side_z_slope_mm_px) ||
+        !isfinite(p_config->side_z_offset_mm) ||
+        !(p_config->top_z_high_mm > p_config->top_z_low_mm) ||
+        !(p_config->side_z_slope_mm_px > 0.0f))
+    {
+        return false;
+    }
+
+    for (uint32_t row = 0U; row < 3U; row++)
+    {
+        for (uint32_t column = 0U; column < 3U; column++)
+        {
+            if (!isfinite(p_config->top_h_low[row][column]) ||
+                !isfinite(p_config->top_h_high[row][column]))
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static void camera_calibration_apply(ipc_handeye_calibration_t const * p_config)
+{
+    for (uint32_t row = 0U; row < 3U; row++)
+    {
+        for (uint32_t column = 0U; column < 3U; column++)
+        {
+            g_camera_to_arm_homography_z_low[row][column] =
+                (double) p_config->top_h_low[row][column];
+            g_camera_to_arm_homography_z_high[row][column] =
+                (double) p_config->top_h_high[row][column];
+        }
+    }
+    g_camera_top_cal_z_low_mm = (double) p_config->top_z_low_mm;
+    g_camera_top_cal_z_high_mm = (double) p_config->top_z_high_mm;
+    g_camera_side_z_slope_mm_px = (double) p_config->side_z_slope_mm_px;
+    g_camera_side_z_offset_mm = (double) p_config->side_z_offset_mm;
+}
+
+static bool camera_calibration_record_valid(camera_calibration_record_t const * p_record)
+{
+    return (NULL != p_record) &&
+           (CAMERA_CALIBRATION_MAGIC == p_record->magic) &&
+           (CAMERA_CALIBRATION_VERSION == p_record->version) &&
+           (sizeof(*p_record) == p_record->size) &&
+           (CAMERA_CALIBRATION_POINT_COUNT == p_record->sample_count) &&
+           camera_calibration_config_valid(&p_record->config) &&
+           (p_record->crc32 ==
+            camera_crc32((uint8_t const *) p_record,
+                         (uint32_t) offsetof(camera_calibration_record_t, crc32)));
+}
+
+static bool camera_calibration_load(void)
+{
+    static camera_calibration_record_t slot_a;
+    static camera_calibration_record_t slot_b;
+    bool const valid_a = ospi_flash_read(CAMERA_CALIBRATION_SLOT_A,
+                                         &slot_a,
+                                         sizeof(slot_a)) &&
+                         camera_calibration_record_valid(&slot_a);
+    bool const valid_b = ospi_flash_read(CAMERA_CALIBRATION_SLOT_B,
+                                         &slot_b,
+                                         sizeof(slot_b)) &&
+                         camera_calibration_record_valid(&slot_b);
+    camera_calibration_record_t const * p_selected = NULL;
+
+    if (valid_a && valid_b)
+    {
+        p_selected = ((int32_t) (slot_b.sequence - slot_a.sequence) > 0) ?
+                     &slot_b : &slot_a;
+    }
+    else if (valid_a)
+    {
+        p_selected = &slot_a;
+    }
+    else if (valid_b)
+    {
+        p_selected = &slot_b;
+    }
+
+    if (NULL == p_selected)
+    {
+        return false;
+    }
+
+    camera_calibration_apply(&p_selected->config);
+    g_camera_calibration_flash_sequence = p_selected->sequence;
+    (void) ipc_detection_send_calibration_config(&p_selected->config);
+    return true;
+}
+
+static bool camera_calibration_store(ipc_handeye_calibration_t const * p_config,
+                                     double top_low_rmse_mm,
+                                     double top_high_rmse_mm,
+                                     double side_rmse_mm)
+{
+    static camera_calibration_record_t record;
+    static camera_calibration_record_t verify;
+    uint32_t const sequence = g_camera_calibration_flash_sequence + 1U;
+    uint32_t const offset = (0U != (sequence & 1U)) ?
+                            CAMERA_CALIBRATION_SLOT_A :
+                            CAMERA_CALIBRATION_SLOT_B;
+
+    memset(&record, 0, sizeof(record));
+    record.magic = CAMERA_CALIBRATION_MAGIC;
+    record.version = CAMERA_CALIBRATION_VERSION;
+    record.size = (uint16_t) sizeof(record);
+    record.sequence = sequence;
+    record.sample_count = CAMERA_CALIBRATION_POINT_COUNT;
+    record.config = *p_config;
+    memcpy(record.samples,
+           g_camera_calibration_samples,
+           sizeof(g_camera_calibration_samples));
+    record.top_low_rmse_mm = (float) top_low_rmse_mm;
+    record.top_high_rmse_mm = (float) top_high_rmse_mm;
+    record.side_rmse_mm = (float) side_rmse_mm;
+    record.crc32 = camera_crc32((uint8_t const *) &record,
+                                (uint32_t) offsetof(camera_calibration_record_t, crc32));
+
+    if (!ospi_flash_is_ready() ||
+        !ospi_flash_erase(offset, OSPI_FLASH_SECTOR_SIZE) ||
+        !ospi_flash_write(offset, &record, sizeof(record)) ||
+        !ospi_flash_read(offset, &verify, sizeof(verify)) ||
+        !camera_calibration_record_valid(&verify) ||
+        (verify.sequence != sequence))
+    {
+        return false;
+    }
+
+    g_camera_calibration_flash_sequence = sequence;
+    return true;
+}
+
+static bool camera_solve_8x8(double matrix[8][9], double solution[8])
+{
+    for (uint32_t column = 0U; column < 8U; column++)
+    {
+        uint32_t pivot = column;
+        double pivot_abs = fabs(matrix[pivot][column]);
+        for (uint32_t row = column + 1U; row < 8U; row++)
+        {
+            double const value_abs = fabs(matrix[row][column]);
+            if (value_abs > pivot_abs)
+            {
+                pivot = row;
+                pivot_abs = value_abs;
+            }
+        }
+        if (pivot_abs < 1.0e-10)
+        {
+            return false;
+        }
+        if (pivot != column)
+        {
+            for (uint32_t item = column; item < 9U; item++)
+            {
+                double const swap = matrix[column][item];
+                matrix[column][item] = matrix[pivot][item];
+                matrix[pivot][item] = swap;
+            }
+        }
+
+        double const divisor = matrix[column][column];
+        for (uint32_t item = column; item < 9U; item++)
+        {
+            matrix[column][item] /= divisor;
+        }
+        for (uint32_t row = 0U; row < 8U; row++)
+        {
+            if (row == column)
+            {
+                continue;
+            }
+            double const factor = matrix[row][column];
+            for (uint32_t item = column; item < 9U; item++)
+            {
+                matrix[row][item] -= factor * matrix[column][item];
+            }
+        }
+    }
+
+    for (uint32_t i = 0U; i < 8U; i++)
+    {
+        solution[i] = matrix[i][8];
+    }
+    return true;
+}
+
+static void camera_matrix_3x3_multiply(double const left[3][3],
+                                       double const right[3][3],
+                                       double out[3][3])
+{
+    for (uint32_t row = 0U; row < 3U; row++)
+    {
+        for (uint32_t column = 0U; column < 3U; column++)
+        {
+            out[row][column] = 0.0;
+            for (uint32_t k = 0U; k < 3U; k++)
+            {
+                out[row][column] += left[row][k] * right[k][column];
+            }
+        }
+    }
+}
+
+static bool camera_fit_homography(uint32_t start,
+                                  uint32_t count,
+                                  double out[3][3],
+                                  double * p_rmse_mm,
+                                  double * p_mean_z_mm)
+{
+    double mean_u = 0.0;
+    double mean_v = 0.0;
+    double mean_x = 0.0;
+    double mean_y = 0.0;
+    double mean_z = 0.0;
+
+    if ((count < 4U) || ((start + count) > CAMERA_CALIBRATION_TOP_POINTS))
+    {
+        return false;
+    }
+
+    for (uint32_t i = start; i < (start + count); i++)
+    {
+        mean_u += (double) g_camera_calibration_samples[i].pixel_x;
+        mean_v += (double) g_camera_calibration_samples[i].pixel_y;
+        mean_x += (double) g_camera_calibration_samples[i].arm_x_0p1mm / 10.0;
+        mean_y += (double) g_camera_calibration_samples[i].arm_y_0p1mm / 10.0;
+        mean_z += (double) g_camera_calibration_samples[i].arm_z_0p1mm / 10.0;
+    }
+    mean_u /= (double) count;
+    mean_v /= (double) count;
+    mean_x /= (double) count;
+    mean_y /= (double) count;
+    mean_z /= (double) count;
+
+    double src_energy = 0.0;
+    double dst_energy = 0.0;
+    for (uint32_t i = start; i < (start + count); i++)
+    {
+        double const du = (double) g_camera_calibration_samples[i].pixel_x - mean_u;
+        double const dv = (double) g_camera_calibration_samples[i].pixel_y - mean_v;
+        double const dx = ((double) g_camera_calibration_samples[i].arm_x_0p1mm / 10.0) - mean_x;
+        double const dy = ((double) g_camera_calibration_samples[i].arm_y_0p1mm / 10.0) - mean_y;
+        src_energy += (du * du) + (dv * dv);
+        dst_energy += (dx * dx) + (dy * dy);
+    }
+    if ((src_energy < 1.0e-6) || (dst_energy < 1.0e-6))
+    {
+        return false;
+    }
+
+    double const src_scale = sqrt((2.0 * (double) count) / src_energy);
+    double const dst_scale = sqrt((2.0 * (double) count) / dst_energy);
+    double normal[8][9] = {{0.0}};
+
+    for (uint32_t i = start; i < (start + count); i++)
+    {
+        double const u = src_scale *
+                         ((double) g_camera_calibration_samples[i].pixel_x - mean_u);
+        double const v = src_scale *
+                         ((double) g_camera_calibration_samples[i].pixel_y - mean_v);
+        double const x = dst_scale *
+                         (((double) g_camera_calibration_samples[i].arm_x_0p1mm / 10.0) - mean_x);
+        double const y = dst_scale *
+                         (((double) g_camera_calibration_samples[i].arm_y_0p1mm / 10.0) - mean_y);
+        double const rows[2][8] =
+        {
+            {u, v, 1.0, 0.0, 0.0, 0.0, -x * u, -x * v},
+            {0.0, 0.0, 0.0, u, v, 1.0, -y * u, -y * v},
+        };
+        double const values[2] = {x, y};
+
+        for (uint32_t equation = 0U; equation < 2U; equation++)
+        {
+            for (uint32_t row = 0U; row < 8U; row++)
+            {
+                for (uint32_t column = 0U; column < 8U; column++)
+                {
+                    normal[row][column] += rows[equation][row] * rows[equation][column];
+                }
+                normal[row][8] += rows[equation][row] * values[equation];
+            }
+        }
+    }
+
+    double parameters[8];
+    if (!camera_solve_8x8(normal, parameters))
+    {
+        return false;
+    }
+
+    double const normalized[3][3] =
+    {
+        {parameters[0], parameters[1], parameters[2]},
+        {parameters[3], parameters[4], parameters[5]},
+        {parameters[6], parameters[7], 1.0},
+    };
+    double const source_transform[3][3] =
+    {
+        {src_scale, 0.0, -src_scale * mean_u},
+        {0.0, src_scale, -src_scale * mean_v},
+        {0.0, 0.0, 1.0},
+    };
+    double const destination_inverse[3][3] =
+    {
+        {1.0 / dst_scale, 0.0, mean_x},
+        {0.0, 1.0 / dst_scale, mean_y},
+        {0.0, 0.0, 1.0},
+    };
+    double temporary[3][3];
+    camera_matrix_3x3_multiply(normalized, source_transform, temporary);
+    camera_matrix_3x3_multiply(destination_inverse, temporary, out);
+    if (fabs(out[2][2]) < CAMERA_HOMOGRAPHY_EPSILON)
+    {
+        return false;
+    }
+    double const scale = out[2][2];
+    for (uint32_t row = 0U; row < 3U; row++)
+    {
+        for (uint32_t column = 0U; column < 3U; column++)
+        {
+            out[row][column] /= scale;
+        }
+    }
+
+    double squared_error = 0.0;
+    for (uint32_t i = start; i < (start + count); i++)
+    {
+        double projected_x;
+        double projected_y;
+        if (!camera_project_top(out,
+                                (double) g_camera_calibration_samples[i].pixel_x,
+                                (double) g_camera_calibration_samples[i].pixel_y,
+                                &projected_x,
+                                &projected_y))
+        {
+            return false;
+        }
+        double const dx = projected_x -
+                          ((double) g_camera_calibration_samples[i].arm_x_0p1mm / 10.0);
+        double const dy = projected_y -
+                          ((double) g_camera_calibration_samples[i].arm_y_0p1mm / 10.0);
+        squared_error += (dx * dx) + (dy * dy);
+    }
+    *p_rmse_mm = sqrt(squared_error / (double) count);
+    *p_mean_z_mm = mean_z;
+    return isfinite(*p_rmse_mm);
+}
+
+static bool camera_calibration_fit_save_apply(int32_t * p_rmse_0p1mm)
+{
+    double low_h[3][3];
+    double high_h[3][3];
+    double low_rmse;
+    double high_rmse;
+    double low_z;
+    double high_z;
+
+    if (!camera_fit_homography(0U,
+                               CAMERA_CALIBRATION_TOP_POINTS_PER_LAYER,
+                               low_h,
+                               &low_rmse,
+                               &low_z) ||
+        !camera_fit_homography(CAMERA_CALIBRATION_TOP_POINTS_PER_LAYER,
+                               CAMERA_CALIBRATION_TOP_POINTS_PER_LAYER,
+                               high_h,
+                               &high_rmse,
+                               &high_z) ||
+        !(high_z > low_z) ||
+        (low_rmse > CAMERA_CALIBRATION_TOP_MAX_RMSE_MM) ||
+        (high_rmse > CAMERA_CALIBRATION_TOP_MAX_RMSE_MM))
+    {
+        return false;
+    }
+
+    ipc_handeye_calibration_t config;
+    memset(&config, 0, sizeof(config));
+    config.top_z_low_mm = (float) low_z;
+    config.top_z_high_mm = (float) high_z;
+    /* This workflow calibrates XY only. Preserve the active side-camera Z
+     * conversion exactly as it was before calibration. */
+    config.side_z_slope_mm_px = (float) g_camera_side_z_slope_mm_px;
+    config.side_z_offset_mm = (float) g_camera_side_z_offset_mm;
+    for (uint32_t row = 0U; row < 3U; row++)
+    {
+        for (uint32_t column = 0U; column < 3U; column++)
+        {
+            config.top_h_low[row][column] = (float) low_h[row][column];
+            config.top_h_high[row][column] = (float) high_h[row][column];
+        }
+    }
+
+    if (!camera_calibration_config_valid(&config) ||
+        !camera_calibration_store(&config, low_rmse, high_rmse, 0.0))
+    {
+        return false;
+    }
+
+    int const diagnostic_count = snprintf(
+        g_uart_line,
+        sizeof(g_uart_line),
+        "CAL_XY_FIT low=%ld high=%ld (0.1mm) flash_seq=%lu\r\n",
+        (long) round(low_rmse * 10.0),
+        (long) round(high_rmse * 10.0),
+        (unsigned long) g_camera_calibration_flash_sequence);
+    if ((diagnostic_count > 0) &&
+        ((size_t) diagnostic_count < sizeof(g_uart_line)))
+    {
+        camera_uart_send_text(g_uart_line);
+    }
+
+    bool sent = false;
+    for (uint32_t attempt = 0U; (attempt < 3U) && !sent; attempt++)
+    {
+        sent = ipc_detection_send_calibration_config(&config);
+        if (!sent)
+        {
+            vTaskDelay(pdMS_TO_TICKS(100U));
+        }
+    }
+    if (!sent)
+    {
+        return false;
+    }
+    camera_calibration_apply(&config);
+
+    double maximum_rmse = low_rmse;
+    if (high_rmse > maximum_rmse)
+    {
+        maximum_rmse = high_rmse;
+    }
+    *p_rmse_0p1mm = (int32_t) round(maximum_rmse * 10.0);
+    return true;
+}
+
+void camera_calibration_notify_arm_result(uint32_t sequence,
+                                          bool success,
+                                          int32_t x_0p1mm,
+                                          int32_t y_0p1mm,
+                                          int32_t z_0p1mm)
+{
+    g_camera_calibration_arm_result_sequence = sequence;
+    g_camera_calibration_arm_result_success = success;
+    g_camera_calibration_arm_result_x_0p1mm = x_0p1mm;
+    g_camera_calibration_arm_result_y_0p1mm = y_0p1mm;
+    g_camera_calibration_arm_result_z_0p1mm = z_0p1mm;
+    __DMB();
+    g_camera_calibration_arm_result_pending = true;
+}
+
+static bool camera_calibration_take_arm_result(uint32_t * p_sequence,
+                                               bool * p_success,
+                                               int32_t * p_x_0p1mm,
+                                               int32_t * p_y_0p1mm,
+                                               int32_t * p_z_0p1mm)
+{
+    bool pending;
+    taskENTER_CRITICAL();
+    pending = g_camera_calibration_arm_result_pending;
+    if (pending)
+    {
+        *p_sequence = g_camera_calibration_arm_result_sequence;
+        *p_success = g_camera_calibration_arm_result_success;
+        *p_x_0p1mm = g_camera_calibration_arm_result_x_0p1mm;
+        *p_y_0p1mm = g_camera_calibration_arm_result_y_0p1mm;
+        *p_z_0p1mm = g_camera_calibration_arm_result_z_0p1mm;
+        g_camera_calibration_arm_result_pending = false;
+    }
+    taskEXIT_CRITICAL();
+    return pending;
+}
+
+static void camera_calibration_finish(fruit_ui_calibration_state_t state,
+                                      int32_t result)
+{
+    g_camera_calibration_active = false;
+    g_camera_calibration_state = CAMERA_CALIBRATION_IDLE;
+    g_camera_calibration_observation_count = 0U;
+    fruit_ui_set_calibration_camera(false);
+    (void) ipc_detection_send_arm_zero();
+    fruit_ui_set_calibration_status(state,
+                                    g_camera_calibration_index,
+                                    CAMERA_CALIBRATION_POINT_COUNT,
+                                    result);
+}
+
+static void camera_calibration_process_control(bool camera_side_active)
+{
+    if (!g_camera_calibration_active &&
+        fruit_ui_take_calibration_start_request())
+    {
+        memset(g_camera_calibration_samples, 0,
+               sizeof(g_camera_calibration_samples));
+        g_camera_calibration_active = true;
+        g_camera_calibration_index = 0U;
+        g_camera_calibration_sequence = IPC_CALIBRATION_FIRST_SEQUENCE;
+        g_camera_calibration_state = CAMERA_CALIBRATION_SEND_MOVE;
+        g_camera_calibration_arm_result_pending = false;
+        (void) fruit_ui_take_calibration_confirm_request();
+        fruit_ui_set_calibration_camera(false);
+        fruit_ui_set_calibration_status(FRUIT_UI_CALIBRATION_RUNNING,
+                                        0U,
+                                        CAMERA_CALIBRATION_POINT_COUNT,
+                                        0);
+        fruit_ui_set_calibration_moving_target(
+            IPC_CALIBRATION_FIRST_X_0P1MM,
+            IPC_CALIBRATION_FIRST_Y_0P1MM,
+            IPC_CALIBRATION_FIRST_Z_0P1MM);
+        camera_uart_send_text("CAL_START green_grape_fixed_grip keep_workspace_clear\r\n");
+    }
+
+    if (!g_camera_calibration_active)
+    {
+        (void) fruit_ui_take_calibration_cancel_request();
+        return;
+    }
+
+    if (fruit_ui_take_calibration_cancel_request() ||
+        !fruit_ui_is_debug_mode_active())
+    {
+        camera_calibration_finish(FRUIT_UI_CALIBRATION_CANCELLED, 0);
+        return;
+    }
+
+    camera_calibration_target_t const * p_target =
+        &g_camera_calibration_targets[g_camera_calibration_index];
+
+    if (CAMERA_CALIBRATION_SEND_MOVE == g_camera_calibration_state)
+    {
+        bool const first_point = (0U == g_camera_calibration_index);
+        bool const sent = first_point ?
+            ipc_detection_send_calibration_first() :
+            (((0U != p_target->camera) == camera_side_active) &&
+             ipc_detection_send_calibration_move(g_camera_calibration_sequence,
+                                                 p_target->x_0p1mm,
+                                                 p_target->y_0p1mm,
+                                                 p_target->z_0p1mm));
+        if (sent)
+        {
+            int const diagnostic_count = snprintf(
+                g_uart_line,
+                sizeof(g_uart_line),
+                "CAL_MOVE_SENT P%lu/%lu target=(%ld,%ld,%ld) 0.1mm\r\n",
+                (unsigned long) (g_camera_calibration_index + 1U),
+                (unsigned long) CAMERA_CALIBRATION_POINT_COUNT,
+                (long) p_target->x_0p1mm,
+                (long) p_target->y_0p1mm,
+                (long) p_target->z_0p1mm);
+            if ((diagnostic_count > 0) &&
+                ((size_t) diagnostic_count < sizeof(g_uart_line)))
+            {
+                camera_uart_send_text(g_uart_line);
+            }
+            g_camera_calibration_deadline =
+                xTaskGetTickCount() +
+                pdMS_TO_TICKS(CAMERA_CALIBRATION_ARM_TIMEOUT_MS);
+            g_camera_calibration_state = CAMERA_CALIBRATION_WAIT_ARM;
+        }
+        return;
+    }
+
+    if (CAMERA_CALIBRATION_WAIT_ARM == g_camera_calibration_state)
+    {
+        uint32_t sequence;
+        bool success;
+        int32_t x_0p1mm;
+        int32_t y_0p1mm;
+        int32_t z_0p1mm;
+        if (camera_calibration_take_arm_result(&sequence,
+                                               &success,
+                                               &x_0p1mm,
+                                               &y_0p1mm,
+                                               &z_0p1mm))
+        {
+            if (sequence != g_camera_calibration_sequence)
+            {
+                return;
+            }
+            if (!success)
+            {
+                camera_calibration_finish(FRUIT_UI_CALIBRATION_ERROR, 1);
+                return;
+            }
+            g_camera_calibration_arm_x_0p1mm = x_0p1mm;
+            g_camera_calibration_arm_y_0p1mm = y_0p1mm;
+            g_camera_calibration_arm_z_0p1mm = z_0p1mm;
+            g_camera_calibration_observation_count = 0U;
+            g_camera_calibration_frame_count = 0U;
+            g_camera_calibration_state = CAMERA_CALIBRATION_COLLECT;
+            (void) fruit_ui_take_calibration_confirm_request();
+            fruit_ui_set_calibration_endpoint(x_0p1mm,
+                                              y_0p1mm,
+                                              z_0p1mm);
+        }
+        else if ((int32_t) (xTaskGetTickCount() -
+                            g_camera_calibration_deadline) >= 0)
+        {
+            camera_calibration_finish(FRUIT_UI_CALIBRATION_ERROR, 2);
+        }
+        return;
+    }
+
+    if (CAMERA_CALIBRATION_WAIT_CONFIRM == g_camera_calibration_state)
+    {
+        if (fruit_ui_take_calibration_confirm_request())
+        {
+            /* XY calibration always samples the top camera.  If the operator
+             * inspected SIDE while waiting, switch back before moving. */
+            fruit_ui_set_calibration_camera(false);
+            fruit_ui_set_calibration_moving_target(p_target->x_0p1mm,
+                                                   p_target->y_0p1mm,
+                                                   p_target->z_0p1mm);
+            g_camera_calibration_state = CAMERA_CALIBRATION_SEND_MOVE;
+        }
+    }
+}
+
+static void camera_sort_i32(int32_t * p_values, uint32_t count)
+{
+    for (uint32_t i = 1U; i < count; i++)
+    {
+        int32_t const value = p_values[i];
+        uint32_t position = i;
+        while ((position > 0U) && (p_values[position - 1U] > value))
+        {
+            p_values[position] = p_values[position - 1U];
+            position--;
+        }
+        p_values[position] = value;
+    }
+}
+
+static bool camera_calibration_green_center(app_detection_result_t const * p_results,
+                                            uint32_t count,
+                                            int32_t * p_x,
+                                            int32_t * p_y)
+{
+    int64_t largest_area = -1;
+    uint32_t selected = count;
+    for (uint32_t i = 0U; i < count; i++)
+    {
+        if (APP_DETECTION_CLASS_GREEN_GRAPE != p_results[i].class_id)
+        {
+            continue;
+        }
+        int64_t const width = (int64_t) p_results[i].x2 - p_results[i].x1;
+        int64_t const height = (int64_t) p_results[i].y2 - p_results[i].y1;
+        int64_t const area = width * height;
+        if (area > largest_area)
+        {
+            largest_area = area;
+            selected = i;
+        }
+    }
+    if (selected == count)
+    {
+        return false;
+    }
+    *p_x = p_results[selected].x;
+    *p_y = p_results[selected].y;
+    return true;
+}
+
+static void camera_calibration_collect_frame(app_detection_result_t const * p_results,
+                                             uint32_t result_count,
+                                             bool camera_side_active)
+{
+    if (!g_camera_calibration_active ||
+        (CAMERA_CALIBRATION_COLLECT != g_camera_calibration_state))
+    {
+        return;
+    }
+
+    camera_calibration_target_t const * p_target =
+        &g_camera_calibration_targets[g_camera_calibration_index];
+    if ((0U != p_target->camera) != camera_side_active)
+    {
+        return;
+    }
+
+    g_camera_calibration_frame_count++;
+    int32_t x;
+    int32_t y;
+    if (camera_calibration_green_center(p_results, result_count, &x, &y) &&
+        (g_camera_calibration_observation_count < CAMERA_CALIBRATION_OBSERVATIONS))
+    {
+        uint32_t const index = g_camera_calibration_observation_count++;
+        g_camera_calibration_observation_x[index] = x;
+        g_camera_calibration_observation_y[index] = y;
+    }
+
+    if (g_camera_calibration_observation_count >= CAMERA_CALIBRATION_OBSERVATIONS)
+    {
+        int32_t sorted_x[CAMERA_CALIBRATION_OBSERVATIONS];
+        int32_t sorted_y[CAMERA_CALIBRATION_OBSERVATIONS];
+        memcpy(sorted_x, g_camera_calibration_observation_x, sizeof(sorted_x));
+        memcpy(sorted_y, g_camera_calibration_observation_y, sizeof(sorted_y));
+        camera_sort_i32(sorted_x, CAMERA_CALIBRATION_OBSERVATIONS);
+        camera_sort_i32(sorted_y, CAMERA_CALIBRATION_OBSERVATIONS);
+        int32_t const median_x = sorted_x[CAMERA_CALIBRATION_OBSERVATIONS / 2U];
+        int32_t const median_y = sorted_y[CAMERA_CALIBRATION_OBSERVATIONS / 2U];
+        int64_t sum_x = 0;
+        int64_t sum_y = 0;
+        uint32_t inliers = 0U;
+
+        for (uint32_t i = 0U; i < CAMERA_CALIBRATION_OBSERVATIONS; i++)
+        {
+            if ((abs(g_camera_calibration_observation_x[i] - median_x) <=
+                 CAMERA_CALIBRATION_MAX_DEVIATION_PX) &&
+                (abs(g_camera_calibration_observation_y[i] - median_y) <=
+                 CAMERA_CALIBRATION_MAX_DEVIATION_PX))
+            {
+                sum_x += g_camera_calibration_observation_x[i];
+                sum_y += g_camera_calibration_observation_y[i];
+                inliers++;
+            }
+        }
+
+        if (inliers >= CAMERA_CALIBRATION_MIN_INLIERS)
+        {
+            camera_calibration_sample_t * p_sample =
+                &g_camera_calibration_samples[g_camera_calibration_index];
+            p_sample->pixel_x = (int32_t) ((sum_x + (int64_t) (inliers / 2U)) /
+                                           (int64_t) inliers);
+            p_sample->pixel_y = (int32_t) ((sum_y + (int64_t) (inliers / 2U)) /
+                                           (int64_t) inliers);
+            p_sample->arm_x_0p1mm = g_camera_calibration_arm_x_0p1mm;
+            p_sample->arm_y_0p1mm = g_camera_calibration_arm_y_0p1mm;
+            p_sample->arm_z_0p1mm = g_camera_calibration_arm_z_0p1mm;
+            p_sample->camera = p_target->camera;
+            p_sample->layer = p_target->layer;
+
+            int const diagnostic_count = snprintf(
+                g_uart_line,
+                sizeof(g_uart_line),
+                "CAL_SAMPLE %lu cam=%s pixel=(%ld,%ld) arm=(%ld,%ld,%ld) 0.1mm\r\n",
+                (unsigned long) (g_camera_calibration_index + 1U),
+                (0U != p_sample->camera) ? "side" : "top",
+                (long) p_sample->pixel_x,
+                (long) p_sample->pixel_y,
+                (long) p_sample->arm_x_0p1mm,
+                (long) p_sample->arm_y_0p1mm,
+                (long) p_sample->arm_z_0p1mm);
+            if ((diagnostic_count > 0) &&
+                ((size_t) diagnostic_count < sizeof(g_uart_line)))
+            {
+                camera_uart_send_text(g_uart_line);
+            }
+
+            g_camera_calibration_index++;
+            if (g_camera_calibration_index >= CAMERA_CALIBRATION_POINT_COUNT)
+            {
+                int32_t rmse_0p1mm;
+                if (camera_calibration_fit_save_apply(&rmse_0p1mm))
+                {
+                    camera_calibration_finish(FRUIT_UI_CALIBRATION_SUCCESS,
+                                              rmse_0p1mm);
+                }
+                else
+                {
+                    camera_calibration_finish(FRUIT_UI_CALIBRATION_ERROR, 4);
+                }
+                return;
+            }
+
+            g_camera_calibration_sequence++;
+            g_camera_calibration_state = CAMERA_CALIBRATION_WAIT_CONFIRM;
+            g_camera_calibration_observation_count = 0U;
+            g_camera_calibration_frame_count = 0U;
+            fruit_ui_set_calibration_status(FRUIT_UI_CALIBRATION_RUNNING,
+                                            g_camera_calibration_index,
+                                            CAMERA_CALIBRATION_POINT_COUNT,
+                                            0);
+            fruit_ui_set_calibration_next_target(
+                g_camera_calibration_targets[g_camera_calibration_index].x_0p1mm,
+                g_camera_calibration_targets[g_camera_calibration_index].y_0p1mm,
+                g_camera_calibration_targets[g_camera_calibration_index].z_0p1mm);
+            return;
+        }
+        g_camera_calibration_observation_count = 0U;
+    }
+
+    if (g_camera_calibration_frame_count >= CAMERA_CALIBRATION_MAX_FRAMES)
+    {
+        camera_calibration_finish(FRUIT_UI_CALIBRATION_ERROR, 3);
+    }
 }
 
 static void camera_store_u16_le(uint8_t * p_dst, uint16_t value)
@@ -1509,6 +2426,11 @@ void camera_stream_task(void)
         }
     }
 
+    if (ospi_flash_is_ready() && camera_calibration_load())
+    {
+        camera_uart_send_text("CAL_LOAD_OK\r\n");
+    }
+
     camera_uart_send_ov5640_diagnostics();
 
     vTaskDelay(pdMS_TO_TICKS(CAMERA_AE_SETTLE_MS));
@@ -1524,6 +2446,7 @@ void camera_stream_task(void)
     while (1)
     {
         camera_process_task_joint5_request();
+        camera_calibration_process_control(camera_side_active);
 
         uint32_t const task_generation = fruit_ui_get_task_generation();
         if (task_generation != active_task_generation)
@@ -1641,6 +2564,14 @@ void camera_stream_task(void)
             continue;
         }
 
+        if (g_camera_calibration_active &&
+            ((CAMERA_CALIBRATION_SEND_MOVE == g_camera_calibration_state) ||
+             (CAMERA_CALIBRATION_WAIT_ARM == g_camera_calibration_state)))
+        {
+            vTaskDelay(pdMS_TO_TICKS(20U));
+            continue;
+        }
+
         if (CAMERA_OV5640_OK != camera_capture_frame_with_retry(g_camera_frame))
         {
             camera_uart_send_ceu_events_line();
@@ -1686,6 +2617,9 @@ void camera_stream_task(void)
 
         if (fruit_ui_is_debug_mode_active())
         {
+            camera_calibration_collect_frame(g_detection_results,
+                                             result_count,
+                                             camera_side_active);
             (void) camera_publish_snapshot(g_camera_frame,
                                            g_detection_results,
                                            result_count,
@@ -2058,14 +2992,14 @@ static bool camera_top_pixel_to_arm_xy(double   u,
     double x_high_mm;
     double y_high_mm;
 
-    if (!camera_project_top(g_camera_to_arm_homography_z325, u, v, &x_low_mm, &y_low_mm) ||
-        !camera_project_top(g_camera_to_arm_homography_z385, u, v, &x_high_mm, &y_high_mm))
+    if (!camera_project_top(g_camera_to_arm_homography_z_low, u, v, &x_low_mm, &y_low_mm) ||
+        !camera_project_top(g_camera_to_arm_homography_z_high, u, v, &x_high_mm, &y_high_mm))
     {
         return false;
     }
 
-    double const ratio = (z_mm - CAMERA_TOP_CAL_Z_LOW_MM) /
-                         (CAMERA_TOP_CAL_Z_HIGH_MM - CAMERA_TOP_CAL_Z_LOW_MM);
+    double const ratio = (z_mm - g_camera_top_cal_z_low_mm) /
+                         (g_camera_top_cal_z_high_mm - g_camera_top_cal_z_low_mm);
     *p_x_mm = x_low_mm + (ratio * (x_high_mm - x_low_mm));
     *p_y_mm = y_low_mm + (ratio * (y_high_mm - y_low_mm));
     return true;
@@ -2094,8 +3028,8 @@ static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_p
     }
 
     double const z_mm = top_only ? CAMERA_TOP_ONLY_Z_MM :
-                       ((CAMERA_SIDE_Z_SLOPE * (double) p_pair->side_x) +
-                         CAMERA_SIDE_Z_OFFSET);
+                       ((g_camera_side_z_slope_mm_px * (double) p_pair->side_x) +
+                         g_camera_side_z_offset_mm);
     double x_mm;
     double y_mm;
 

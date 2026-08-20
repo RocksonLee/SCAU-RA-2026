@@ -13,5 +13,11 @@ bool ipc_detection_send_arm_debug_stop(bool enabled);
 bool ipc_detection_send_claw_current(uint16_t current_ma);
 bool ipc_detection_send_axis_angle(uint8_t axis, int32_t angle_deg);
 bool ipc_detection_send_arm_telemetry_request(void);
+bool ipc_detection_send_calibration_first(void);
+bool ipc_detection_send_calibration_move(uint32_t sequence,
+                                         int32_t  x_0p1mm,
+                                         int32_t  y_0p1mm,
+                                         int32_t  z_0p1mm);
+bool ipc_detection_send_calibration_config(ipc_handeye_calibration_t const * p_config);
 
 #endif /* IPC_DETECTION_TX_H */
