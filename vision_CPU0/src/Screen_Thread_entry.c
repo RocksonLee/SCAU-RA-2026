@@ -120,10 +120,24 @@ static uint32_t lvgl_freertos_tick_ms(void)
 
 static void screen_process_arm_control_request(void)
 {
+	static TickType_t claw_current_retry_tick;
 	uint8_t axis;
 	int32_t angle_deg;
 	bool claw_open;
 	bool debug_stop_enabled;
+	uint16_t claw_current_ma;
+
+	TickType_t const now = xTaskGetTickCount();
+	if (((0U == claw_current_retry_tick) ||
+	     ((int32_t) (now - claw_current_retry_tick) >= 0)) &&
+	    fruit_ui_take_claw_current_request(&claw_current_ma))
+	{
+		bool const sent = ipc_detection_send_claw_current(claw_current_ma);
+		fruit_ui_notify_claw_current_result(claw_current_ma, sent);
+		claw_current_retry_tick = sent ? 0U :
+		                          now + pdMS_TO_TICKS(1000U);
+		return;
+	}
 
 	if (fruit_ui_take_arm_debug_stop_request(&debug_stop_enabled))
 	{

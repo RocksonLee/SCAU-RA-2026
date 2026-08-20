@@ -9,6 +9,10 @@
 #define CANFD_MOTOR_ADDRESS_MAX      (6U)
 #define CANFD_COMMAND_COMPLETE       (0x9FU)
 #define CANFD_CHECK_BYTE             (0x6BU)
+#define CLAW_CLOSE_CURRENT_DEFAULT_MA (300U)
+#define CLAW_CLOSE_CURRENT_MAX_MA     (5000U)
+
+static volatile uint16_t g_claw_close_current_ma = CLAW_CLOSE_CURRENT_DEFAULT_MA;
 
 #define uint8_t unsigned char
 can_frame_t canfd0_rx_frame;
@@ -467,8 +471,23 @@ bool run(void)
 }
 
 //
+void Claw_SetCloseCurrent(uint16_t current_ma)
+{
+	if (current_ma <= CLAW_CLOSE_CURRENT_MAX_MA)
+	{
+		g_claw_close_current_ma = current_ma;
+	}
+}
+
+uint16_t Claw_GetCloseCurrent(void)
+{
+	return g_claw_close_current_ma;
+}
+
 bool Claw_Control(void)
 {
+	uint16_t const current_ma = Claw_GetCloseCurrent();
+
 	canfd0_tx_frame.id=CAN_ID_F;
 	canfd0_tx_frame.id_mode=CAN_ID_MODE_EXTENDED;
 	canfd0_tx_frame.type=CAN_FRAME_TYPE_DATA;
@@ -485,8 +504,8 @@ bool Claw_Control(void)
 	canfd0_tx_frame.data[5]=0xE8;
 	//同步标志
 	canfd0_tx_frame.data[6]=0x00;
-	//力矩电流限制500 (0x01F4 mA)
-	canfd0_tx_frame.data[7]=0x01;
+	//力矩电流限制（由Arm Setting设置，默认300mA）
+	canfd0_tx_frame.data[7]=(uint8_t) (current_ma >> 8U);
 	if (!canfd0_send_current_frame())
 	{
 		return false;
@@ -496,7 +515,7 @@ bool Claw_Control(void)
 	canfd0_tx_frame.data_length_code=CAN_DATA_LENGTH_CODE_P;
 	canfd0_tx_frame.data[0]=0xC6;
 	//接上面的电流限制
-	canfd0_tx_frame.data[1]=0xF4;
+	canfd0_tx_frame.data[1]=(uint8_t) current_ma;
 	//校验码
 	canfd0_tx_frame.data[2]=0x6B;
 	

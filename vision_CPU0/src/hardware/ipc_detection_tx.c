@@ -106,6 +106,17 @@ bool ipc_detection_send_arm_debug_stop(bool enabled)
                                               IPC_ARM_DEBUG_STOP_DISABLE);
 }
 
+bool ipc_detection_send_claw_current(uint16_t current_ma)
+{
+    if (current_ma > IPC_CLAW_CURRENT_MAX_MA)
+    {
+        return false;
+    }
+
+    return ipc_detection_send_word(IPC_CLAW_CURRENT_COMMAND_PREFIX |
+                                   (uint32_t) current_ma);
+}
+
 bool ipc_detection_send_axis_angle(uint8_t axis, int32_t angle_deg)
 {
     uint32_t command;

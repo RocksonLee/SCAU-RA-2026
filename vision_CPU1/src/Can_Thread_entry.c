@@ -26,6 +26,7 @@ typedef enum e_ipc_coordinate_rx_state
 #define ARM_JOINT_SETTLE_DELAY_MS (2000U)
 #define ARM_CLAW_TIMEOUT_MS      (8000U)
 #define ARM_CLAW_SETTLE_DELAY_MS (3000U)
+#define ARM_CLAW_OPEN_DELAY_MS   (3000U)
 #define ARM_RESET_ZERO_DELAY_MS  (500U)
 #define ARM_DROP_AXIS_1_DEG      (0)
 #define ARM_DROP_AXIS_2_DEG      (-40)
@@ -218,10 +219,15 @@ static bool arm_pick_and_place(handeye_arm_point_t const * p_pick_point)
         return false;
     }
 
-    claw_completion_snapshot = CANFD0_Claw_Completion_Snapshot();
-    bool const claw_opened = Claw_Open() &&
-                             CANFD0_Wait_Claw_Complete(claw_completion_snapshot,
-                                                       ARM_CLAW_TIMEOUT_MS);
+    bool const claw_opened = Claw_Open();
+
+    /* Keep the arm at the drop pose for a fixed release interval. Do not wait
+     * for the optional completion reply here, otherwise a driver configured
+     * without Reached responses can delay the return-to-zero by 8 seconds. */
+    if (claw_opened)
+    {
+        vTaskDelay(pdMS_TO_TICKS(ARM_CLAW_OPEN_DELAY_MS));
+    }
 
     /* Returning to zero is mandatory even when the gripper completion frame
      * is missing.  Previously this path returned early and left the arm at
@@ -476,6 +482,20 @@ void ipc0_callback(ipc_callback_args_t *p_args)
     {
         g_arm_debug_stop_at_target =
             (IPC_ARM_DEBUG_STOP_ENABLE == p_args->message);
+        ipc_coordinate_rx_reset(&receive_state);
+        return;
+    }
+
+    if (IPC_CLAW_CURRENT_COMMAND_PREFIX ==
+        (p_args->message & IPC_CLAW_CURRENT_COMMAND_MASK))
+    {
+        uint32_t const current_ma =
+            p_args->message & IPC_CLAW_CURRENT_VALUE_MASK;
+
+        if (current_ma <= IPC_CLAW_CURRENT_MAX_MA)
+        {
+            Claw_SetCloseCurrent((uint16_t) current_ma);
+        }
         ipc_coordinate_rx_reset(&receive_state);
         return;
     }

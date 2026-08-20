@@ -33,6 +33,21 @@
 #define UI_AXIS_ANGLE_MIN_DEG (-180)
 #define UI_AXIS_ANGLE_MAX_DEG (180)
 #define UI_AXIS_ANGLE_QUEUE_LENGTH (16U)
+#define UI_CLAW_CURRENT_DEFAULT_MA (300U)
+#define UI_CLAW_CURRENT_MAX_MA (5000U)
+#define UI_CLAW_SETTINGS_OFFSET (0x00012000UL)
+#define UI_CLAW_SETTINGS_MAGIC (0x434D4131UL) /* "CMA1" */
+#define UI_CLAW_SETTINGS_VERSION (1U)
+
+typedef struct st_claw_current_settings
+{
+    uint32_t magic;
+    uint16_t version;
+    uint16_t current_ma;
+    uint16_t current_inverse;
+    uint16_t check;
+    uint32_t reserved;
+} claw_current_settings_t;
 
 typedef struct st_target_view
 {
@@ -107,6 +122,8 @@ static volatile bool g_task_joint5_request_pending;
 static volatile int32_t g_task_joint5_angle_deg;
 static volatile bool g_arm_debug_stop_at_target;
 static volatile bool g_arm_debug_stop_request_pending;
+static volatile uint16_t g_claw_close_current_ma = UI_CLAW_CURRENT_DEFAULT_MA;
+static volatile bool g_claw_current_request_pending;
 static volatile axis_angle_request_t g_axis_angle_queue[UI_AXIS_ANGLE_QUEUE_LENGTH];
 static volatile uint32_t g_axis_angle_queue_write;
 static volatile uint32_t g_axis_angle_queue_read;
@@ -164,6 +181,11 @@ static lv_obj_t * g_axis_angle_status_label;
 static lv_obj_t * g_axis_coordinate_label;
 static lv_obj_t * g_arm_debug_toggle_button;
 static lv_obj_t * g_arm_debug_status_label;
+static lv_obj_t * g_claw_current_input;
+static lv_obj_t * g_claw_current_status_label;
+static lv_obj_t * g_claw_current_dialog;
+static lv_obj_t * g_claw_current_editor;
+static lv_obj_t * g_claw_current_keyboard;
 static uint32_t g_axis_angle_edit_index;
 static lv_obj_t * g_task_preview_image;
 static lv_obj_t * g_task_camera_title;
@@ -200,6 +222,66 @@ static void show_detail(fruit_ui_target_t target);
 static void show_debug(void);
 static void show_axis_angle(void);
 static void show_arm_debug(void);
+
+static uint16_t claw_current_settings_check(uint16_t current_ma,
+                                            uint16_t current_inverse)
+{
+    return (uint16_t) ((uint16_t) UI_CLAW_SETTINGS_MAGIC ^
+                       (uint16_t) (UI_CLAW_SETTINGS_MAGIC >> 16U) ^
+                       UI_CLAW_SETTINGS_VERSION ^ current_ma ^
+                       current_inverse ^ 0xA55AU);
+}
+
+static bool claw_current_settings_valid(claw_current_settings_t const * settings)
+{
+    return (NULL != settings) &&
+           (UI_CLAW_SETTINGS_MAGIC == settings->magic) &&
+           (UI_CLAW_SETTINGS_VERSION == settings->version) &&
+           (settings->current_ma <= UI_CLAW_CURRENT_MAX_MA) &&
+           (settings->current_inverse == (uint16_t) ~settings->current_ma) &&
+           (settings->check == claw_current_settings_check(
+                                   settings->current_ma,
+                                   settings->current_inverse));
+}
+
+static void claw_current_settings_init(void)
+{
+    claw_current_settings_t settings;
+    uint16_t current_ma = UI_CLAW_CURRENT_DEFAULT_MA;
+
+    if (ospi_flash_read(UI_CLAW_SETTINGS_OFFSET, &settings, sizeof(settings)) &&
+        claw_current_settings_valid(&settings)) {
+        current_ma = settings.current_ma;
+    }
+
+    taskENTER_CRITICAL();
+    g_claw_close_current_ma = current_ma;
+    g_claw_current_request_pending = true;
+    taskEXIT_CRITICAL();
+}
+
+static bool claw_current_settings_save(uint16_t current_ma)
+{
+    claw_current_settings_t settings;
+    claw_current_settings_t verify;
+
+    if (current_ma > UI_CLAW_CURRENT_MAX_MA) {
+        return false;
+    }
+
+    settings.magic = UI_CLAW_SETTINGS_MAGIC;
+    settings.version = UI_CLAW_SETTINGS_VERSION;
+    settings.current_ma = current_ma;
+    settings.current_inverse = (uint16_t) ~current_ma;
+    settings.check = claw_current_settings_check(current_ma,
+                                                 settings.current_inverse);
+    settings.reserved = 0xFFFFFFFFUL;
+
+    return ospi_flash_erase(UI_CLAW_SETTINGS_OFFSET, OSPI_FLASH_SECTOR_SIZE) &&
+           ospi_flash_write(UI_CLAW_SETTINGS_OFFSET, &settings, sizeof(settings)) &&
+           ospi_flash_read(UI_CLAW_SETTINGS_OFFSET, &verify, sizeof(verify)) &&
+           (0 == memcmp(&settings, &verify, sizeof(settings)));
+}
 
 static void init_debug_preview(void)
 {
@@ -414,6 +496,11 @@ static void prepare_screen(void)
     g_axis_coordinate_label = NULL;
     g_arm_debug_toggle_button = NULL;
     g_arm_debug_status_label = NULL;
+    g_claw_current_input = NULL;
+    g_claw_current_status_label = NULL;
+    g_claw_current_dialog = NULL;
+    g_claw_current_editor = NULL;
+    g_claw_current_keyboard = NULL;
     g_task_preview_image = NULL;
     g_task_camera_title = NULL;
     g_task_camera_status = NULL;
@@ -884,6 +971,110 @@ static void on_arm_debug_toggle(lv_event_t * e)
             lv_label_set_text(g_arm_debug_status_label, "Applying setting...");
             lv_obj_set_style_text_color(g_arm_debug_status_label,
                                         lv_color_hex(0x77818C), 0);
+        }
+    }
+}
+
+static void update_claw_current_widget(void)
+{
+    if (g_claw_current_input != NULL) {
+        char text[8];
+
+        (void) snprintf(text, sizeof(text), "%u",
+                        (unsigned int) g_claw_close_current_ma);
+        lv_textarea_set_text(g_claw_current_input, text);
+    }
+}
+
+static bool parse_claw_current(char const * text, uint16_t * p_current_ma)
+{
+    char * end;
+    long value;
+
+    if ((NULL == text) || ('\0' == text[0]) || (NULL == p_current_ma)) {
+        return false;
+    }
+
+    value = strtol(text, &end, 10);
+    if (('\0' != *end) || (value < 0L) ||
+        (value > (long) UI_CLAW_CURRENT_MAX_MA)) {
+        return false;
+    }
+
+    *p_current_ma = (uint16_t) value;
+    return true;
+}
+
+static void on_claw_current_input(lv_event_t * e)
+{
+    if ((LV_EVENT_CLICKED == lv_event_get_code(e)) &&
+        (NULL != g_claw_current_input) &&
+        (NULL != g_claw_current_dialog) &&
+        (NULL != g_claw_current_editor) &&
+        (NULL != g_claw_current_keyboard)) {
+        lv_textarea_set_text(g_claw_current_editor,
+                             lv_textarea_get_text(g_claw_current_input));
+        lv_keyboard_set_textarea(g_claw_current_keyboard,
+                                 g_claw_current_editor);
+        lv_obj_remove_flag(g_claw_current_dialog, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(g_claw_current_dialog);
+    }
+}
+
+static void on_claw_current_keyboard(lv_event_t * e)
+{
+    lv_event_code_t const code = lv_event_get_code(e);
+
+    if (((LV_EVENT_READY == code) || (LV_EVENT_CANCEL == code)) &&
+        (NULL != g_claw_current_dialog) &&
+        (NULL != g_claw_current_editor) &&
+        (NULL != g_claw_current_keyboard)) {
+        if ((LV_EVENT_READY == code) && (NULL != g_claw_current_input)) {
+            lv_textarea_set_text(g_claw_current_input,
+                                 lv_textarea_get_text(g_claw_current_editor));
+        }
+        lv_keyboard_set_textarea(g_claw_current_keyboard, NULL);
+        lv_obj_add_flag(g_claw_current_dialog, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void on_claw_current_save(lv_event_t * e)
+{
+    if (LV_EVENT_CLICKED == lv_event_get_code(e)) {
+        uint16_t new_current;
+        bool const valid = (NULL != g_claw_current_input) &&
+                           parse_claw_current(
+                               lv_textarea_get_text(g_claw_current_input),
+                               &new_current);
+
+        if (!valid) {
+            if (g_claw_current_status_label != NULL) {
+                lv_label_set_text(g_claw_current_status_label,
+                                  "Enter a value from 0 to 5000 mA");
+                lv_obj_set_style_text_color(g_claw_current_status_label,
+                                            lv_color_hex(0xD83B35), 0);
+            }
+            return;
+        }
+
+        if (!claw_current_settings_save(new_current)) {
+            lv_label_set_text(g_claw_current_status_label, "Flash save failed");
+            lv_obj_set_style_text_color(g_claw_current_status_label,
+                                        lv_color_hex(0xD83B35), 0);
+            return;
+        }
+
+        taskENTER_CRITICAL();
+        g_claw_close_current_ma = new_current;
+        g_claw_current_request_pending = true;
+        taskEXIT_CRITICAL();
+        update_claw_current_widget();
+
+        if (g_claw_current_status_label != NULL) {
+            lv_label_set_text(g_claw_current_status_label,
+                              "Saved to flash; applying...");
+            lv_obj_set_style_text_color(g_claw_current_status_label,
+                                        lv_color_hex(0x1F7A5A), 0);
         }
     }
 }
@@ -1623,6 +1814,7 @@ void fruit_ui_create(void)
     g_arm_debug_stop_at_target = false;
     g_arm_debug_stop_request_pending = false;
     app_detection_settings_init();
+    claw_current_settings_init();
     init_debug_preview();
     init_styles();
     show_home();
@@ -2063,45 +2255,101 @@ static void update_arm_telemetry_widgets(void)
 
 static void show_arm_debug(void)
 {
-    lv_obj_t * card;
-    lv_obj_t * description;
+    lv_obj_t * debug_card;
+    lv_obj_t * current_card;
 
     prepare_screen();
     g_current_page = UI_PAGE_ARM_DEBUG;
 
     add_small_button(page_screen(), "BACK", 12, 12, 68, 30,
                      on_arm_debug_back, NULL);
-    add_label(page_screen(), "ARM DEBUG",
+    add_label(page_screen(), "ARM SETTINGS",
               lv_color_hex(0x20303F), &lv_font_montserrat_16,
               LV_ALIGN_TOP_MID, 0, 18);
 
-    card = add_card(page_screen(), 24, 58, 432, 220);
-    add_label(card, "TASK STOP POSITION",
-              lv_color_hex(0x20303F), &lv_font_montserrat_16,
-              LV_ALIGN_TOP_MID, 0, 2);
-
-    description = add_label(card,
-                            "When enabled, Task moves to the detected target and stops.\n"
-                            "Gripper, transfer, drop and auto-zero are skipped.",
-                            lv_color_hex(0x435466), &lv_font_montserrat_14,
-                            LV_ALIGN_TOP_LEFT, 8, 42);
-    lv_obj_set_width(description, 396);
-    lv_label_set_long_mode(description, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_text_align(description, LV_TEXT_ALIGN_CENTER, 0);
+    debug_card = add_card(page_screen(), 24, 56, 432, 112);
+    add_label(debug_card, "TASK STOP AT TARGET",
+              lv_color_hex(0x20303F), &lv_font_montserrat_14,
+              LV_ALIGN_TOP_LEFT, 8, 2);
+    add_label(debug_card, "Debug only: skip grip, transfer, drop and zero",
+              lv_color_hex(0x435466), &lv_font_montserrat_10,
+              LV_ALIGN_TOP_LEFT, 8, 26);
 
     g_arm_debug_toggle_button =
-        add_button(card, "STOP AT TARGET: OFF", 66, 118, 280, 48,
+        add_button(debug_card, "STOP AT TARGET: OFF", 76, 50, 260, 36,
                    on_arm_debug_toggle, NULL);
     update_arm_debug_toggle_button();
 
-    g_arm_debug_status_label = add_label(page_screen(),
-                                          g_arm_debug_stop_at_target ?
-                                          "Debug mode enabled" : "Normal pick mode",
-                                          g_arm_debug_stop_at_target ?
-                                          lv_color_hex(0xD67B20) :
-                                          lv_color_hex(0x1F7A5A),
-                                          &lv_font_montserrat_12,
-                                          LV_ALIGN_BOTTOM_MID, 0, -16);
+    g_arm_debug_status_label = add_label(debug_card,
+                                           g_arm_debug_stop_at_target ?
+                                           "Debug mode enabled" : "Normal pick mode",
+                                           g_arm_debug_stop_at_target ?
+                                           lv_color_hex(0xD67B20) :
+                                           lv_color_hex(0x1F7A5A),
+                                           &lv_font_montserrat_10,
+                                           LV_ALIGN_BOTTOM_MID, 0, -3);
+
+    current_card = add_card(page_screen(), 24, 178, 432, 104);
+    add_label(current_card, "GRIP CLOSE CURRENT",
+              lv_color_hex(0x20303F), &lv_font_montserrat_14,
+              LV_ALIGN_TOP_LEFT, 8, 2);
+    add_label(current_card, "Enter 0-5000 mA",
+              lv_color_hex(0x77818C), &lv_font_montserrat_10,
+              LV_ALIGN_TOP_RIGHT, -8, 5);
+    g_claw_current_input = lv_textarea_create(current_card);
+    lv_obj_set_pos(g_claw_current_input, 92, 36);
+    lv_obj_set_size(g_claw_current_input, 180, 40);
+    lv_textarea_set_one_line(g_claw_current_input, true);
+    lv_textarea_set_accepted_chars(g_claw_current_input, "0123456789");
+    lv_textarea_set_max_length(g_claw_current_input, 4U);
+    lv_textarea_set_align(g_claw_current_input, LV_TEXT_ALIGN_CENTER);
+    lv_obj_set_style_text_font(g_claw_current_input, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_all(g_claw_current_input, 8, 0);
+    lv_obj_add_event_cb(g_claw_current_input, on_claw_current_input,
+                        LV_EVENT_CLICKED, NULL);
+    add_label(current_card, "mA", lv_color_hex(0x435466),
+              &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 278, 49);
+    add_button(current_card, "SAVE", 326, 36, 82, 40,
+               on_claw_current_save, NULL);
+    update_claw_current_widget();
+
+    g_claw_current_status_label = add_label(page_screen(),
+                                             "Changes are saved after each step",
+                                             lv_color_hex(0x77818C),
+                                             &lv_font_montserrat_10,
+                                             LV_ALIGN_BOTTOM_MID, 0, -10);
+
+    g_claw_current_dialog = lv_obj_create(page_screen());
+    lv_obj_remove_style_all(g_claw_current_dialog);
+    lv_obj_set_pos(g_claw_current_dialog, 0, 0);
+    lv_obj_set_size(g_claw_current_dialog, UI_W, UI_H);
+    lv_obj_set_style_bg_color(g_claw_current_dialog, lv_color_hex(0xF4F7F5), 0);
+    lv_obj_set_style_bg_opa(g_claw_current_dialog, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(g_claw_current_dialog, LV_OBJ_FLAG_SCROLLABLE);
+    add_label(g_claw_current_dialog, "ENTER GRIP CURRENT  |  0 TO 5000 mA",
+              lv_color_hex(0x20303F), &lv_font_montserrat_16,
+              LV_ALIGN_TOP_MID, 0, 10);
+
+    g_claw_current_editor = lv_textarea_create(g_claw_current_dialog);
+    lv_obj_set_pos(g_claw_current_editor, 120, 38);
+    lv_obj_set_size(g_claw_current_editor, 240, 48);
+    lv_textarea_set_one_line(g_claw_current_editor, true);
+    lv_textarea_set_accepted_chars(g_claw_current_editor, "0123456789");
+    lv_textarea_set_max_length(g_claw_current_editor, 4U);
+    lv_textarea_set_align(g_claw_current_editor, LV_TEXT_ALIGN_CENTER);
+    lv_obj_set_style_text_font(g_claw_current_editor, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_all(g_claw_current_editor, 10, 0);
+
+    g_claw_current_keyboard = lv_keyboard_create(g_claw_current_dialog);
+    lv_keyboard_set_map(g_claw_current_keyboard, LV_KEYBOARD_MODE_NUMBER,
+                        g_axis_angle_keyboard_map,
+                        g_axis_angle_keyboard_ctrl);
+    lv_keyboard_set_mode(g_claw_current_keyboard, LV_KEYBOARD_MODE_NUMBER);
+    lv_obj_set_pos(g_claw_current_keyboard, 70, 96);
+    lv_obj_set_size(g_claw_current_keyboard, 340, 210);
+    lv_obj_add_event_cb(g_claw_current_keyboard, on_claw_current_keyboard,
+                        LV_EVENT_ALL, NULL);
+    lv_obj_add_flag(g_claw_current_dialog, LV_OBJ_FLAG_HIDDEN);
     finish_screen_switch();
 }
 
@@ -2128,7 +2376,7 @@ static void show_axis_angle(void)
     add_small_button(page_screen(), "CLAW OPEN", 258, 12, 98, 30,
                      on_claw_control, (void *) (uintptr_t) true);
     debug_button = add_small_button(page_screen(),
-                                    g_arm_debug_stop_at_target ? "DBG ON" : "DEBUG",
+                                    g_arm_debug_stop_at_target ? "DBG ON" : "CURRENT",
                                     392, 12, 76, 30,
                                     on_arm_debug_page, NULL);
     if (g_arm_debug_stop_at_target) {
@@ -2345,6 +2593,50 @@ void fruit_ui_notify_arm_debug_stop_result(bool enabled, bool sent)
 
         lv_label_set_text(g_arm_debug_status_label, text);
         lv_obj_set_style_text_color(g_arm_debug_status_label, color, 0);
+    }
+}
+
+bool fruit_ui_take_claw_current_request(uint16_t * p_current_ma)
+{
+    bool requested;
+
+    if (NULL == p_current_ma) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    requested = g_claw_current_request_pending;
+    if (requested) {
+        *p_current_ma = g_claw_close_current_ma;
+        g_claw_current_request_pending = false;
+    }
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+void fruit_ui_notify_claw_current_result(uint16_t current_ma, bool sent)
+{
+    if (!sent) {
+        /* CPU1 may still be starting. Keep retrying until it accepts the value. */
+        taskENTER_CRITICAL();
+        if (current_ma == g_claw_close_current_ma) {
+            g_claw_current_request_pending = true;
+        }
+        taskEXIT_CRITICAL();
+    }
+
+    if ((UI_PAGE_ARM_DEBUG == g_current_page) &&
+        (NULL != g_claw_current_status_label)) {
+        char status[48];
+
+        (void) snprintf(status, sizeof(status),
+                        sent ? "%u mA saved and applied" :
+                               "%u mA saved; apply retrying",
+                        (unsigned int) current_ma);
+        lv_label_set_text(g_claw_current_status_label, status);
+        lv_obj_set_style_text_color(g_claw_current_status_label,
+                                    sent ? lv_color_hex(0x1F7A5A) :
+                                           lv_color_hex(0xD67B20), 0);
     }
 }
 

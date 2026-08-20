@@ -12,6 +12,8 @@ bool CANFD0_Operation_3(int32_t angle);
 bool CANFD0_Operation_4(int32_t angle);
 bool CANFD0_Operation_5(int32_t angle);
 bool Claw_Control(void);
+void Claw_SetCloseCurrent(uint16_t current_ma);
+uint16_t Claw_GetCloseCurrent(void);
 bool run(void);
 bool Read_Claw(void);
 bool Claw_Open(void);
