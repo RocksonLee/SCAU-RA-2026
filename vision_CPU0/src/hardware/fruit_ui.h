@@ -67,6 +67,8 @@ bool fruit_ui_take_arm_debug_stop_request(bool * p_enabled);
 void fruit_ui_notify_arm_debug_stop_result(bool enabled, bool sent);
 bool fruit_ui_take_claw_current_request(uint16_t * p_current_ma);
 void fruit_ui_notify_claw_current_result(uint16_t current_ma, bool sent);
+bool fruit_ui_get_target_claw_current(fruit_ui_target_t target,
+                                      uint16_t        * p_current_ma);
 bool fruit_ui_take_axis_angle_request(uint8_t * p_axis, int32_t * p_angle_deg);
 void fruit_ui_notify_axis_angle_result(uint8_t axis, int32_t angle_deg, bool sent);
 bool fruit_ui_take_manual_coordinate_request(int32_t * p_x_0p1mm,
@@ -76,6 +78,15 @@ void fruit_ui_notify_manual_coordinate_result(int32_t x_0p1mm,
                                               int32_t y_0p1mm,
                                               int32_t z_0p1mm,
                                               bool sent);
+bool fruit_ui_is_manual_pixel_probe_active(void);
+void fruit_ui_complete_manual_pixel_probe(int32_t  pixel_x,
+                                          int32_t  pixel_y,
+                                          bool     found);
+bool fruit_ui_take_manual_pixel_probe_result(int32_t  * p_pixel_x,
+                                             int32_t  * p_pixel_y,
+                                             bool     * p_found);
+void fruit_ui_notify_manual_pixel_probe_capture(bool found);
+void fruit_ui_notify_manual_pixel_probe_uart(bool sent);
 bool fruit_ui_is_arm_setting_active(void);
 void fruit_ui_set_arm_telemetry(uint32_t        valid_mask,
                                 int32_t const * p_angles_0p1deg,

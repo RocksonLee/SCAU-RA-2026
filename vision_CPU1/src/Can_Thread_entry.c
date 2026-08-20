@@ -28,15 +28,16 @@ typedef enum e_ipc_coordinate_rx_state
 #define ARM_IK_ELBOW_DIRECTION  (1)
 #define ARM_JOINT_2_MAX_DEG     (10.0)
 #define ARM_JOINT_SETTLE_DELAY_MS (2000U)
+#define ARM_TASK_JOINT_5_START_DELAY_MS (5000U)
 #define ARM_CLAW_TIMEOUT_MS      (8000U)
 #define ARM_CLAW_SETTLE_DELAY_MS (3000U)
 #define ARM_CLAW_OPEN_DELAY_MS   (3000U)
 #define ARM_RESET_ZERO_DELAY_MS  (500U)
 #define ARM_DROP_AXIS_1_DEG      (0)
-#define ARM_DROP_AXIS_2_DEG      (-40)
-#define ARM_DROP_AXIS_3_DEG      (15)
+#define ARM_DROP_AXIS_2_DEG      (-38)
+#define ARM_DROP_AXIS_3_DEG      (10)
 #define ARM_DROP_AXIS_4_DEG      (0)
-#define ARM_DROP_AXIS_5_DEG      (50)
+#define ARM_DROP_AXIS_5_DEG      (30)
 #define ARM_TASK1_JOINT_5_DEG   (-30)
 #define ARM_TASK2_JOINT_5_DEG   (80)
 #define ARM_AXIS_COUNT           (5U)
@@ -84,7 +85,8 @@ static bool arm_move_to_zero(void);
 static bool arm_prepare_task(int32_t joint5_angle_deg);
 static bool arm_return_to_task_pose(void);
 
-static bool arm_move_to_point(handeye_arm_point_t const * p_point)
+static bool arm_move_to_point(handeye_arm_point_t const * p_point,
+                              uint32_t                    joint5_start_delay_ms)
 {
     double q1;
     double q2;
@@ -129,7 +131,7 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
         return false;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_SETTLE_DELAY_MS));
+    vTaskDelay(pdMS_TO_TICKS(joint5_start_delay_ms));
 
     if (!CANFD0_Operation_5((int32_t) round(q5)) || !run())
     {
@@ -181,7 +183,8 @@ static bool arm_pick_and_place(handeye_arm_point_t const * p_pick_point)
 {
     uint32_t claw_completion_snapshot;
 
-    if (!arm_move_to_point(p_pick_point))
+    if (!arm_move_to_point(p_pick_point,
+                           ARM_TASK_JOINT_5_START_DELAY_MS))
     {
         (void) arm_move_to_zero();
         return false;
@@ -912,7 +915,8 @@ void Can_Thread_entry(void *pvParameters) {
                 xTaskNotifyGive(Uart_dm_thread);
             }
 #else
-            (void) arm_move_to_point(&arm_point);
+            (void) arm_move_to_point(&arm_point,
+                                     ARM_JOINT_SETTLE_DELAY_MS);
 #endif
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;

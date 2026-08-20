@@ -49,6 +49,7 @@
 #define CAMERA_SIDE_SAMPLE_MAX_DEVIATION_PX (60)
 #define CAMERA_SIDE_MAX_FRAMES   (90U)
 #define CAMERA_SIDE_Y_MIN_PX     (50)
+#define CAMERA_MANUAL_PIXEL_PROBE_TIMEOUT_MS (5000U)
 #define CAMERA_SIDE_Z_SLOPE      (0.39999866495781267)
 #define CAMERA_SIDE_Z_OFFSET     (278.64030625867775)
 #define CAMERA_TOP_ONLY_Z_MM     (100.0)
@@ -1277,6 +1278,8 @@ void camera_stream_task(void)
     bool recognition_complete = false;
     bool camera_side_active = false;
     bool task_preview_started = false;
+    bool manual_pixel_probe_tracking = false;
+    TickType_t manual_pixel_probe_deadline = 0U;
     uint32_t consecutive_capture_failures = 0U;
 
     camera_uart_send_text("FW=CPU0_CEU_V3\r\n");
@@ -1288,7 +1291,8 @@ void camera_stream_task(void)
         vTaskDelay(pdMS_TO_TICKS(20U));
     }
 
-    /* Move joint 5 to the selected task's view before camera recognition. */
+    /* Task 2 retains its original joint-5 camera pose command. Task 1 does
+     * not queue this request in visual-only mode. */
     camera_process_task_joint5_request();
 
     (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, CAMERA_MUX_SEL, BSP_IO_LEVEL_HIGH);
@@ -1354,7 +1358,27 @@ void camera_stream_task(void)
             camera_reset_box_filters(true);
         }
 
+        bool const manual_pixel_probe_active =
+            fruit_ui_is_manual_pixel_probe_active();
         bool const debug_active = fruit_ui_is_debug_mode_active();
+        if (manual_pixel_probe_active && !manual_pixel_probe_tracking)
+        {
+            manual_pixel_probe_tracking = true;
+            manual_pixel_probe_deadline =
+                xTaskGetTickCount() +
+                pdMS_TO_TICKS(CAMERA_MANUAL_PIXEL_PROBE_TIMEOUT_MS);
+        }
+        else if (!manual_pixel_probe_active)
+        {
+            manual_pixel_probe_tracking = false;
+        }
+        if (manual_pixel_probe_active && manual_pixel_probe_tracking &&
+            ((int32_t) (xTaskGetTickCount() -
+                        manual_pixel_probe_deadline) >= 0))
+        {
+            fruit_ui_complete_manual_pixel_probe(0, 0, false);
+            continue;
+        }
         bool const debug_side_requested = debug_active &&
                                            fruit_ui_debug_side_camera_requested();
         if (debug_side_requested != camera_side_active)
@@ -1500,7 +1524,23 @@ void camera_stream_task(void)
             continue;
         }
 
-        if (fruit_ui_is_debug_mode_active())
+        if (manual_pixel_probe_active)
+        {
+            if (result_count > 0U)
+            {
+                fruit_ui_complete_manual_pixel_probe(
+                    g_detection_results[0].x,
+                    g_detection_results[0].y,
+                    true);
+            }
+            else if ((int32_t) (xTaskGetTickCount() -
+                                manual_pixel_probe_deadline) >= 0)
+            {
+                fruit_ui_complete_manual_pixel_probe(0, 0, false);
+            }
+        }
+
+        if (debug_active)
         {
             (void) camera_publish_snapshot(g_camera_frame,
                                            g_detection_results,
@@ -1604,6 +1644,9 @@ void camera_stream_task(void)
                 if (camera_pair_to_ui_detection(&pair,
                                                 &paired_detections[paired_detection_count]))
                 {
+                    /* Task 1 is visual-only; report its display plane as Z=0
+                     * without changing the calibrated X/Y projection. */
+                    paired_detections[paired_detection_count].z = 0;
                     selectable_items[paired_detection_count] = item;
                     paired_detection_count++;
                 }
@@ -1751,88 +1794,115 @@ void camera_stream_task(void)
         {
             (void) camera_set_illumination(false);
             fruit_ui_set_detections(paired_detections, paired_detection_count);
-        }
 
-        if (paired_detection_count > 0U)
-        {
-            bool item_sent[FRUIT_UI_MAX_DETECTIONS] = {false};
-            uint32_t remaining_count = paired_detection_count;
-            bool debug_interrupted = false;
-
-            while (remaining_count > 0U)
+            if (FRUIT_UI_TASK_TOP_ONLY == task_mode)
             {
-                if (fruit_ui_is_debug_mode_active())
-                {
-                    debug_interrupted = true;
-                    break;
-                }
+                recognition_complete = true;
+                camera_uart_send_text("TASK1_VISION_COMPLETE detection_stopped\r\n");
+            }
+            else
+            {
+                bool item_sent[FRUIT_UI_MAX_DETECTIONS] = {false};
+                uint32_t remaining_count = paired_detection_count;
+                bool debug_interrupted = false;
 
-                fruit_ui_target_t requested_target;
-
-                if (!fruit_ui_take_pick_request(&requested_target))
+                while (remaining_count > 0U)
                 {
-                    vTaskDelay(pdMS_TO_TICKS(10U));
-                    continue;
-                }
-
-                uint32_t selected_index = paired_detection_count;
-                for (uint32_t i = 0U; i < paired_detection_count; i++)
-                {
-                    if (!item_sent[i] &&
-                        (camera_stream_target_from_class(selectable_items[i].class_id) == requested_target))
+                    if (fruit_ui_is_debug_mode_active())
                     {
-                        selected_index = i;
+                        debug_interrupted = true;
                         break;
+                    }
+
+                    fruit_ui_target_t requested_target;
+
+                    if (!fruit_ui_take_pick_request(&requested_target))
+                    {
+                        vTaskDelay(pdMS_TO_TICKS(10U));
+                        continue;
+                    }
+
+                    uint32_t selected_index = paired_detection_count;
+                    for (uint32_t i = 0U; i < paired_detection_count; i++)
+                    {
+                        if (!item_sent[i] &&
+                            (camera_stream_target_from_class(selectable_items[i].class_id) ==
+                             requested_target))
+                        {
+                            selected_index = i;
+                            break;
+                        }
+                    }
+
+                    if (selected_index == paired_detection_count)
+                    {
+                        camera_uart_send_text("PICK_ERR target_not_found\r\n");
+                        continue;
+                    }
+
+                    ipc_camera_coordinate_batch_t selected_batch =
+                    {
+                        .batch_id = batch_id + 1U,
+                        .count = 1U,
+                        .items = {selectable_items[selected_index]},
+                    };
+                    fruit_ui_target_t const detected_target =
+                        camera_stream_target_from_class(
+                            selectable_items[selected_index].class_id);
+                    uint16_t target_current_ma;
+
+                    if (!fruit_ui_get_target_claw_current(detected_target,
+                                                          &target_current_ma))
+                    {
+                        camera_uart_send_text("PICK_ERR current_profile\r\n");
+                        continue;
+                    }
+
+                    /* Detection labels are fixed as 0=tomato, 1=green grape,
+                     * 2=purple grape. Apply that detected fruit's current
+                     * before its coordinate packet starts the Task 2 pick. */
+                    while (!ipc_detection_send_claw_current(target_current_ma))
+                    {
+                        camera_uart_send_text("PICK_ERR current_send_retry\r\n");
+                        vTaskDelay(pdMS_TO_TICKS(1000U));
+                    }
+
+                    while (!ipc_detection_send_coordinate_batch(&selected_batch))
+                    {
+                        camera_uart_send_text("PICK_ERR ipc_send_retry\r\n");
+                        vTaskDelay(pdMS_TO_TICKS(1000U));
+                    }
+
+                    fruit_ui_notify_pick_sent(requested_target);
+
+                    batch_id = selected_batch.batch_id;
+                    item_sent[selected_index] = true;
+                    remaining_count--;
+
+                    int const count = snprintf(
+                        g_uart_line,
+                        sizeof(g_uart_line),
+                        "PICK_IPC_SENT id=%lu class=%lu top=(%ld,%ld) side=(%ld,%ld)\r\n",
+                        (unsigned long) selected_batch.batch_id,
+                        (unsigned long) selectable_items[selected_index].class_id,
+                        (long) selectable_items[selected_index].top_x,
+                        (long) selectable_items[selected_index].top_y,
+                        (long) selectable_items[selected_index].side_x,
+                        (long) selectable_items[selected_index].side_y);
+                    if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
+                    {
+                        camera_uart_send_text(g_uart_line);
                     }
                 }
 
-                if (selected_index == paired_detection_count)
+                if (debug_interrupted)
                 {
-                    camera_uart_send_text("PICK_ERR target_not_found\r\n");
                     continue;
                 }
 
-                ipc_camera_coordinate_batch_t selected_batch =
-                {
-                    .batch_id = batch_id + 1U,
-                    .count = 1U,
-                    .items = {selectable_items[selected_index]},
-                };
-
-                while (!ipc_detection_send_coordinate_batch(&selected_batch))
-                {
-                    camera_uart_send_text("PICK_ERR ipc_send_retry\r\n");
-                    vTaskDelay(pdMS_TO_TICKS(1000U));
-                }
-
-                fruit_ui_notify_pick_sent(requested_target);
-
-                batch_id = selected_batch.batch_id;
-                item_sent[selected_index] = true;
-                remaining_count--;
-
-                int const count = snprintf(g_uart_line,
-                                           sizeof(g_uart_line),
-                                           "PICK_IPC_SENT id=%lu class=%lu top=(%ld,%ld) side=(%ld,%ld)\r\n",
-                                           (unsigned long) selected_batch.batch_id,
-                                           (unsigned long) selectable_items[selected_index].class_id,
-                                           (long) selectable_items[selected_index].top_x,
-                                           (long) selectable_items[selected_index].top_y,
-                                           (long) selectable_items[selected_index].side_x,
-                                           (long) selectable_items[selected_index].side_y);
-                if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
-                {
-                    camera_uart_send_text(g_uart_line);
-                }
+                recognition_complete = true;
+                camera_uart_send_text("PICK_BATCH_COMPLETE detection_stopped\r\n");
             }
-
-            if (debug_interrupted)
-            {
-                continue;
-            }
-
-            recognition_complete = true;
-            camera_uart_send_text("PICK_BATCH_COMPLETE detection_stopped\r\n");
         }
     }
 }

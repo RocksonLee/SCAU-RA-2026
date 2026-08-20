@@ -9,6 +9,7 @@ extern "C" {
 #endif
 
 bool uart_debug_send_text(char const * p_text);
+bool uart_debug_send_text_always(char const * p_text);
 void uart_debug_set_logs_enabled(bool enabled);
 bool uart_debug_logs_enabled(void);
 bool uart_debug_request_frame_dump(uint8_t const * p_rgb565_frame,

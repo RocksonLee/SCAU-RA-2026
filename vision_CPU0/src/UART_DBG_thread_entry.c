@@ -43,7 +43,8 @@ static void uart_debug_notify_thread(void)
     }
 }
 
-bool uart_debug_send_text(char const * p_text)
+static bool uart_debug_queue_text(char const * p_text,
+                                  bool         respect_log_switch)
 {
     size_t length;
     uint32_t next;
@@ -67,7 +68,7 @@ bool uart_debug_send_text(char const * p_text)
 
     taskENTER_CRITICAL();
     logs_enabled = g_logs_enabled;
-    if (logs_enabled)
+    if (logs_enabled || !respect_log_switch)
     {
         next = (g_text_queue_write + 1U) % UART_DEBUG_TEXT_QUEUE_LENGTH;
         if (next != g_text_queue_read)
@@ -87,8 +88,18 @@ bool uart_debug_send_text(char const * p_text)
     {
         uart_debug_notify_thread();
     }
-    /* Disabled logging intentionally discards text and is not an error. */
-    return queued || !logs_enabled;
+    /* Disabled ordinary logging intentionally discards text and is not an error. */
+    return queued || (respect_log_switch && !logs_enabled);
+}
+
+bool uart_debug_send_text(char const * p_text)
+{
+    return uart_debug_queue_text(p_text, true);
+}
+
+bool uart_debug_send_text_always(char const * p_text)
+{
+    return uart_debug_queue_text(p_text, false);
 }
 
 void uart_debug_set_logs_enabled(bool enabled)

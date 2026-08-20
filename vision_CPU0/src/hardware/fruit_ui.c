@@ -39,11 +39,24 @@
 #define UI_MANUAL_COORDINATE_MAX_0P1MM (9999)
 #define UI_CLAW_CURRENT_DEFAULT_MA (300U)
 #define UI_CLAW_CURRENT_MAX_MA (5000U)
+#define UI_CLAW_CURRENT_PROFILE_COUNT (3U)
 #define UI_CLAW_SETTINGS_OFFSET (0x00012000UL)
-#define UI_CLAW_SETTINGS_MAGIC (0x434D4131UL) /* "CMA1" */
-#define UI_CLAW_SETTINGS_VERSION (1U)
+#define UI_CLAW_SETTINGS_MAGIC (0x434D4132UL) /* "CMA2" */
+#define UI_CLAW_SETTINGS_VERSION (2U)
+#define UI_CLAW_SETTINGS_LEGACY_MAGIC (0x434D4131UL) /* "CMA1" */
+#define UI_CLAW_SETTINGS_LEGACY_VERSION (1U)
 
 typedef struct st_claw_current_settings
+{
+    uint32_t magic;
+    uint16_t version;
+    uint16_t current_ma[UI_CLAW_CURRENT_PROFILE_COUNT];
+    uint16_t current_inverse[UI_CLAW_CURRENT_PROFILE_COUNT];
+    uint16_t check;
+    uint16_t reserved;
+} claw_current_settings_t;
+
+typedef struct st_claw_current_settings_legacy
 {
     uint32_t magic;
     uint16_t version;
@@ -51,7 +64,7 @@ typedef struct st_claw_current_settings
     uint16_t current_inverse;
     uint16_t check;
     uint32_t reserved;
-} claw_current_settings_t;
+} claw_current_settings_legacy_t;
 
 typedef struct st_target_view
 {
@@ -88,6 +101,13 @@ typedef struct st_manual_coordinate_request
     int32_t y_0p1mm;
     int32_t z_0p1mm;
 } manual_coordinate_request_t;
+
+typedef struct st_manual_pixel_probe_result
+{
+    int32_t  pixel_x;
+    int32_t  pixel_y;
+    bool     found;
+} manual_pixel_probe_result_t;
 
 typedef enum e_target_pick_state
 {
@@ -134,13 +154,22 @@ static volatile bool g_task_joint5_request_pending;
 static volatile int32_t g_task_joint5_angle_deg;
 static volatile bool g_arm_debug_stop_at_target;
 static volatile bool g_arm_debug_stop_request_pending;
-static volatile uint16_t g_claw_close_current_ma = UI_CLAW_CURRENT_DEFAULT_MA;
+static volatile uint16_t g_claw_close_current_ma[UI_CLAW_CURRENT_PROFILE_COUNT] =
+{
+    UI_CLAW_CURRENT_DEFAULT_MA,
+    UI_CLAW_CURRENT_DEFAULT_MA,
+    UI_CLAW_CURRENT_DEFAULT_MA,
+};
+static volatile uint16_t g_claw_current_request_ma = UI_CLAW_CURRENT_DEFAULT_MA;
 static volatile bool g_claw_current_request_pending;
 static volatile axis_angle_request_t g_axis_angle_queue[UI_AXIS_ANGLE_QUEUE_LENGTH];
 static volatile uint32_t g_axis_angle_queue_write;
 static volatile uint32_t g_axis_angle_queue_read;
 static volatile manual_coordinate_request_t g_manual_coordinate_request;
 static volatile bool g_manual_coordinate_request_pending;
+static volatile bool g_manual_pixel_probe_active;
+static volatile manual_pixel_probe_result_t g_manual_pixel_probe_result;
+static volatile bool g_manual_pixel_probe_result_pending;
 static uint32_t g_arm_telemetry_valid_mask;
 static int32_t g_arm_telemetry_angles_0p1deg[UI_AXIS_COUNT];
 static bool g_arm_coordinate_valid;
@@ -203,11 +232,13 @@ static lv_obj_t * g_manual_coordinate_current_label;
 static lv_obj_t * g_arm_debug_toggle_button;
 static lv_obj_t * g_arm_debug_status_label;
 static lv_obj_t * g_claw_current_input;
+static lv_obj_t * g_claw_current_profile_buttons[UI_CLAW_CURRENT_PROFILE_COUNT];
 static lv_obj_t * g_claw_current_status_label;
 static lv_obj_t * g_claw_current_dialog;
 static lv_obj_t * g_claw_current_editor;
 static lv_obj_t * g_claw_current_dialog_status;
 static bool g_claw_current_edit_replace;
+static fruit_ui_target_t g_claw_current_edit_target = FRUIT_UI_TARGET_TOMATO;
 static uint32_t g_axis_angle_edit_index;
 static uint32_t g_manual_coordinate_edit_index;
 static lv_obj_t * g_task_preview_image;
@@ -263,59 +294,129 @@ static void show_axis_angle(void);
 static void show_manual_coordinate(void);
 static void show_arm_debug(void);
 
-static uint16_t claw_current_settings_check(uint16_t current_ma,
-                                            uint16_t current_inverse)
+static bool claw_current_profile_index(fruit_ui_target_t target,
+                                       uint32_t        * p_index)
 {
-    return (uint16_t) ((uint16_t) UI_CLAW_SETTINGS_MAGIC ^
-                       (uint16_t) (UI_CLAW_SETTINGS_MAGIC >> 16U) ^
-                       UI_CLAW_SETTINGS_VERSION ^ current_ma ^
-                       current_inverse ^ 0xA55AU);
+    if (NULL == p_index) {
+        return false;
+    }
+
+    switch (target) {
+        case FRUIT_UI_TARGET_TOMATO:       *p_index = 0U; return true;
+        case FRUIT_UI_TARGET_GREEN_GRAPE:  *p_index = 1U; return true;
+        case FRUIT_UI_TARGET_PURPLE_GRAPE: *p_index = 2U; return true;
+        default: return false;
+    }
+}
+
+static uint16_t claw_current_settings_check(claw_current_settings_t const * settings)
+{
+    uint16_t check = (uint16_t) ((uint16_t) UI_CLAW_SETTINGS_MAGIC ^
+                                 (uint16_t) (UI_CLAW_SETTINGS_MAGIC >> 16U) ^
+                                 UI_CLAW_SETTINGS_VERSION ^ 0xA55AU);
+
+    if (NULL != settings) {
+        for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+            check = (uint16_t) (check ^ settings->current_ma[i] ^
+                                settings->current_inverse[i]);
+        }
+    }
+
+    return check;
 }
 
 static bool claw_current_settings_valid(claw_current_settings_t const * settings)
 {
-    return (NULL != settings) &&
-           (UI_CLAW_SETTINGS_MAGIC == settings->magic) &&
-           (UI_CLAW_SETTINGS_VERSION == settings->version) &&
+    if ((NULL == settings) ||
+        (UI_CLAW_SETTINGS_MAGIC != settings->magic) ||
+        (UI_CLAW_SETTINGS_VERSION != settings->version) ||
+        (settings->check != claw_current_settings_check(settings))) {
+        return false;
+    }
+
+    for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+        if ((settings->current_ma[i] > UI_CLAW_CURRENT_MAX_MA) ||
+            (settings->current_inverse[i] !=
+             (uint16_t) ~settings->current_ma[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool claw_current_legacy_valid(claw_current_settings_legacy_t const * settings)
+{
+    if (NULL == settings) {
+        return false;
+    }
+
+    uint16_t const check =
+        (uint16_t) ((uint16_t) UI_CLAW_SETTINGS_LEGACY_MAGIC ^
+                    (uint16_t) (UI_CLAW_SETTINGS_LEGACY_MAGIC >> 16U) ^
+                    UI_CLAW_SETTINGS_LEGACY_VERSION ^ settings->current_ma ^
+                    settings->current_inverse ^ 0xA55AU);
+
+    return (UI_CLAW_SETTINGS_LEGACY_MAGIC == settings->magic) &&
+           (UI_CLAW_SETTINGS_LEGACY_VERSION == settings->version) &&
            (settings->current_ma <= UI_CLAW_CURRENT_MAX_MA) &&
            (settings->current_inverse == (uint16_t) ~settings->current_ma) &&
-           (settings->check == claw_current_settings_check(
-                                   settings->current_ma,
-                                   settings->current_inverse));
+           (settings->check == check);
 }
 
 static void claw_current_settings_init(void)
 {
     claw_current_settings_t settings;
-    uint16_t current_ma = UI_CLAW_CURRENT_DEFAULT_MA;
+    claw_current_settings_legacy_t legacy;
+    uint16_t current_ma[UI_CLAW_CURRENT_PROFILE_COUNT] =
+    {
+        UI_CLAW_CURRENT_DEFAULT_MA,
+        UI_CLAW_CURRENT_DEFAULT_MA,
+        UI_CLAW_CURRENT_DEFAULT_MA,
+    };
 
     if (ospi_flash_read(UI_CLAW_SETTINGS_OFFSET, &settings, sizeof(settings)) &&
         claw_current_settings_valid(&settings)) {
-        current_ma = settings.current_ma;
+        for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+            current_ma[i] = settings.current_ma[i];
+        }
+    } else if (ospi_flash_read(UI_CLAW_SETTINGS_OFFSET, &legacy, sizeof(legacy)) &&
+               claw_current_legacy_valid(&legacy)) {
+        for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+            current_ma[i] = legacy.current_ma;
+        }
     }
 
     taskENTER_CRITICAL();
-    g_claw_close_current_ma = current_ma;
+    for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+        g_claw_close_current_ma[i] = current_ma[i];
+    }
+    g_claw_current_request_ma = current_ma[0];
     g_claw_current_request_pending = true;
     taskEXIT_CRITICAL();
 }
 
-static bool claw_current_settings_save(uint16_t current_ma)
+static bool claw_current_settings_save(
+    uint16_t const current_ma[UI_CLAW_CURRENT_PROFILE_COUNT])
 {
-    claw_current_settings_t settings;
+    claw_current_settings_t settings = {0};
     claw_current_settings_t verify;
 
-    if (current_ma > UI_CLAW_CURRENT_MAX_MA) {
+    if (NULL == current_ma) {
         return false;
     }
 
     settings.magic = UI_CLAW_SETTINGS_MAGIC;
     settings.version = UI_CLAW_SETTINGS_VERSION;
-    settings.current_ma = current_ma;
-    settings.current_inverse = (uint16_t) ~current_ma;
-    settings.check = claw_current_settings_check(current_ma,
-                                                 settings.current_inverse);
-    settings.reserved = 0xFFFFFFFFUL;
+    for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+        if (current_ma[i] > UI_CLAW_CURRENT_MAX_MA) {
+            return false;
+        }
+        settings.current_ma[i] = current_ma[i];
+        settings.current_inverse[i] = (uint16_t) ~current_ma[i];
+    }
+    settings.check = claw_current_settings_check(&settings);
+    settings.reserved = 0xFFFFU;
 
     return ospi_flash_erase(UI_CLAW_SETTINGS_OFFSET, OSPI_FLASH_SECTOR_SIZE) &&
            ospi_flash_write(UI_CLAW_SETTINGS_OFFSET, &settings, sizeof(settings)) &&
@@ -546,6 +647,9 @@ static void prepare_screen(void)
     g_arm_debug_toggle_button = NULL;
     g_arm_debug_status_label = NULL;
     g_claw_current_input = NULL;
+    for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+        g_claw_current_profile_buttons[i] = NULL;
+    }
     g_claw_current_status_label = NULL;
     g_claw_current_dialog = NULL;
     g_claw_current_editor = NULL;
@@ -927,6 +1031,8 @@ static void cancel_activity_for_home(void)
     g_debug_side_camera_requested = false;
     g_debug_light_requested = false;
     g_frame_dump_request_pending = false;
+    g_manual_pixel_probe_active = false;
+    g_manual_pixel_probe_result_pending = false;
     g_task_joint5_request_pending = false;
     g_task_mode = FRUIT_UI_TASK_NONE;
     g_task_generation++;
@@ -950,8 +1056,12 @@ static void on_task_select(lv_event_t * e)
             g_task_mode = mode;
             g_task_generation++;
             g_task_side_camera = false;
-            g_task_joint5_angle_deg = (FRUIT_UI_TASK_TOP_ONLY == mode) ? -30 : 80;
-            g_task_joint5_request_pending = true;
+            if (FRUIT_UI_TASK_TOP_AND_SIDE == mode) {
+                g_task_joint5_angle_deg = 80;
+                g_task_joint5_request_pending = true;
+            } else {
+                g_task_joint5_request_pending = false;
+            }
             taskEXIT_CRITICAL();
 
             memset(g_pick_state, 0, sizeof(g_pick_state));
@@ -1007,6 +1117,8 @@ static void on_manual_coordinate_page(lv_event_t * e)
         taskENTER_CRITICAL();
         g_debug_side_camera_requested = false;
         g_debug_light_requested = false;
+        g_manual_pixel_probe_active = false;
+        g_manual_pixel_probe_result_pending = false;
         taskEXIT_CRITICAL();
         show_manual_coordinate();
     }
@@ -1062,12 +1174,52 @@ static void on_arm_debug_toggle(lv_event_t * e)
 
 static void update_claw_current_widget(void)
 {
+    uint32_t index;
+
     if (g_claw_current_input != NULL) {
         char text[8];
 
+        if (!claw_current_profile_index(g_claw_current_edit_target, &index)) {
+            index = 0U;
+        }
         (void) snprintf(text, sizeof(text), "%u",
-                        (unsigned int) g_claw_close_current_ma);
+                        (unsigned int) g_claw_close_current_ma[index]);
         lv_textarea_set_text(g_claw_current_input, text);
+    }
+
+    for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+        if (NULL != g_claw_current_profile_buttons[i]) {
+            fruit_ui_target_t const target = (0U == i) ? FRUIT_UI_TARGET_TOMATO :
+                                             ((1U == i) ? FRUIT_UI_TARGET_GREEN_GRAPE :
+                                                          FRUIT_UI_TARGET_PURPLE_GRAPE);
+            lv_obj_set_style_bg_color(
+                g_claw_current_profile_buttons[i],
+                (target == g_claw_current_edit_target) ?
+                    lv_color_hex(0x1F7A5A) : lv_color_hex(0x31445A),
+                0);
+        }
+    }
+}
+
+static void on_claw_current_profile(lv_event_t * e)
+{
+    if (LV_EVENT_CLICKED == lv_event_get_code(e)) {
+        fruit_ui_target_t const target =
+            (fruit_ui_target_t) (uintptr_t) lv_event_get_user_data(e);
+        uint32_t index;
+
+        if (!claw_current_profile_index(target, &index)) {
+            return;
+        }
+
+        g_claw_current_edit_target = target;
+        update_claw_current_widget();
+        if (NULL != g_claw_current_status_label) {
+            lv_label_set_text(g_claw_current_status_label,
+                              "Select current, then SAVE to flash");
+            lv_obj_set_style_text_color(g_claw_current_status_label,
+                                        lv_color_hex(0x77818C), 0);
+        }
     }
 }
 
@@ -1160,12 +1312,29 @@ static void on_claw_current_delete(lv_event_t * e)
 
 static bool apply_claw_current(uint16_t new_current)
 {
-    if (!claw_current_settings_save(new_current)) {
+    uint32_t index;
+    uint16_t current_ma[UI_CLAW_CURRENT_PROFILE_COUNT];
+
+    if (!claw_current_profile_index(g_claw_current_edit_target, &index)) {
         return false;
     }
 
     taskENTER_CRITICAL();
-    g_claw_close_current_ma = new_current;
+    for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+        current_ma[i] = g_claw_close_current_ma[i];
+    }
+    taskEXIT_CRITICAL();
+    current_ma[index] = new_current;
+
+    if (!claw_current_settings_save(current_ma)) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    for (uint32_t i = 0U; i < UI_CLAW_CURRENT_PROFILE_COUNT; i++) {
+        g_claw_close_current_ma[i] = current_ma[i];
+    }
+    g_claw_current_request_ma = new_current;
     g_claw_current_request_pending = true;
     taskEXIT_CRITICAL();
     update_claw_current_widget();
@@ -1493,6 +1662,33 @@ static void on_manual_coordinate_send(lv_event_t * e)
     }
 }
 
+static void on_manual_pixel_probe(lv_event_t * e)
+{
+    if (LV_EVENT_CLICKED == lv_event_get_code(e)) {
+        bool started = false;
+
+        taskENTER_CRITICAL();
+        if (!g_manual_pixel_probe_active) {
+            g_debug_side_camera_requested = false;
+            g_debug_light_requested = true;
+            g_manual_pixel_probe_result_pending = false;
+            g_manual_pixel_probe_active = true;
+            started = true;
+        }
+        taskEXIT_CRITICAL();
+
+        if (NULL != g_manual_coordinate_status_label) {
+            lv_label_set_text(g_manual_coordinate_status_label,
+                              started ? "Light ON - detecting one fruit..." :
+                                        "Pixel capture is already running");
+            lv_obj_set_style_text_color(g_manual_coordinate_status_label,
+                                        started ? lv_color_hex(0x1F7A5A) :
+                                                  lv_color_hex(0xD67B20),
+                                        0);
+        }
+    }
+}
+
 static void on_debug_camera_toggle(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
@@ -1761,9 +1957,12 @@ static void on_pick(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         fruit_ui_target_t const target = (fruit_ui_target_t) (uintptr_t) lv_event_get_user_data(e);
+        bool const visual_only = (FRUIT_UI_TASK_TOP_ONLY == g_task_mode);
 
-        if (!pick_flow_busy() && is_target_detected(target) &&
-            (g_pick_state[target_index(target)] == TARGET_PICK_AVAILABLE)) {
+        if (is_target_detected(target) &&
+            (visual_only ||
+             (!pick_flow_busy() &&
+              (g_pick_state[target_index(target)] == TARGET_PICK_AVAILABLE)))) {
             g_selected = target;
             show_detail(target);
         }
@@ -2018,6 +2217,7 @@ static void add_fruit_column(fruit_ui_target_t target, int32_t x)
     target_view_t * info = get_target(target);
     uint32_t const index = target_index(target);
     target_pick_state_t const state = g_pick_state[index];
+    bool const visual_only = (FRUIT_UI_TASK_TOP_ONLY == g_task_mode);
     lv_obj_t * button;
     char weight_text[32];
 
@@ -2035,7 +2235,9 @@ static void add_fruit_column(fruit_ui_target_t target, int32_t x)
     add_label(card, info->vision_name, lv_color_hex(0x687685),
               &lv_font_montserrat_10, LV_ALIGN_TOP_MID, 0, 124);
 
-    if (state == TARGET_PICK_COMPLETE) {
+    if (visual_only) {
+        (void) snprintf(weight_text, sizeof(weight_text), "DETECTED");
+    } else if (state == TARGET_PICK_COMPLETE) {
         format_weight(weight_text, sizeof(weight_text), g_locked_weight_0p1g[index]);
     } else if (state == TARGET_PICK_WEIGHING) {
         (void) snprintf(weight_text, sizeof(weight_text), "WEIGHING...");
@@ -2047,21 +2249,25 @@ static void add_fruit_column(fruit_ui_target_t target, int32_t x)
 
     add_label(card,
               weight_text,
-              (state == TARGET_PICK_AVAILABLE) ? lv_color_hex(0x77818C) : lv_color_hex(0x1F7A5A),
+              visual_only ? lv_color_hex(0x1F7A5A) :
+              ((state == TARGET_PICK_AVAILABLE) ? lv_color_hex(0x77818C) :
+                                                  lv_color_hex(0x1F7A5A)),
               &lv_font_montserrat_12,
               LV_ALIGN_TOP_MID,
               0,
               145);
 
     button = add_button(card,
-                        (state == TARGET_PICK_COMPLETE) ? "DONE" : "SELECT",
+                        visual_only ? "DETAIL" :
+                        ((state == TARGET_PICK_COMPLETE) ? "DONE" : "SELECT"),
                         22,
                         170,
                         94,
                         30,
                         on_pick,
                         (void *) (uintptr_t) target);
-    if ((state != TARGET_PICK_AVAILABLE) || pick_flow_busy()) {
+    if (!visual_only &&
+        ((state != TARGET_PICK_AVAILABLE) || pick_flow_busy())) {
         lv_obj_add_state(button, LV_STATE_DISABLED);
     }
 }
@@ -2073,9 +2279,15 @@ static void show_select(void)
     g_task_stream_active = false;
 
     add_small_button(page_screen(), "HOME", 12, 12, 68, 30, on_home, NULL);
-    add_label(page_screen(), "Pick Detected Fruit", lv_color_hex(0x20303F),
+    bool const visual_only = (FRUIT_UI_TASK_TOP_ONLY == g_task_mode);
+
+    add_label(page_screen(),
+              visual_only ? "Visual Recognition Results" : "Pick Detected Fruit",
+              lv_color_hex(0x20303F),
               &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 16);
-    add_label(page_screen(), "Choose a fruit; completed weights stay locked",
+    add_label(page_screen(),
+              visual_only ? "Task 1 only reports detected fruit" :
+                            "Choose a fruit; completed weights stay locked",
               lv_color_hex(0x687685), &lv_font_montserrat_12, LV_ALIGN_TOP_MID, 0, 46);
 
     if (g_detection_count > 0U) {
@@ -2094,7 +2306,9 @@ static void show_select(void)
                   &lv_font_montserrat_18, LV_ALIGN_CENTER, 0, 12);
     }
 
-    add_label(page_screen(), "Pick -> Confirm Pick -> IPC -> weighing",
+    add_label(page_screen(),
+              visual_only ? "No CAN motion | No weighing" :
+                            "Pick -> Confirm Pick -> IPC -> weighing",
               lv_color_hex(0x77818C), &lv_font_montserrat_10, LV_ALIGN_BOTTOM_MID, 0, -5);
     finish_screen_switch();
 }
@@ -2104,6 +2318,7 @@ static void show_detail(fruit_ui_target_t target)
     lv_obj_t * card;
     char buf[96];
     target_view_t * info = get_target(target);
+    bool const visual_only = (FRUIT_UI_TASK_TOP_ONLY == g_task_mode);
 
     prepare_screen();
     g_current_page = UI_PAGE_DETAIL;
@@ -2111,7 +2326,8 @@ static void show_detail(fruit_ui_target_t target)
 
     add_small_button(page_screen(), "BACK", 12, 12, 68, 30, on_back_select, NULL);
     add_small_button(page_screen(), "HOME", 400, 12, 68, 30, on_home, NULL);
-    add_label(page_screen(), "Target Detail", lv_color_hex(0x20303F),
+    add_label(page_screen(), visual_only ? "Detection Detail" : "Target Detail",
+              lv_color_hex(0x20303F),
               &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 16);
 
     card = add_card(page_screen(), 20, 62, 150, 82);
@@ -2129,13 +2345,18 @@ static void show_detail(fruit_ui_target_t target)
                                           &lv_font_montserrat_16, LV_ALIGN_CENTER, 0, 14);
 
     card = add_card(page_screen(), 20, 164, 440, 86);
-    add_label(card, "Robot Plan", lv_color_hex(0x77818C),
+    add_label(card, visual_only ? "Task Mode" : "Robot Plan",
+              lv_color_hex(0x77818C),
               &lv_font_montserrat_12, LV_ALIGN_TOP_LEFT, 0, 0);
-    add_label(card, "1.lock target 2.solve arm pose 3.close gripper 4.detect weight",
+    add_label(card,
+              visual_only ? "Visual recognition only - no CAN motion or weighing" :
+                            "1.lock target 2.solve arm pose 3.close gripper 4.detect weight",
               lv_color_hex(0x435466), &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 0, 30);
 
-    g_confirm_pick_button = add_button(page_screen(), "CONFIRM PICK", 138, 270, 204, 36,
-                                       on_confirm_pick, NULL);
+    if (!visual_only) {
+        g_confirm_pick_button = add_button(page_screen(), "CONFIRM PICK", 138, 270, 204, 36,
+                                           on_confirm_pick, NULL);
+    }
     finish_screen_switch();
 }
 
@@ -2532,7 +2753,7 @@ void fruit_ui_set_task_camera(bool side_camera)
 
 bool fruit_ui_is_debug_mode_active(void)
 {
-    return g_debug_mode_active;
+    return g_debug_mode_active || g_manual_pixel_probe_active;
 }
 
 bool fruit_ui_debug_side_camera_requested(void)
@@ -2621,7 +2842,7 @@ static void show_arm_debug(void)
               lv_color_hex(0x20303F), &lv_font_montserrat_16,
               LV_ALIGN_TOP_MID, 0, 18);
 
-    debug_card = add_card(page_screen(), 24, 56, 432, 112);
+    debug_card = add_card(page_screen(), 24, 52, 432, 94);
     add_label(debug_card, "TASK STOP AT TARGET",
               lv_color_hex(0x20303F), &lv_font_montserrat_14,
               LV_ALIGN_TOP_LEFT, 8, 2);
@@ -2630,7 +2851,7 @@ static void show_arm_debug(void)
               LV_ALIGN_TOP_LEFT, 8, 26);
 
     g_arm_debug_toggle_button =
-        add_button(debug_card, "STOP AT TARGET: OFF", 76, 50, 260, 36,
+        add_button(debug_card, "STOP AT TARGET: OFF", 76, 42, 260, 34,
                    on_arm_debug_toggle, NULL);
     update_arm_debug_toggle_button();
 
@@ -2643,16 +2864,29 @@ static void show_arm_debug(void)
                                            &lv_font_montserrat_10,
                                            LV_ALIGN_BOTTOM_MID, 0, -3);
 
-    current_card = add_card(page_screen(), 24, 178, 432, 104);
-    add_label(current_card, "GRIP CLOSE CURRENT",
-              lv_color_hex(0x20303F), &lv_font_montserrat_14,
-              LV_ALIGN_TOP_LEFT, 8, 2);
+    current_card = add_card(page_screen(), 24, 154, 432, 138);
+    add_label(current_card, "FRUIT GRIP CURRENT",
+               lv_color_hex(0x20303F), &lv_font_montserrat_14,
+               LV_ALIGN_TOP_LEFT, 8, 2);
     add_label(current_card, "Enter 0-5000 mA",
               lv_color_hex(0x77818C), &lv_font_montserrat_10,
               LV_ALIGN_TOP_RIGHT, -8, 5);
+    g_claw_current_profile_buttons[0] =
+        add_small_button(current_card, "0 TOMATO", 8, 28, 120, 28,
+                         on_claw_current_profile,
+                         (void *) (uintptr_t) FRUIT_UI_TARGET_TOMATO);
+    g_claw_current_profile_buttons[1] =
+        add_small_button(current_card, "1 GREEN", 136, 28, 120, 28,
+                         on_claw_current_profile,
+                         (void *) (uintptr_t) FRUIT_UI_TARGET_GREEN_GRAPE);
+    g_claw_current_profile_buttons[2] =
+        add_small_button(current_card, "2 PURPLE", 264, 28, 120, 28,
+                         on_claw_current_profile,
+                         (void *) (uintptr_t) FRUIT_UI_TARGET_PURPLE_GRAPE);
+
     g_claw_current_input = lv_textarea_create(current_card);
-    lv_obj_set_pos(g_claw_current_input, 92, 36);
-    lv_obj_set_size(g_claw_current_input, 180, 40);
+    lv_obj_set_pos(g_claw_current_input, 60, 68);
+    lv_obj_set_size(g_claw_current_input, 180, 38);
     lv_textarea_set_one_line(g_claw_current_input, true);
     lv_textarea_set_accepted_chars(g_claw_current_input, "0123456789");
     lv_textarea_set_max_length(g_claw_current_input, 4U);
@@ -2662,16 +2896,16 @@ static void show_arm_debug(void)
     lv_obj_add_event_cb(g_claw_current_input, on_claw_current_input,
                         LV_EVENT_CLICKED, NULL);
     add_label(current_card, "mA", lv_color_hex(0x435466),
-              &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 278, 49);
-    add_button(current_card, "SAVE", 326, 36, 82, 40,
-               on_claw_current_save, NULL);
+              &lv_font_montserrat_14, LV_ALIGN_TOP_LEFT, 248, 80);
+    add_button(current_card, "SAVE", 310, 68, 82, 38,
+                on_claw_current_save, NULL);
     update_claw_current_widget();
 
     g_claw_current_status_label = add_label(page_screen(),
                                              "Enter a value and tap SAVE",
                                              lv_color_hex(0x77818C),
                                              &lv_font_montserrat_10,
-                                             LV_ALIGN_BOTTOM_MID, 0, -10);
+                                             LV_ALIGN_BOTTOM_MID, 0, -3);
 
     g_claw_current_dialog = lv_obj_create(page_screen());
     lv_obj_remove_style_all(g_claw_current_dialog);
@@ -2682,7 +2916,7 @@ static void show_arm_debug(void)
     lv_obj_remove_flag(g_claw_current_dialog, LV_OBJ_FLAG_SCROLLABLE);
     add_small_button(g_claw_current_dialog, "BACK", 10, 8, 68, 30,
                      on_claw_current_dialog_back, NULL);
-    add_label(g_claw_current_dialog, "GRIP CURRENT  |  0 TO 5000 mA",
+    add_label(g_claw_current_dialog, "FRUIT GRIP CURRENT  |  0 TO 5000 mA",
               lv_color_hex(0x20303F), &lv_font_montserrat_16,
               LV_ALIGN_TOP_MID, 18, 14);
 
@@ -2742,6 +2976,8 @@ static void show_axis_angle(void)
     g_debug_mode_active = false;
     g_debug_side_camera_requested = false;
     g_debug_light_requested = false;
+    g_manual_pixel_probe_active = false;
+    g_manual_pixel_probe_result_pending = false;
     taskEXIT_CRITICAL();
 
     add_small_button(page_screen(), "HOME", 12, 12, 68, 30, on_back_debug, NULL);
@@ -2859,6 +3095,8 @@ static void show_manual_coordinate(void)
     g_debug_mode_active = false;
     g_debug_side_camera_requested = false;
     g_debug_light_requested = false;
+    g_manual_pixel_probe_active = false;
+    g_manual_pixel_probe_result_pending = false;
     taskEXIT_CRITICAL();
 
     add_small_button(page_screen(), "HOME", 12, 12, 68, 30,
@@ -2902,8 +3140,10 @@ static void show_manual_coordinate(void)
         }
     }
 
-    add_button(page_screen(), "SOLVE AND MOVE", 120, 230, 240, 40,
+    add_button(page_screen(), "SOLVE + MOVE", 24, 230, 208, 40,
                on_manual_coordinate_send, NULL);
+    add_button(page_screen(), "CAPTURE PX + FK", 248, 230, 208, 40,
+               on_manual_pixel_probe, NULL);
     g_manual_coordinate_current_label =
         add_label(page_screen(), "CURRENT: X --.-  Y --.-  Z --.- mm",
                   lv_color_hex(0x20303F), &lv_font_montserrat_10,
@@ -3101,7 +3341,7 @@ bool fruit_ui_take_claw_current_request(uint16_t * p_current_ma)
     taskENTER_CRITICAL();
     requested = g_claw_current_request_pending;
     if (requested) {
-        *p_current_ma = g_claw_close_current_ma;
+        *p_current_ma = g_claw_current_request_ma;
         g_claw_current_request_pending = false;
     }
     taskEXIT_CRITICAL();
@@ -3113,7 +3353,7 @@ void fruit_ui_notify_claw_current_result(uint16_t current_ma, bool sent)
     if (!sent) {
         /* CPU1 may still be starting. Keep retrying until it accepts the value. */
         taskENTER_CRITICAL();
-        if (current_ma == g_claw_close_current_ma) {
+        if (current_ma == g_claw_current_request_ma) {
             g_claw_current_request_pending = true;
         }
         taskEXIT_CRITICAL();
@@ -3220,6 +3460,98 @@ void fruit_ui_notify_manual_coordinate_result(int32_t x_0p1mm,
                            "X %s  Y %s  Z %s send failed",
                     x, y, z);
     lv_label_set_text(g_manual_coordinate_status_label, status);
+    lv_obj_set_style_text_color(g_manual_coordinate_status_label,
+                                sent ? lv_color_hex(0x1F7A5A) :
+                                       lv_color_hex(0xD83B35),
+                                0);
+}
+
+bool fruit_ui_get_target_claw_current(fruit_ui_target_t target,
+                                      uint16_t        * p_current_ma)
+{
+    uint32_t index;
+
+    if ((NULL == p_current_ma) ||
+        !claw_current_profile_index(target, &index)) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    *p_current_ma = g_claw_close_current_ma[index];
+    taskEXIT_CRITICAL();
+    return true;
+}
+
+bool fruit_ui_is_manual_pixel_probe_active(void)
+{
+    return g_manual_pixel_probe_active;
+}
+
+void fruit_ui_complete_manual_pixel_probe(int32_t  pixel_x,
+                                          int32_t  pixel_y,
+                                          bool     found)
+{
+    taskENTER_CRITICAL();
+    if (g_manual_pixel_probe_active) {
+        g_manual_pixel_probe_result.pixel_x = pixel_x;
+        g_manual_pixel_probe_result.pixel_y = pixel_y;
+        g_manual_pixel_probe_result.found = found;
+        g_manual_pixel_probe_result_pending = true;
+        g_manual_pixel_probe_active = false;
+        g_debug_light_requested = false;
+    }
+    taskEXIT_CRITICAL();
+}
+
+bool fruit_ui_take_manual_pixel_probe_result(int32_t  * p_pixel_x,
+                                             int32_t  * p_pixel_y,
+                                             bool     * p_found)
+{
+    bool pending;
+
+    if ((NULL == p_pixel_x) || (NULL == p_pixel_y) ||
+        (NULL == p_found)) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    pending = g_manual_pixel_probe_result_pending;
+    if (pending) {
+        *p_pixel_x = g_manual_pixel_probe_result.pixel_x;
+        *p_pixel_y = g_manual_pixel_probe_result.pixel_y;
+        *p_found = g_manual_pixel_probe_result.found;
+        g_manual_pixel_probe_result_pending = false;
+    }
+    taskEXIT_CRITICAL();
+    return pending;
+}
+
+void fruit_ui_notify_manual_pixel_probe_capture(bool found)
+{
+    if ((UI_PAGE_MANUAL_COORDINATE != g_current_page) ||
+        (NULL == g_manual_coordinate_status_label)) {
+        return;
+    }
+
+    lv_label_set_text(g_manual_coordinate_status_label,
+                      found ? "Fruit found - reading joint FK..." :
+                              "No fruit detected - try again");
+    lv_obj_set_style_text_color(g_manual_coordinate_status_label,
+                                found ? lv_color_hex(0x1F7A5A) :
+                                        lv_color_hex(0xD83B35),
+                                0);
+}
+
+void fruit_ui_notify_manual_pixel_probe_uart(bool sent)
+{
+    if ((UI_PAGE_MANUAL_COORDINATE != g_current_page) ||
+        (NULL == g_manual_coordinate_status_label)) {
+        return;
+    }
+
+    lv_label_set_text(g_manual_coordinate_status_label,
+                      sent ? "Pixel + joint FK sent by UART" :
+                             "Pixel/FK UART report failed");
     lv_obj_set_style_text_color(g_manual_coordinate_status_label,
                                 sent ? lv_color_hex(0x1F7A5A) :
                                        lv_color_hex(0xD83B35),

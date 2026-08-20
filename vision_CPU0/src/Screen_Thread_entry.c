@@ -1,6 +1,8 @@
 #include "Screen_Thread.h"
 #include "Touch_Thread.h"
 
+#include <stdio.h>
+
 #include "hardware/fruit_ui.h"
 #include "hardware/ipc_detection_tx.h"
 #include "hardware/lcd_spi.h"
@@ -9,6 +11,7 @@
 #include "hardware/ospi_flash.h"
 #include "hardware/ui_assets.h"
 #include "ipc_detection_protocol.h"
+#include "uart_debug.h"
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wsign-conversion"
@@ -18,6 +21,8 @@
 extern TaskHandle_t Touch_Thread;
 
 #define ARM_TELEMETRY_POLL_MS (500U)
+#define MANUAL_PIXEL_PROBE_TELEMETRY_TIMEOUT_MS (1500U)
+#define MANUAL_PIXEL_PROBE_UART_LINE_BYTES       (192U)
 
 typedef enum e_arm_telemetry_rx_state
 {
@@ -36,6 +41,11 @@ static volatile int32_t g_arm_telemetry_pending_x_0p1mm;
 static volatile int32_t g_arm_telemetry_pending_y_0p1mm;
 static volatile int32_t g_arm_telemetry_pending_z_0p1mm;
 static volatile bool g_arm_telemetry_update_pending;
+static bool g_manual_pixel_probe_report_pending;
+static int32_t g_manual_pixel_probe_x;
+static int32_t g_manual_pixel_probe_y;
+static TickType_t g_manual_pixel_probe_deadline;
+static char g_manual_pixel_probe_uart_line[MANUAL_PIXEL_PROBE_UART_LINE_BYTES];
 
 void ipc0_callback(ipc_callback_args_t * p_args)
 {
@@ -211,12 +221,55 @@ static void screen_process_arm_telemetry(void)
 
 	if (update_pending)
 	{
+		bool const coordinate_valid = (valid_mask & 0x07U) == 0x07U;
+
 		fruit_ui_set_arm_telemetry(valid_mask,
 		                           angles,
-		                           (valid_mask & 0x07U) == 0x07U,
+		                           coordinate_valid,
 		                           x_0p1mm,
 		                           y_0p1mm,
 		                           z_0p1mm);
+
+		if (g_manual_pixel_probe_report_pending)
+		{
+			bool queued = false;
+			int count;
+
+			if (coordinate_valid)
+			{
+				count = snprintf(
+					g_manual_pixel_probe_uart_line,
+					sizeof(g_manual_pixel_probe_uart_line),
+					"PIXEL_FK pixel=(%ld,%ld) xyz_0p1mm=(%ld,%ld,%ld)\r\n",
+					(long) g_manual_pixel_probe_x,
+					(long) g_manual_pixel_probe_y,
+					(long) x_0p1mm, (long) y_0p1mm, (long) z_0p1mm);
+				if ((count > 0) &&
+				    ((size_t) count < sizeof(g_manual_pixel_probe_uart_line)))
+				{
+					queued = uart_debug_send_text_always(
+						g_manual_pixel_probe_uart_line);
+				}
+			}
+			else
+			{
+				count = snprintf(g_manual_pixel_probe_uart_line,
+				                 sizeof(g_manual_pixel_probe_uart_line),
+				                 "PIXEL_FK_ERROR px=(%ld,%ld) valid_mask=0x%02lX\r\n",
+				                 (long) g_manual_pixel_probe_x,
+				                 (long) g_manual_pixel_probe_y,
+				                 (unsigned long) valid_mask);
+				if ((count > 0) &&
+				    ((size_t) count < sizeof(g_manual_pixel_probe_uart_line)))
+				{
+					(void) uart_debug_send_text_always(
+						g_manual_pixel_probe_uart_line);
+				}
+			}
+
+			g_manual_pixel_probe_report_pending = false;
+			fruit_ui_notify_manual_pixel_probe_uart(queued);
+		}
 	}
 
 	if (fruit_ui_is_arm_setting_active())
@@ -234,6 +287,56 @@ static void screen_process_arm_telemetry(void)
 	else
 	{
 		last_request_tick = 0U;
+	}
+}
+
+static void screen_process_manual_pixel_probe(void)
+{
+	int32_t pixel_x;
+	int32_t pixel_y;
+	bool found;
+
+	if (fruit_ui_take_manual_pixel_probe_result(&pixel_x,
+	                                           &pixel_y,
+	                                           &found))
+	{
+		fruit_ui_notify_manual_pixel_probe_capture(found);
+		if (!found)
+		{
+			return;
+		}
+
+		g_manual_pixel_probe_x = pixel_x;
+		g_manual_pixel_probe_y = pixel_y;
+		g_manual_pixel_probe_report_pending = true;
+		g_manual_pixel_probe_deadline =
+			xTaskGetTickCount() +
+			pdMS_TO_TICKS(MANUAL_PIXEL_PROBE_TELEMETRY_TIMEOUT_MS);
+
+		/* Drop any older periodic response so the UART report uses telemetry
+		 * requested after this camera frame was captured. */
+		taskENTER_CRITICAL();
+		g_arm_telemetry_update_pending = false;
+		taskEXIT_CRITICAL();
+
+		if (!ipc_detection_send_arm_telemetry_request())
+		{
+			g_manual_pixel_probe_report_pending = false;
+			(void) uart_debug_send_text_always(
+				"PIXEL_FK_ERROR telemetry_request_failed\r\n");
+			fruit_ui_notify_manual_pixel_probe_uart(false);
+		}
+		return;
+	}
+
+	if (g_manual_pixel_probe_report_pending &&
+	    ((int32_t) (xTaskGetTickCount() -
+	                g_manual_pixel_probe_deadline) >= 0))
+	{
+		g_manual_pixel_probe_report_pending = false;
+		(void) uart_debug_send_text_always(
+			"PIXEL_FK_ERROR telemetry_timeout\r\n");
+		fruit_ui_notify_manual_pixel_probe_uart(false);
 	}
 }
 
@@ -264,6 +367,7 @@ void Screen_Thread_entry(void *pvParameters)
 		(void) lv_timer_handler();
 		screen_process_arm_control_request();
 		screen_process_arm_telemetry();
+		screen_process_manual_pixel_probe();
 
 		vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(5U));
 	}
