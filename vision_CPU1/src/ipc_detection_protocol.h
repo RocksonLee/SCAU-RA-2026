@@ -5,6 +5,8 @@
 
 #define IPC_COORDINATE_BATCH_BEGIN      (0x33444242U) /* "3DBB" */
 #define IPC_COORDINATE_BATCH_END        (0x33444245U) /* "3DBE" */
+#define IPC_MANUAL_COORDINATE_BEGIN     (0x58595A42U) /* "XYZB" */
+#define IPC_MANUAL_COORDINATE_END       (0x58595A45U) /* "XYZE" */
 #define IPC_ARM_ZERO_COMMAND            (0x5A45524FU) /* "ZERO" */
 #define IPC_CLAW_CLOSE_COMMAND          (0x434C4F53U) /* "CLOS" */
 #define IPC_CLAW_OPEN_COMMAND           (0x4F50454EU) /* "OPEN" */
@@ -27,7 +29,16 @@
 #define IPC_AXIS_ANGLE_VALUE_MASK       (0x00000FF8U)
 #define IPC_AXIS_ANGLE_MIN_DEG          (-180)
 #define IPC_AXIS_ANGLE_MAX_DEG          (180)
+#define IPC_MANUAL_COORDINATE_MIN_0P1MM (-9999)
+#define IPC_MANUAL_COORDINATE_MAX_0P1MM (9999)
 #define IPC_COORDINATE_BATCH_MAX_ITEMS  (3U)
+
+typedef struct st_ipc_manual_coordinate
+{
+    int32_t x_0p1mm;
+    int32_t y_0p1mm;
+    int32_t z_0p1mm;
+} ipc_manual_coordinate_t;
 
 typedef struct st_ipc_camera_coordinate_item
 {

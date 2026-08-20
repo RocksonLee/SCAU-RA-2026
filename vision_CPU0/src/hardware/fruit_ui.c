@@ -33,6 +33,9 @@
 #define UI_AXIS_ANGLE_MIN_DEG (-180)
 #define UI_AXIS_ANGLE_MAX_DEG (180)
 #define UI_AXIS_ANGLE_QUEUE_LENGTH (16U)
+#define UI_MANUAL_COORDINATE_COUNT (3U)
+#define UI_MANUAL_COORDINATE_MIN_0P1MM (-9999)
+#define UI_MANUAL_COORDINATE_MAX_0P1MM (9999)
 #define UI_CLAW_CURRENT_DEFAULT_MA (300U)
 #define UI_CLAW_CURRENT_MAX_MA (5000U)
 #define UI_CLAW_SETTINGS_OFFSET (0x00012000UL)
@@ -68,6 +71,7 @@ typedef enum e_ui_page
     UI_PAGE_DETAIL,
     UI_PAGE_DEBUG,
     UI_PAGE_AXIS_ANGLE,
+    UI_PAGE_MANUAL_COORDINATE,
     UI_PAGE_ARM_DEBUG,
 } ui_page_t;
 
@@ -76,6 +80,13 @@ typedef struct st_axis_angle_request
     uint8_t axis;
     int32_t angle_deg;
 } axis_angle_request_t;
+
+typedef struct st_manual_coordinate_request
+{
+    int32_t x_0p1mm;
+    int32_t y_0p1mm;
+    int32_t z_0p1mm;
+} manual_coordinate_request_t;
 
 typedef enum e_target_pick_state
 {
@@ -127,6 +138,8 @@ static volatile bool g_claw_current_request_pending;
 static volatile axis_angle_request_t g_axis_angle_queue[UI_AXIS_ANGLE_QUEUE_LENGTH];
 static volatile uint32_t g_axis_angle_queue_write;
 static volatile uint32_t g_axis_angle_queue_read;
+static volatile manual_coordinate_request_t g_manual_coordinate_request;
+static volatile bool g_manual_coordinate_request_pending;
 static uint32_t g_arm_telemetry_valid_mask;
 static int32_t g_arm_telemetry_angles_0p1deg[UI_AXIS_COUNT];
 static bool g_arm_coordinate_valid;
@@ -179,6 +192,12 @@ static lv_obj_t * g_axis_angle_editor;
 static lv_obj_t * g_axis_angle_keyboard;
 static lv_obj_t * g_axis_angle_status_label;
 static lv_obj_t * g_axis_coordinate_label;
+static lv_obj_t * g_manual_coordinate_inputs[UI_MANUAL_COORDINATE_COUNT];
+static lv_obj_t * g_manual_coordinate_dialog;
+static lv_obj_t * g_manual_coordinate_editor;
+static lv_obj_t * g_manual_coordinate_keyboard;
+static lv_obj_t * g_manual_coordinate_status_label;
+static lv_obj_t * g_manual_coordinate_current_label;
 static lv_obj_t * g_arm_debug_toggle_button;
 static lv_obj_t * g_arm_debug_status_label;
 static lv_obj_t * g_claw_current_input;
@@ -188,6 +207,7 @@ static lv_obj_t * g_claw_current_editor;
 static lv_obj_t * g_claw_current_dialog_status;
 static bool g_claw_current_edit_replace;
 static uint32_t g_axis_angle_edit_index;
+static uint32_t g_manual_coordinate_edit_index;
 static lv_obj_t * g_task_preview_image;
 static lv_obj_t * g_task_camera_title;
 static lv_obj_t * g_task_camera_status;
@@ -216,12 +236,29 @@ static lv_buttonmatrix_ctrl_t const g_axis_angle_keyboard_ctrl[] =
     2, 2
 };
 
+static char const * const g_manual_coordinate_keyboard_map[] =
+{
+    "1", "2", "3", LV_SYMBOL_BACKSPACE, "\n",
+    "4", "5", "6", "-",                 "\n",
+    "7", "8", "9", LV_SYMBOL_CLOSE,     "\n",
+    "0", ".", LV_SYMBOL_OK, ""
+};
+
+static lv_buttonmatrix_ctrl_t const g_manual_coordinate_keyboard_ctrl[] =
+{
+    1, 1, 1, 2,
+    1, 1, 1, 2,
+    1, 1, 1, 2,
+    2, 1, 2
+};
+
 static void show_home(void);
 static void show_task_stream(void);
 static void show_select(void);
 static void show_detail(fruit_ui_target_t target);
 static void show_debug(void);
 static void show_axis_angle(void);
+static void show_manual_coordinate(void);
 static void show_arm_debug(void);
 
 static uint16_t claw_current_settings_check(uint16_t current_ma,
@@ -495,6 +532,14 @@ static void prepare_screen(void)
     g_axis_angle_keyboard = NULL;
     g_axis_angle_status_label = NULL;
     g_axis_coordinate_label = NULL;
+    for (uint32_t i = 0U; i < UI_MANUAL_COORDINATE_COUNT; i++) {
+        g_manual_coordinate_inputs[i] = NULL;
+    }
+    g_manual_coordinate_dialog = NULL;
+    g_manual_coordinate_editor = NULL;
+    g_manual_coordinate_keyboard = NULL;
+    g_manual_coordinate_status_label = NULL;
+    g_manual_coordinate_current_label = NULL;
     g_arm_debug_toggle_button = NULL;
     g_arm_debug_status_label = NULL;
     g_claw_current_input = NULL;
@@ -953,6 +998,17 @@ static void on_axis_angle_page(lv_event_t * e)
     }
 }
 
+static void on_manual_coordinate_page(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        taskENTER_CRITICAL();
+        g_debug_side_camera_requested = false;
+        g_debug_light_requested = false;
+        taskEXIT_CRITICAL();
+        show_manual_coordinate();
+    }
+}
+
 static void update_arm_debug_toggle_button(void)
 {
     if (g_arm_debug_toggle_button != NULL) {
@@ -1291,6 +1347,149 @@ static void on_axis_angle_send(lv_event_t * e)
     }
 }
 
+static void on_manual_coordinate_input(lv_event_t * e)
+{
+    if ((LV_EVENT_CLICKED == lv_event_get_code(e)) &&
+        (NULL != g_manual_coordinate_dialog) &&
+        (NULL != g_manual_coordinate_editor) &&
+        (NULL != g_manual_coordinate_keyboard)) {
+        uint32_t const index =
+            (uint32_t) (uintptr_t) lv_event_get_user_data(e);
+
+        if ((index >= UI_MANUAL_COORDINATE_COUNT) ||
+            (NULL == g_manual_coordinate_inputs[index])) {
+            return;
+        }
+
+        g_manual_coordinate_edit_index = index;
+        lv_textarea_set_text(g_manual_coordinate_editor,
+                             lv_textarea_get_text(
+                                 g_manual_coordinate_inputs[index]));
+        lv_keyboard_set_textarea(g_manual_coordinate_keyboard,
+                                 g_manual_coordinate_editor);
+        lv_obj_remove_flag(g_manual_coordinate_dialog, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_move_foreground(g_manual_coordinate_dialog);
+    }
+}
+
+static void on_manual_coordinate_keyboard(lv_event_t * e)
+{
+    lv_event_code_t const code = lv_event_get_code(e);
+
+    if (((LV_EVENT_READY == code) || (LV_EVENT_CANCEL == code)) &&
+        (NULL != g_manual_coordinate_dialog) &&
+        (NULL != g_manual_coordinate_editor) &&
+        (NULL != g_manual_coordinate_keyboard)) {
+        if ((LV_EVENT_READY == code) &&
+            (g_manual_coordinate_edit_index < UI_MANUAL_COORDINATE_COUNT) &&
+            (NULL != g_manual_coordinate_inputs[
+                         g_manual_coordinate_edit_index])) {
+            lv_textarea_set_text(
+                g_manual_coordinate_inputs[g_manual_coordinate_edit_index],
+                lv_textarea_get_text(g_manual_coordinate_editor));
+        }
+        lv_keyboard_set_textarea(g_manual_coordinate_keyboard, NULL);
+        lv_obj_add_flag(g_manual_coordinate_dialog, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static bool parse_manual_coordinate_0p1mm(char const * text,
+                                         int32_t * p_value_0p1mm)
+{
+    char const * cursor = text;
+    int32_t whole = 0;
+    int32_t fraction = 0;
+    bool negative = false;
+    bool has_digit = false;
+
+    if ((NULL == text) || (NULL == p_value_0p1mm) || ('\0' == text[0])) {
+        return false;
+    }
+
+    if ('-' == *cursor) {
+        negative = true;
+        cursor++;
+    }
+
+    while ((*cursor >= '0') && (*cursor <= '9')) {
+        has_digit = true;
+        whole = (whole * 10) + (int32_t) (*cursor - '0');
+        if (whole > UI_MANUAL_COORDINATE_MAX_0P1MM) {
+            return false;
+        }
+        cursor++;
+    }
+
+    if ('.' == *cursor) {
+        cursor++;
+        if ((*cursor < '0') || (*cursor > '9')) {
+            return false;
+        }
+        has_digit = true;
+        fraction = (int32_t) (*cursor - '0');
+        cursor++;
+    }
+
+    if (!has_digit || ('\0' != *cursor)) {
+        return false;
+    }
+
+    int32_t value = (whole * 10) + fraction;
+    if (negative) {
+        value = -value;
+    }
+    if ((value < UI_MANUAL_COORDINATE_MIN_0P1MM) ||
+        (value > UI_MANUAL_COORDINATE_MAX_0P1MM)) {
+        return false;
+    }
+
+    *p_value_0p1mm = value;
+    return true;
+}
+
+static void on_manual_coordinate_send(lv_event_t * e)
+{
+    if (LV_EVENT_CLICKED == lv_event_get_code(e)) {
+        int32_t coordinate[UI_MANUAL_COORDINATE_COUNT];
+        bool valid = true;
+        bool queued = false;
+
+        for (uint32_t i = 0U; i < UI_MANUAL_COORDINATE_COUNT; i++) {
+            if ((NULL == g_manual_coordinate_inputs[i]) ||
+                !parse_manual_coordinate_0p1mm(
+                    lv_textarea_get_text(g_manual_coordinate_inputs[i]),
+                    &coordinate[i])) {
+                valid = false;
+                break;
+            }
+        }
+
+        if (valid) {
+            taskENTER_CRITICAL();
+            if (!g_manual_coordinate_request_pending) {
+                g_manual_coordinate_request.x_0p1mm = coordinate[0];
+                g_manual_coordinate_request.y_0p1mm = coordinate[1];
+                g_manual_coordinate_request.z_0p1mm = coordinate[2];
+                g_manual_coordinate_request_pending = true;
+                queued = true;
+            }
+            taskEXIT_CRITICAL();
+        }
+
+        if (NULL != g_manual_coordinate_status_label) {
+            char const * status = !valid ?
+                "Enter X/Y/Z from -999.9 to 999.9 mm" :
+                (queued ? "Coordinate queued for IK + CAN" :
+                          "Previous coordinate is still pending");
+            lv_label_set_text(g_manual_coordinate_status_label, status);
+            lv_obj_set_style_text_color(
+                g_manual_coordinate_status_label,
+                queued ? lv_color_hex(0x1F7A5A) : lv_color_hex(0xD83B35),
+                0);
+        }
+    }
+}
+
 static void on_debug_camera_toggle(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
@@ -1580,9 +1779,12 @@ static void show_home(void)
     task_2_button = add_button(page_screen(), "TASK 2  |  TOP + SIDE", 236, 169, 224, 40,
                                on_task_select,
                                (void *) (uintptr_t) FRUIT_UI_TASK_TOP_AND_SIDE);
-    add_small_button(page_screen(), "CAMERA TEST", 236, 219, 108, 40, on_settings, NULL);
-    add_small_button(page_screen(), "ARM SETTING", 352, 219, 108, 40,
+    add_small_button(page_screen(), "CAM TEST", 236, 219, 70, 40,
+                     on_settings, NULL);
+    add_small_button(page_screen(), "JOINT", 313, 219, 70, 40,
                      on_axis_angle_page, NULL);
+    add_small_button(page_screen(), "XYZ MOVE", 390, 219, 70, 40,
+                     on_manual_coordinate_page, NULL);
 
     card = add_card(page_screen(), 218, 269, 242, 39);
     lv_obj_set_style_pad_all(card, 5, 0);
@@ -2341,6 +2543,25 @@ static void update_arm_telemetry_widgets(void)
                               "XYZ: --.- / --.- / --.- mm");
         }
     }
+
+    if (g_manual_coordinate_current_label != NULL) {
+        if (g_arm_coordinate_valid) {
+            char x[16];
+            char y[16];
+            char z[16];
+            char text[72];
+
+            format_0p1(x, sizeof(x), g_arm_x_0p1mm);
+            format_0p1(y, sizeof(y), g_arm_y_0p1mm);
+            format_0p1(z, sizeof(z), g_arm_z_0p1mm);
+            (void) snprintf(text, sizeof(text),
+                            "CURRENT: X %s  Y %s  Z %s mm", x, y, z);
+            lv_label_set_text(g_manual_coordinate_current_label, text);
+        } else {
+            lv_label_set_text(g_manual_coordinate_current_label,
+                              "CURRENT: X --.-  Y --.-  Z --.- mm");
+        }
+    }
 }
 
 static void show_arm_debug(void)
@@ -2575,6 +2796,125 @@ static void show_axis_angle(void)
     finish_screen_switch();
 }
 
+static void show_manual_coordinate(void)
+{
+    static char const * const axis_names[UI_MANUAL_COORDINATE_COUNT] =
+    {
+        "X", "Y", "Z"
+    };
+    int32_t const current[UI_MANUAL_COORDINATE_COUNT] =
+    {
+        g_arm_x_0p1mm, g_arm_y_0p1mm, g_arm_z_0p1mm
+    };
+
+    prepare_screen();
+    g_current_page = UI_PAGE_MANUAL_COORDINATE;
+    g_task_stream_active = false;
+    reset_preview_session();
+
+    taskENTER_CRITICAL();
+    g_debug_mode_active = false;
+    g_debug_side_camera_requested = false;
+    g_debug_light_requested = false;
+    taskEXIT_CRITICAL();
+
+    add_small_button(page_screen(), "HOME", 12, 12, 68, 30,
+                     on_back_debug, NULL);
+    add_small_button(page_screen(), "JOINT", 400, 12, 68, 30,
+                     on_axis_angle_page, NULL);
+    add_label(page_screen(), "MANUAL XYZ  |  mm",
+              lv_color_hex(0x20303F), &lv_font_montserrat_16,
+              LV_ALIGN_TOP_MID, 0, 18);
+
+    for (uint32_t i = 0U; i < UI_MANUAL_COORDINATE_COUNT; i++) {
+        int32_t const y = 55 + ((int32_t) i * 57);
+        lv_obj_t * card = add_card(page_screen(), 24, y, 432, 50);
+        char initial[16];
+
+        lv_obj_set_style_pad_all(card, 6, 0);
+        add_label(card, axis_names[i], lv_color_hex(0x1F7A5A),
+                  &lv_font_montserrat_16, LV_ALIGN_LEFT_MID, 16, 0);
+
+        g_manual_coordinate_inputs[i] = lv_textarea_create(card);
+        lv_obj_set_pos(g_manual_coordinate_inputs[i], 78, 4);
+        lv_obj_set_size(g_manual_coordinate_inputs[i], 332, 34);
+        lv_textarea_set_one_line(g_manual_coordinate_inputs[i], true);
+        lv_textarea_set_accepted_chars(g_manual_coordinate_inputs[i],
+                                       "-0123456789.");
+        lv_textarea_set_max_length(g_manual_coordinate_inputs[i], 6U);
+        lv_textarea_set_placeholder_text(g_manual_coordinate_inputs[i],
+                                         "0.0");
+        lv_textarea_set_align(g_manual_coordinate_inputs[i],
+                              LV_TEXT_ALIGN_CENTER);
+        lv_obj_set_style_text_font(g_manual_coordinate_inputs[i],
+                                   &lv_font_montserrat_16, 0);
+        lv_obj_set_style_pad_all(g_manual_coordinate_inputs[i], 7, 0);
+        lv_obj_add_event_cb(g_manual_coordinate_inputs[i],
+                            on_manual_coordinate_input,
+                            LV_EVENT_CLICKED, (void *) (uintptr_t) i);
+
+        if (g_arm_coordinate_valid) {
+            format_0p1(initial, sizeof(initial), current[i]);
+            lv_textarea_set_text(g_manual_coordinate_inputs[i], initial);
+        }
+    }
+
+    add_button(page_screen(), "SOLVE AND MOVE", 120, 230, 240, 40,
+               on_manual_coordinate_send, NULL);
+    g_manual_coordinate_current_label =
+        add_label(page_screen(), "CURRENT: X --.-  Y --.-  Z --.- mm",
+                  lv_color_hex(0x20303F), &lv_font_montserrat_10,
+                  LV_ALIGN_BOTTOM_MID, 0, -26);
+    g_manual_coordinate_status_label =
+        add_label(page_screen(), "Enter all three coordinates, then move",
+                  lv_color_hex(0x77818C), &lv_font_montserrat_10,
+                  LV_ALIGN_BOTTOM_MID, 0, -7);
+    update_arm_telemetry_widgets();
+
+    g_manual_coordinate_dialog = lv_obj_create(page_screen());
+    lv_obj_remove_style_all(g_manual_coordinate_dialog);
+    lv_obj_set_pos(g_manual_coordinate_dialog, 0, 0);
+    lv_obj_set_size(g_manual_coordinate_dialog, UI_W, UI_H);
+    lv_obj_set_style_bg_color(g_manual_coordinate_dialog,
+                              lv_color_hex(0xF4F7F5), 0);
+    lv_obj_set_style_bg_opa(g_manual_coordinate_dialog, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(g_manual_coordinate_dialog, LV_OBJ_FLAG_SCROLLABLE);
+
+    add_label(g_manual_coordinate_dialog,
+              "ENTER COORDINATE  |  -999.9 TO 999.9 mm",
+              lv_color_hex(0x20303F), &lv_font_montserrat_14,
+              LV_ALIGN_TOP_MID, 0, 10);
+    g_manual_coordinate_editor =
+        lv_textarea_create(g_manual_coordinate_dialog);
+    lv_obj_set_pos(g_manual_coordinate_editor, 120, 38);
+    lv_obj_set_size(g_manual_coordinate_editor, 240, 48);
+    lv_textarea_set_one_line(g_manual_coordinate_editor, true);
+    lv_textarea_set_accepted_chars(g_manual_coordinate_editor,
+                                   "-0123456789.");
+    lv_textarea_set_max_length(g_manual_coordinate_editor, 6U);
+    lv_textarea_set_placeholder_text(g_manual_coordinate_editor, "0.0");
+    lv_textarea_set_align(g_manual_coordinate_editor, LV_TEXT_ALIGN_CENTER);
+    lv_obj_set_style_text_font(g_manual_coordinate_editor,
+                               &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_all(g_manual_coordinate_editor, 10, 0);
+
+    g_manual_coordinate_keyboard =
+        lv_keyboard_create(g_manual_coordinate_dialog);
+    lv_keyboard_set_map(g_manual_coordinate_keyboard, LV_KEYBOARD_MODE_NUMBER,
+                        g_manual_coordinate_keyboard_map,
+                        g_manual_coordinate_keyboard_ctrl);
+    lv_keyboard_set_mode(g_manual_coordinate_keyboard,
+                         LV_KEYBOARD_MODE_NUMBER);
+    lv_obj_set_size(g_manual_coordinate_keyboard, UI_W, 220);
+    lv_obj_align(g_manual_coordinate_keyboard, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_add_event_cb(g_manual_coordinate_keyboard,
+                        on_manual_coordinate_keyboard, LV_EVENT_READY, NULL);
+    lv_obj_add_event_cb(g_manual_coordinate_keyboard,
+                        on_manual_coordinate_keyboard, LV_EVENT_CANCEL, NULL);
+    lv_obj_add_flag(g_manual_coordinate_dialog, LV_OBJ_FLAG_HIDDEN);
+    finish_screen_switch();
+}
+
 bool fruit_ui_debug_light_requested(void)
 {
     return g_debug_light_requested;
@@ -2791,9 +3131,62 @@ void fruit_ui_notify_axis_angle_result(uint8_t axis, int32_t angle_deg, bool sen
                                 0);
 }
 
+bool fruit_ui_take_manual_coordinate_request(int32_t * p_x_0p1mm,
+                                             int32_t * p_y_0p1mm,
+                                             int32_t * p_z_0p1mm)
+{
+    bool requested;
+
+    if ((NULL == p_x_0p1mm) || (NULL == p_y_0p1mm) ||
+        (NULL == p_z_0p1mm)) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    requested = g_manual_coordinate_request_pending;
+    if (requested) {
+        *p_x_0p1mm = g_manual_coordinate_request.x_0p1mm;
+        *p_y_0p1mm = g_manual_coordinate_request.y_0p1mm;
+        *p_z_0p1mm = g_manual_coordinate_request.z_0p1mm;
+        g_manual_coordinate_request_pending = false;
+    }
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+void fruit_ui_notify_manual_coordinate_result(int32_t x_0p1mm,
+                                              int32_t y_0p1mm,
+                                              int32_t z_0p1mm,
+                                              bool sent)
+{
+    char x[16];
+    char y[16];
+    char z[16];
+    char status[80];
+
+    if ((UI_PAGE_MANUAL_COORDINATE != g_current_page) ||
+        (NULL == g_manual_coordinate_status_label)) {
+        return;
+    }
+
+    format_0p1(x, sizeof(x), x_0p1mm);
+    format_0p1(y, sizeof(y), y_0p1mm);
+    format_0p1(z, sizeof(z), z_0p1mm);
+    (void) snprintf(status, sizeof(status),
+                    sent ? "X %s  Y %s  Z %s sent for IK + CAN" :
+                           "X %s  Y %s  Z %s send failed",
+                    x, y, z);
+    lv_label_set_text(g_manual_coordinate_status_label, status);
+    lv_obj_set_style_text_color(g_manual_coordinate_status_label,
+                                sent ? lv_color_hex(0x1F7A5A) :
+                                       lv_color_hex(0xD83B35),
+                                0);
+}
+
 bool fruit_ui_is_arm_setting_active(void)
 {
-    return UI_PAGE_AXIS_ANGLE == g_current_page;
+    return (UI_PAGE_AXIS_ANGLE == g_current_page) ||
+           (UI_PAGE_MANUAL_COORDINATE == g_current_page);
 }
 
 void fruit_ui_set_arm_telemetry(uint32_t        valid_mask,
@@ -2816,7 +3209,8 @@ void fruit_ui_set_arm_telemetry(uint32_t        valid_mask,
     g_arm_y_0p1mm = y_0p1mm;
     g_arm_z_0p1mm = z_0p1mm;
 
-    if (UI_PAGE_AXIS_ANGLE == g_current_page) {
+    if ((UI_PAGE_AXIS_ANGLE == g_current_page) ||
+        (UI_PAGE_MANUAL_COORDINATE == g_current_page)) {
         update_arm_telemetry_widgets();
     }
 }
