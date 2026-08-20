@@ -11,6 +11,8 @@ extern void Weight_Thread_create(void);
 extern TaskHandle_t Weight_Thread;
 extern void Touch_Thread_create(void);
 extern TaskHandle_t Touch_Thread;
+extern void UART_DBG_thread_create(void);
+extern TaskHandle_t UART_DBG_thread;
 uint32_t g_fsp_common_thread_count;
 bool g_fsp_common_initialized;
 SemaphoreHandle_t g_fsp_common_initialized_semaphore;
@@ -104,6 +106,7 @@ int main(void) {
 	Screen_Thread_create();
 	Weight_Thread_create();
 	Touch_Thread_create();
+	UART_DBG_thread_create();
 
 	/* Start the scheduler. */
 	vTaskStartScheduler();

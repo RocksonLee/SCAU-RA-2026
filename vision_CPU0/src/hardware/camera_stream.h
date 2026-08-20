@@ -8,8 +8,6 @@ extern "C" {
 #endif
 
 void camera_stream_task(void);
-bool camera_debug_uart_init(void);
-bool camera_debug_send_text(char const * p_text);
 
 #ifdef __cplusplus
 }

@@ -17,6 +17,7 @@
 #pragma GCC diagnostic pop
 
 #include "ui_assets.h"
+#include "uart_debug.h"
 #include "competition_title_font.inc"
 
 #define UI_W 480
@@ -183,6 +184,7 @@ static lv_obj_t * g_debug_preview_image;
 static lv_obj_t * g_debug_camera_title;
 static lv_obj_t * g_debug_camera_button;
 static lv_obj_t * g_debug_light_button;
+static lv_obj_t * g_debug_uart_log_button;
 static lv_obj_t * g_top_light_default_button;
 static lv_obj_t * g_side_light_default_button;
 static lv_obj_t * g_axis_angle_inputs[UI_AXIS_COUNT];
@@ -521,6 +523,7 @@ static void prepare_screen(void)
     g_debug_camera_title = NULL;
     g_debug_camera_button = NULL;
     g_debug_light_button = NULL;
+    g_debug_uart_log_button = NULL;
     g_top_light_default_button = NULL;
     g_side_light_default_button = NULL;
     for (uint32_t i = 0U; i < UI_AXIS_COUNT; i++) {
@@ -1575,6 +1578,36 @@ static void on_debug_uart_dump(lv_event_t * e)
     }
 }
 
+static void on_debug_uart_log_toggle(lv_event_t * e)
+{
+    if (LV_EVENT_CLICKED == lv_event_get_code(e)) {
+        bool const enabled = !uart_debug_logs_enabled();
+
+        uart_debug_set_logs_enabled(enabled);
+        if (NULL != g_debug_uart_log_button) {
+            lv_obj_t * label = lv_obj_get_child(g_debug_uart_log_button, 0);
+
+            if (NULL != label) {
+                lv_label_set_text(label, enabled ? "LOG ON" : "LOG OFF");
+            }
+            lv_obj_set_style_bg_color(g_debug_uart_log_button,
+                                      enabled ? lv_color_hex(0x1F7A5A) :
+                                                lv_color_hex(0x31445A),
+                                      0);
+        }
+
+        if (NULL != g_debug_save_label) {
+            lv_label_set_text(g_debug_save_label,
+                              enabled ? "UART logging enabled" :
+                                        "UART logging disabled");
+            lv_obj_set_style_text_color(g_debug_save_label,
+                                        enabled ? lv_color_hex(0x1F7A5A) :
+                                                  lv_color_hex(0x31445A),
+                                        0);
+        }
+    }
+}
+
 static void on_home(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
@@ -1960,7 +1993,17 @@ static void show_debug(void)
     update_camera_light_default_button(g_side_light_default_button,
                                        "SIDE", side_light_default);
 
-    add_small_button(card, "UART DUMP", 20, 194, 94, 26, on_debug_uart_dump, NULL);
+    g_debug_uart_log_button =
+        add_small_button(card,
+                         uart_debug_logs_enabled() ? "LOG ON" : "LOG OFF",
+                         0, 194, 64, 26,
+                         on_debug_uart_log_toggle, NULL);
+    if (uart_debug_logs_enabled()) {
+        lv_obj_set_style_bg_color(g_debug_uart_log_button,
+                                  lv_color_hex(0x1F7A5A), 0);
+    }
+    add_small_button(card, "DUMP", 70, 194, 64, 26,
+                     on_debug_uart_dump, NULL);
     update_debug_results_widget();
 
     taskENTER_CRITICAL();

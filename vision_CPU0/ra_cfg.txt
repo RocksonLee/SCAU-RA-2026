@@ -361,7 +361,7 @@ FSP Configuration
       P104 M6 - OSPI_CS_ARDUINO_D5 - - Disabled - - "ADC0(Digital): AD0FLAG1; ESWM_GMII/MII: GPTP0_MATCH; ESWM_RGMII0: GPTP0_MATCH; ESWM_RMII0: GPTP0_MATCH; GPT1: GTIOC1B; GPT_POEGB: GTETRGB; IRQ: IRQ1; OSPI0: OM_0_CS1; SCI9: CTS9; SPI1: SSLB1" "See SW4 in manual" None - - 
       P105 N7 - OSPI_ECS_ARDUINO_D6 - - Disabled - - "ADC(Digital): ADSYNC; ESWM_GMII/MII: GPTP0_CAPTURE; ESWM_RGMII0: GPTP0_CAPTURE; ESWM_RMII0: GPTP0_CAPTURE; GPT1: GTIOC1A; IRQ: IRQ0; OSPI0: OM_0_ECSINT1; SCI8: CTS_RTS8; SCI8: DE8; SPI1: SSLB2; ULPT1: ULPTO1-DS" "See SW4 in manual" None - - 
       P106 N6 GPIO LCD_LED L - "Output mode (Initial Low)" - - "ADC1(Digital): ADST1; AGT0: AGTOB0; ESWM_GMII/MII: ET1_LINKSTA; ESWM_RGMII1: ET1_LINKSTA; ESWM_RMII1: ET1_LINKSTA; GPT8: GTIOC8B; GPT_OPS: GTOWLO; IRQ: IRQ16; OSPI0: OM_0_RESET; SCI8: CTS8; SPI1: SSLB3; ULPT1: ULPTEE1-DS" " " IO - - 
-      P107 N5 OSPI0_OM_0_CS0 ETHERNET_MDINT L None "Peripheral mode" - - "ADC0(Digital): ADST0; AGT0: AGTOA0; ESWM_GMII/MII: ET1_INT; ESWM_RGMII1: ET1_INT; ESWM_RMII1: ET1_INT; GPT8: GTIOC8A; GPT_OPS: GTOWUP; IRQ: IRQ31; OSPI0: OM_0_CS0; SCI4: CTS4" - IO - - 
+      P107 N5 OSPI0_OM_0_CS0 ETHERNET_MDINT L IRQ31 "Peripheral mode" - - "ADC0(Digital): ADST0; AGT0: AGTOA0; ESWM_GMII/MII: ET1_INT; ESWM_RGMII1: ET1_INT; ESWM_RMII1: ET1_INT; GPT8: GTIOC8A; GPT_OPS: GTOWUP; IRQ: IRQ31; OSPI0: OM_0_CS0; SCI4: CTS4" - IO - -
       P108 D8 - J2_30 - - Disabled - - "GPT10: GTIOC10B; IRQ: IRQ24; SDHI0: SD0DAT6" "Enable when connected" None - - 
       P109 D7 GPIO CAMERA_FLASH M - "Output mode (Initial Low)" - - "GPT10: GTIOC10A; IRQ: IRQ23; SDHI0: SD0DAT5" - IO - - 
       P110 C8 - ARDUINO_D9 - - Disabled - - "GPT9: GTIOC9B; IRQ: IRQ20; SDHI0: SD0DAT4" "Enable when connected" None - - 
@@ -907,7 +907,7 @@ FSP Configuration
       VSS2_USBHS J16 CGC_VSS2_USBHS - - - - - - - - IO "Read only" - 
       VSS_MIPI R3 CGC_VSS_MIPI - - - - - - - - IO "Read only" - 
       VSS_USB T17 CGC_VSS_USB - - - - - - - - IO "Read only" - 
-    
+
   User Events
     
   User Event Links
@@ -1131,8 +1131,8 @@ FSP Configuration
     Instance "g_ipc0 IPC (r_ipc)"
       Name: g_ipc0
       Channel: 0
-      Callback: NULL
-      Interrupt Priority: Disabled
+      Callback: ipc0_callback
+      Interrupt Priority: Priority 10
       
     Instance "Google TFLM Core Lib"
       Instance "Google Flatbuffers"
@@ -1303,7 +1303,7 @@ FSP Configuration
     Thread Context: NULL
     Memory Allocation: Static
     Allocate Secure Context: Enable
-    
+
     Instance "FreeRTOS Heap 4"
   Thread "Screen_Thread"
     Symbol: Screen_Thread
@@ -1328,6 +1328,15 @@ FSP Configuration
     Name: Touch_Thread
     Stack size (bytes): 2048
     Priority: 4
+    Thread Context: NULL
+    Memory Allocation: Static
+    Allocate Secure Context: Enable
+    
+  Thread "UART_DBG_thread"
+    Symbol: UART_DBG_thread
+    Name: UART_DBG_thread
+    Stack size (bytes): 2048
+    Priority: 3
     Thread Context: NULL
     Memory Allocation: Static
     Allocate Secure Context: Enable

@@ -12,10 +12,8 @@
 #include "fruit_ui.h"
 #include "hal_data.h"
 #include "ipc_detection_tx.h"
+#include "uart_debug.h"
 
-#define CAMERA_UART_CHUNK_BYTES (1024U)
-#define CAMERA_FRAME_HEADER_BYTES (24U)
-#define CAMERA_FRAME_FORMAT_RGB565_LE (1U)
 #define CAMERA_AE_SETTLE_MS     (1500U)
 #define CAMERA_DISCARD_FRAMES   (5U)
 #define CAMERA_UART_LINE_BYTES  (192U)
@@ -86,8 +84,6 @@ static double const g_camera_to_arm_homography_z385[3][3] =
 
 static uint8_t g_camera_frame[CAMERA_OV5640_FRAME_BYTES] BSP_PLACE_IN_SECTION(".sdram_nocache") BSP_ALIGN_VARIABLE(32);
 
-static volatile bool g_uart_tx_busy;
-static uart_callback_args_t g_uart_callback_memory;
 static char g_uart_line[CAMERA_UART_LINE_BYTES];
 static app_detection_result_t g_detection_results[APP_DETECTION_MAX_RESULTS];
 static bool g_camera_illumination_enabled;
@@ -143,156 +139,9 @@ static fruit_ui_target_t camera_stream_target_from_class(uint32_t class_id)
     }
 }
 
-static void camera_uart_callback(uart_callback_args_t * p_args)
-{
-    if ((NULL != p_args) && (UART_EVENT_TX_COMPLETE == p_args->event))
-    {
-        g_uart_tx_busy = false;
-    }
-}
-
-static bool camera_uart_write(uint8_t const * p_data, uint32_t bytes)
-{
-    TickType_t const start = xTaskGetTickCount();
-
-    while (1)
-    {
-        bool acquired = false;
-
-        taskENTER_CRITICAL();
-        if (!g_uart_tx_busy)
-        {
-            g_uart_tx_busy = true;
-            acquired = true;
-        }
-        taskEXIT_CRITICAL();
-
-        if (acquired)
-        {
-            break;
-        }
-
-        if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(1000U))
-        {
-            return false;
-        }
-
-        vTaskDelay(1);
-    }
-
-    if (FSP_SUCCESS != g_uart9.p_api->write(g_uart9.p_ctrl, p_data, bytes))
-    {
-        g_uart_tx_busy = false;
-        return false;
-    }
-
-    while (g_uart_tx_busy)
-    {
-        if ((xTaskGetTickCount() - start) > pdMS_TO_TICKS(1000U))
-        {
-            g_uart_tx_busy = false;
-            return false;
-        }
-
-        vTaskDelay(1);
-    }
-
-    return true;
-}
-
-static bool camera_uart_send_bytes(uint8_t const * p_data, uint32_t bytes)
-{
-    uint32_t sent = 0U;
-
-    while (sent < bytes)
-    {
-        uint32_t const remaining = bytes - sent;
-        uint32_t const chunk = (remaining > CAMERA_UART_CHUNK_BYTES) ? CAMERA_UART_CHUNK_BYTES : remaining;
-
-        if (!camera_uart_write(&p_data[sent], chunk))
-        {
-            return false;
-        }
-
-        sent += chunk;
-    }
-
-    return true;
-}
-
-bool camera_debug_send_text(char const * p_text)
-{
-    if (NULL == p_text)
-    {
-        return false;
-    }
-
-    return camera_uart_write((uint8_t const *) p_text, (uint32_t) strlen(p_text));
-}
-
-bool camera_debug_uart_init(void)
-{
-    fsp_err_t const err = g_uart9.p_api->open(g_uart9.p_ctrl, g_uart9.p_cfg);
-
-    if ((FSP_SUCCESS != err) && (FSP_ERR_ALREADY_OPEN != err))
-    {
-        return false;
-    }
-
-    return (FSP_SUCCESS == g_uart9.p_api->callbackSet(g_uart9.p_ctrl,
-                                                       camera_uart_callback,
-                                                       NULL,
-                                                       &g_uart_callback_memory));
-}
-
 static void camera_uart_send_text(char const * p_text)
 {
-    (void) camera_debug_send_text(p_text);
-}
-
-static uint32_t camera_crc32(uint8_t const * p_data, uint32_t bytes)
-{
-    uint32_t crc = 0xFFFFFFFFU;
-
-    for (uint32_t i = 0U; i < bytes; i++)
-    {
-        crc ^= p_data[i];
-        for (uint32_t bit = 0U; bit < 8U; bit++)
-        {
-            uint32_t const mask = 0U - (crc & 1U);
-            crc = (crc >> 1) ^ (0xEDB88320U & mask);
-        }
-    }
-
-    return ~crc;
-}
-
-static void camera_store_u16_le(uint8_t * p_dst, uint16_t value)
-{
-    p_dst[0] = (uint8_t) value;
-    p_dst[1] = (uint8_t) (value >> 8U);
-}
-
-static void camera_store_u32_le(uint8_t * p_dst, uint32_t value)
-{
-    p_dst[0] = (uint8_t) value;
-    p_dst[1] = (uint8_t) (value >> 8U);
-    p_dst[2] = (uint8_t) (value >> 16U);
-    p_dst[3] = (uint8_t) (value >> 24U);
-}
-
-static void camera_uart_send_crc_line(char const * p_label, uint32_t crc)
-{
-    int const count = snprintf(g_uart_line,
-                               sizeof(g_uart_line),
-                               "%s bytes=%lu crc32=0x%08lX\r\n",
-                               p_label,
-                               (unsigned long) CAMERA_OV5640_FRAME_BYTES,
-                               (unsigned long) crc);
-    if ((count > 0) && ((size_t) count < sizeof(g_uart_line)))
-    {
-        camera_uart_send_text(g_uart_line);
-    }
+    (void) uart_debug_send_text(p_text);
 }
 
 static void camera_uart_send_ceu_events_line(void)
@@ -1419,36 +1268,6 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
     return true;
 }
 
-static bool camera_stream_send_frame(void)
-{
-    return camera_uart_send_bytes(g_camera_frame, CAMERA_OV5640_FRAME_BYTES);
-}
-
-static bool camera_stream_send_frame_dump(void)
-{
-    static uint8_t const magic[8] = {'C', 'E', 'U', '5', '6', '5', '0', '1'};
-    uint8_t header[CAMERA_FRAME_HEADER_BYTES];
-    uint32_t const crc = camera_crc32(g_camera_frame, CAMERA_OV5640_FRAME_BYTES);
-
-    memcpy(header, magic, sizeof(magic));
-    camera_store_u16_le(&header[8], (uint16_t) CAMERA_OV5640_WIDTH);
-    camera_store_u16_le(&header[10], (uint16_t) CAMERA_OV5640_HEIGHT);
-    camera_store_u32_le(&header[12], CAMERA_FRAME_FORMAT_RGB565_LE);
-    camera_store_u32_le(&header[16], CAMERA_OV5640_FRAME_BYTES);
-    camera_store_u32_le(&header[20], crc);
-
-    camera_uart_send_text("FRAME_DUMP_BEGIN RGB565LE 640x480 wait_about_55s\r\n");
-
-    if (!camera_uart_send_bytes(header, sizeof(header)) || !camera_stream_send_frame())
-    {
-        camera_uart_send_text("FRAME_DUMP_ERROR\r\n");
-        return false;
-    }
-
-    camera_uart_send_crc_line("FRAME_DUMP_END", crc);
-    return true;
-}
-
 void camera_stream_task(void)
 {
     uint32_t batch_id = 0U;
@@ -1460,10 +1279,7 @@ void camera_stream_task(void)
     bool task_preview_started = false;
     uint32_t consecutive_capture_failures = 0U;
 
-    if (camera_debug_uart_init())
-    {
-        camera_uart_send_text("FW=CPU0_CEU_V3\r\n");
-    }
+    camera_uart_send_text("FW=CPU0_CEU_V3\r\n");
 
     /* Do not start the camera until the operator selects a task or opens Settings. */
     while ((FRUIT_UI_TASK_NONE == fruit_ui_get_task_mode()) &&
@@ -1693,7 +1509,11 @@ void camera_stream_task(void)
                                            true);
             if (fruit_ui_take_frame_dump_request())
             {
-                (void) camera_stream_send_frame_dump();
+                if (!uart_debug_request_frame_dump(g_camera_frame,
+                                                   sizeof(g_camera_frame)))
+                {
+                    camera_uart_send_text("FRAME_DUMP_QUEUE_ERROR\r\n");
+                }
             }
             continue;
         }
