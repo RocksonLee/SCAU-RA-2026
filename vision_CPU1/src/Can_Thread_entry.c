@@ -23,7 +23,7 @@ typedef enum e_ipc_coordinate_rx_state
 #define IPC_RESULT_QUEUE_LENGTH (4U)
 #define ARM_IK_ELBOW_DIRECTION  (1)
 #define ARM_JOINT_2_MAX_DEG     (10.0)
-#define ARM_MOVE_TIMEOUT_MS      (20000U)
+#define ARM_JOINT_SETTLE_DELAY_MS (2000U)
 #define ARM_CLAW_TIMEOUT_MS      (8000U)
 #define ARM_CLAW_SETTLE_DELAY_MS (3000U)
 #define ARM_RESET_ZERO_DELAY_MS  (500U)
@@ -120,24 +120,18 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
         return false;
     }
 
-    if (!CANFD0_Wait_Motors_Reached(CANFD0_MOTOR_1_MASK |
-                                    CANFD0_MOTOR_2_MASK |
-                                    CANFD0_MOTOR_3_MASK,
-                                    ARM_MOVE_TIMEOUT_MS))
-    {
-        return false;
-    }
+    /* Joint drivers are intentionally not polled for status. Some installations
+     * do not return 3A frames reliably; blocking here prevented joint 5 and the
+     * rest of the pick sequence from running even though motion frames were
+     * transmitted correctly. Keep the original fixed staging delay instead. */
+    vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_SETTLE_DELAY_MS));
 
     if (!CANFD0_Operation_5((int32_t) round(q5)) || !run())
     {
         return false;
     }
 
-    if (!CANFD0_Wait_Motors_Reached(CANFD0_MOTOR_5_MASK,
-                                    ARM_MOVE_TIMEOUT_MS))
-    {
-        return false;
-    }
+    vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_SETTLE_DELAY_MS));
 
     g_arm_solved_angles_deg[0] = q1;
     g_arm_solved_angles_deg[1] = solved_q2;
@@ -162,13 +156,7 @@ static bool arm_move_to_drop_pose(void)
         return false;
     }
 
-    if (!CANFD0_Wait_Motors_Reached(CANFD0_MOTOR_1_MASK |
-                                    CANFD0_MOTOR_2_MASK |
-                                    CANFD0_MOTOR_3_MASK,
-                                    ARM_MOVE_TIMEOUT_MS))
-    {
-        return false;
-    }
+    vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_SETTLE_DELAY_MS));
 
     g_arm_solved_angles_deg[0] = ARM_DROP_AXIS_1_DEG;
     g_arm_solved_angles_deg[1] = ARM_DROP_AXIS_2_DEG;
@@ -254,14 +242,7 @@ static bool arm_move_to_zero(void)
         return false;
     }
 
-    if (!CANFD0_Wait_Motors_Reached(CANFD0_MOTOR_1_MASK |
-                                    CANFD0_MOTOR_2_MASK |
-                                    CANFD0_MOTOR_3_MASK |
-                                    CANFD0_MOTOR_5_MASK,
-                                    ARM_MOVE_TIMEOUT_MS))
-    {
-        return false;
-    }
+    vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_SETTLE_DELAY_MS));
 
     for (uint32_t i = 0U; i < IPC_ARM_TELEMETRY_AXIS_COUNT; i++)
     {
