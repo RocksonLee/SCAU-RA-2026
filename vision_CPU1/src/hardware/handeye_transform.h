@@ -35,12 +35,12 @@ bool handeye_pixel_to_arm(int32_t camera_x_px,
 /**
  * Convert the side-camera horizontal pixel coordinate to robot Z height.
  *
- * The conversion is valid over the calibrated side-camera range only.
+ * The calibrated linear relation is extrapolated over the full image width.
  *
  * @param[in]  side_x_px Side-camera horizontal pixel coordinate.
  * @param[out] p_z_mm    Converted robot Z coordinate in millimetres.
  *
- * @return true when the pixel is inside the calibrated range; otherwise false.
+ * @return true when the pixel is inside the 640-pixel image width; otherwise false.
  */
 bool handeye_side_pixel_to_arm_z(int32_t side_x_px, double * p_z_mm);
 

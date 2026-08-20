@@ -5,13 +5,9 @@
 #define HANDEYE_CAMERA_WIDTH_PX       (640)
 #define HANDEYE_CAMERA_HEIGHT_PX      (480)
 #define HANDEYE_FIXED_HEIGHT_MM       (100.0)
-#define HANDEYE_TOP_Z_MIN_MM          (250.0)
-#define HANDEYE_TOP_Z_MAX_MM          (450.0)
-#define HANDEYE_TOP_CAL_Z_LOW_MM      (350.0)
-#define HANDEYE_TOP_CAL_Z_HIGH_MM     (395.0)
+#define HANDEYE_TOP_CAL_Z_LOW_MM      (325.0)
+#define HANDEYE_TOP_CAL_Z_HIGH_MM     (385.0)
 #define HANDEYE_DENOMINATOR_EPSILON   (1.0e-9)
-#define HANDEYE_SIDE_X_MIN_PX         (104)
-#define HANDEYE_SIDE_X_MAX_PX         (435)
 #define HANDEYE_SIDE_Z_SLOPE_MM_PX    (0.39634450194777904)
 #define HANDEYE_SIDE_Z_OFFSET_MM      (270.4756856225454)
 
@@ -23,19 +19,19 @@ static double const g_camera_to_arm_homography_z0[3][3] =
     {0.000247, -0.000043,    1.000000},
 };
 
-/* Height-aware top-camera homographies calibrated at 350 mm and 395 mm. */
-static double const g_camera_to_arm_homography_z350[3][3] =
+/* Height-aware top-camera homographies calibrated at 325 mm and 385 mm. */
+static double const g_camera_to_arm_homography_z325[3][3] =
 {
-    {-0.2000607037, 0.1045656660,  71.4690058254},
-    {-0.5734714204, 0.0847068612, 241.6668152189},
-    {-0.0024356818, 0.0005105174,   1.0000000000},
+    {-0.0050620485,  0.2640889468, 38.1704684559},
+    { 0.3836043009, -0.0242952309, 75.9593991709},
+    { 0.0002450191, -0.0002921146,  1.0000000000},
 };
 
-static double const g_camera_to_arm_homography_z395[3][3] =
+static double const g_camera_to_arm_homography_z385[3][3] =
 {
-    {0.1773162865, -0.2346012824,   5.9725018660},
-    {0.2884252054, -0.7531133394, 136.9012811045},
-    {0.0006055682, -0.0037035465,   1.0000000000},
+    {0.1914500083, 0.4343906439, 62.3737818695},
+    {0.9075307303, 0.2533455801, 42.1344710727},
+    {0.0025644552, 0.0008938283,  1.0000000000},
 };
 
 static bool handeye_project_top(double const homography[3][3],
@@ -70,8 +66,7 @@ static bool handeye_top_pixel_to_arm_at_z(int32_t               camera_x_px,
 {
     if ((NULL == p_arm_point) ||
         (camera_x_px < 0) || (camera_x_px >= HANDEYE_CAMERA_WIDTH_PX) ||
-        (camera_y_px < 0) || (camera_y_px >= HANDEYE_CAMERA_HEIGHT_PX) ||
-        (z_mm < HANDEYE_TOP_Z_MIN_MM) || (z_mm > HANDEYE_TOP_Z_MAX_MM))
+        (camera_y_px < 0) || (camera_y_px >= HANDEYE_CAMERA_HEIGHT_PX))
     {
         return false;
     }
@@ -83,8 +78,8 @@ static bool handeye_top_pixel_to_arm_at_z(int32_t               camera_x_px,
     double x_high_mm;
     double y_high_mm;
 
-    if (!handeye_project_top(g_camera_to_arm_homography_z350, u, v, &x_low_mm, &y_low_mm) ||
-        !handeye_project_top(g_camera_to_arm_homography_z395, u, v, &x_high_mm, &y_high_mm))
+    if (!handeye_project_top(g_camera_to_arm_homography_z325, u, v, &x_low_mm, &y_low_mm) ||
+        !handeye_project_top(g_camera_to_arm_homography_z385, u, v, &x_high_mm, &y_high_mm))
     {
         return false;
     }
@@ -121,8 +116,8 @@ bool handeye_pixel_to_arm(int32_t camera_x_px,
 bool handeye_side_pixel_to_arm_z(int32_t side_x_px, double * p_z_mm)
 {
     if ((NULL == p_z_mm) ||
-        (side_x_px < HANDEYE_SIDE_X_MIN_PX) ||
-        (side_x_px > HANDEYE_SIDE_X_MAX_PX))
+        (side_x_px < 0) ||
+        (side_x_px >= HANDEYE_CAMERA_WIDTH_PX))
     {
         return false;
     }
