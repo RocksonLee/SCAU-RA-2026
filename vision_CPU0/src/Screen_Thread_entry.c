@@ -123,6 +123,14 @@ static void screen_process_arm_control_request(void)
 	uint8_t axis;
 	int32_t angle_deg;
 	bool claw_open;
+	bool debug_stop_enabled;
+
+	if (fruit_ui_take_arm_debug_stop_request(&debug_stop_enabled))
+	{
+		bool const sent = ipc_detection_send_arm_debug_stop(debug_stop_enabled);
+		fruit_ui_notify_arm_debug_stop_result(debug_stop_enabled, sent);
+		return;
+	}
 
 	if (fruit_ui_take_arm_zero_request())
 	{

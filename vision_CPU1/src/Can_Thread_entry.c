@@ -59,6 +59,7 @@ static volatile bool g_claw_request_pending;
 static volatile bool g_claw_open_requested;
 static volatile bool g_task_joint5_request_pending;
 static volatile int32_t g_task_joint5_angle_deg;
+static volatile bool g_arm_debug_stop_at_target;
 static volatile uint32_t g_axis_angle_queue[ARM_AXIS_ANGLE_QUEUE_LENGTH];
 static volatile uint32_t g_axis_angle_queue_write;
 static volatile uint32_t g_axis_angle_queue_read;
@@ -111,10 +112,13 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
         q2 = ARM_JOINT_2_MAX_DEG;
     }
 
-    CANFD0_Operation_1((int32_t) round(q1));
-    CANFD0_Operation_2((int32_t) round(q2));
-    CANFD0_Operation_3((int32_t) round(q3));
-    run();
+    if (!CANFD0_Operation_1((int32_t) round(q1)) ||
+        !CANFD0_Operation_2((int32_t) round(q2)) ||
+        !CANFD0_Operation_3((int32_t) round(q3)) ||
+        !run())
+    {
+        return false;
+    }
 
     if (!CANFD0_Wait_Motors_Reached(CANFD0_MOTOR_1_MASK |
                                     CANFD0_MOTOR_2_MASK |
@@ -124,8 +128,10 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
         return false;
     }
 
-    CANFD0_Operation_5((int32_t) round(q5));
-    run();
+    if (!CANFD0_Operation_5((int32_t) round(q5)) || !run())
+    {
+        return false;
+    }
 
     if (!CANFD0_Wait_Motors_Reached(CANFD0_MOTOR_5_MASK,
                                     ARM_MOVE_TIMEOUT_MS))
@@ -147,11 +153,14 @@ static bool arm_move_to_drop_pose(void)
 {
     /* This is a calibrated joint pose, not an XYZ target.  Axis 4 is
      * mechanically locked at zero and must not receive a motion command. */
-    CANFD0_Operation_1(ARM_DROP_AXIS_1_DEG);
-    CANFD0_Operation_2(ARM_DROP_AXIS_2_DEG);
-    CANFD0_Operation_3(ARM_DROP_AXIS_3_DEG);
-    CANFD0_Operation_5(ARM_DROP_AXIS_5_DEG);
-    run();
+    if (!CANFD0_Operation_1(ARM_DROP_AXIS_1_DEG) ||
+        !CANFD0_Operation_2(ARM_DROP_AXIS_2_DEG) ||
+        !CANFD0_Operation_3(ARM_DROP_AXIS_3_DEG) ||
+        !CANFD0_Operation_5(ARM_DROP_AXIS_5_DEG) ||
+        !run())
+    {
+        return false;
+    }
 
     if (!CANFD0_Wait_Motors_Reached(CANFD0_MOTOR_1_MASK |
                                     CANFD0_MOTOR_2_MASK |
@@ -181,17 +190,26 @@ static bool arm_pick_and_place(handeye_arm_point_t const * p_pick_point)
         return false;
     }
 
+    /* Debug mode deliberately stops at the solved detection point.  The
+     * normal gripper, transfer, drop, and return-to-zero stages are skipped. */
+    if (g_arm_debug_stop_at_target)
+    {
+        return true;
+    }
+
     /* Claw commands use sync flag 0 and execute immediately; do not call
      * run(), which is only needed to trigger synchronized joint commands. */
     claw_completion_snapshot = CANFD0_Claw_Completion_Snapshot();
-    Claw_Control();
-    if (!CANFD0_Wait_Claw_Complete(claw_completion_snapshot,
+    if (!Claw_Control() ||
+        !CANFD0_Wait_Claw_Complete(claw_completion_snapshot,
                                    ARM_CLAW_TIMEOUT_MS))
     {
         claw_completion_snapshot = CANFD0_Claw_Completion_Snapshot();
-        Claw_Open();
-        (void) CANFD0_Wait_Claw_Complete(claw_completion_snapshot,
-                                         ARM_CLAW_TIMEOUT_MS);
+        if (Claw_Open())
+        {
+            (void) CANFD0_Wait_Claw_Complete(claw_completion_snapshot,
+                                             ARM_CLAW_TIMEOUT_MS);
+        }
         (void) arm_move_to_zero();
         return false;
     }
@@ -203,16 +221,18 @@ static bool arm_pick_and_place(handeye_arm_point_t const * p_pick_point)
     if (!arm_move_to_drop_pose())
     {
         claw_completion_snapshot = CANFD0_Claw_Completion_Snapshot();
-        Claw_Open();
-        (void) CANFD0_Wait_Claw_Complete(claw_completion_snapshot,
-                                         ARM_CLAW_TIMEOUT_MS);
+        if (Claw_Open())
+        {
+            (void) CANFD0_Wait_Claw_Complete(claw_completion_snapshot,
+                                             ARM_CLAW_TIMEOUT_MS);
+        }
         (void) arm_move_to_zero();
         return false;
     }
 
     claw_completion_snapshot = CANFD0_Claw_Completion_Snapshot();
-    Claw_Open();
-    bool const claw_opened = CANFD0_Wait_Claw_Complete(claw_completion_snapshot,
+    bool const claw_opened = Claw_Open() &&
+                             CANFD0_Wait_Claw_Complete(claw_completion_snapshot,
                                                        ARM_CLAW_TIMEOUT_MS);
 
     /* Returning to zero is mandatory even when the gripper completion frame
@@ -225,11 +245,14 @@ static bool arm_pick_and_place(handeye_arm_point_t const * p_pick_point)
 
 static bool arm_move_to_zero(void)
 {
-    CANFD0_Operation_1(0);
-    CANFD0_Operation_2(0);
-    CANFD0_Operation_3(0);
-    CANFD0_Operation_5(0);
-    run();
+    if (!CANFD0_Operation_1(0) ||
+        !CANFD0_Operation_2(0) ||
+        !CANFD0_Operation_3(0) ||
+        !CANFD0_Operation_5(0) ||
+        !run())
+    {
+        return false;
+    }
 
     if (!CANFD0_Wait_Motors_Reached(CANFD0_MOTOR_1_MASK |
                                     CANFD0_MOTOR_2_MASK |
@@ -249,30 +272,41 @@ static bool arm_move_to_zero(void)
     return true;
 }
 
-static void arm_prepare_task(int32_t joint5_angle_deg)
+static bool arm_prepare_task(int32_t joint5_angle_deg)
 {
-    CANFD0_Operation_5(joint5_angle_deg);
-    run();
+    if (!CANFD0_Operation_5(joint5_angle_deg) || !run())
+    {
+        return false;
+    }
     g_arm_solved_angles_deg[4] = (double) joint5_angle_deg;
     g_arm_solved_angle_valid_mask |= 1UL << 4U;
     arm_publish_telemetry();
+    return true;
 }
 
-static void arm_set_axis_angle(uint8_t axis, int32_t angle_deg)
+static bool arm_set_axis_angle(uint8_t axis, int32_t angle_deg)
 {
+    bool queued;
+
     switch (axis)
     {
-        case 1U: CANFD0_Operation_1(angle_deg); run(); break;
-        case 2U: CANFD0_Operation_2(angle_deg); run(); break;
-        case 3U: CANFD0_Operation_3(angle_deg); run(); break;
-        case 4U: CANFD0_Operation_4(angle_deg); run(); break;
-        case 5U: CANFD0_Operation_5(angle_deg); run(); break;
-        default: return;
+        case 1U: queued = CANFD0_Operation_1(angle_deg); break;
+        case 2U: queued = CANFD0_Operation_2(angle_deg); break;
+        case 3U: queued = CANFD0_Operation_3(angle_deg); break;
+        case 4U: queued = CANFD0_Operation_4(angle_deg); break;
+        case 5U: queued = CANFD0_Operation_5(angle_deg); break;
+        default: return false;
+    }
+
+    if (!queued || !run())
+    {
+        return false;
     }
 
     g_arm_solved_angles_deg[axis - 1U] = (double) angle_deg;
     g_arm_solved_angle_valid_mask |= 1UL << (axis - 1U);
     arm_publish_telemetry();
+    return true;
 }
 
 static bool arm_telemetry_send_word(uint32_t word)
@@ -452,6 +486,15 @@ void ipc0_callback(ipc_callback_args_t *p_args)
     if (IPC_ARM_TELEMETRY_REQUEST == p_args->message)
     {
         g_arm_telemetry_request_pending = true;
+        ipc_coordinate_rx_reset(&receive_state);
+        return;
+    }
+
+    if ((IPC_ARM_DEBUG_STOP_DISABLE == p_args->message) ||
+        (IPC_ARM_DEBUG_STOP_ENABLE == p_args->message))
+    {
+        g_arm_debug_stop_at_target =
+            (IPC_ARM_DEBUG_STOP_ENABLE == p_args->message);
         ipc_coordinate_rx_reset(&receive_state);
         return;
     }
@@ -656,6 +699,7 @@ void Can_Thread_entry(void *pvParameters) {
         int32_t task_joint5_angle_deg = 0;
         bool axis_angle_requested;
         uint32_t axis_angle_command = 0U;
+        uint32_t axis_angle_queue_index = 0U;
         bool arm_telemetry_requested;
 
         taskENTER_CRITICAL();
@@ -683,9 +727,10 @@ void Can_Thread_entry(void *pvParameters) {
                                (g_axis_angle_queue_read != g_axis_angle_queue_write);
         if (axis_angle_requested)
         {
-            axis_angle_command = g_axis_angle_queue[g_axis_angle_queue_read];
-            g_axis_angle_queue_read = (g_axis_angle_queue_read + 1U) %
-                                      ARM_AXIS_ANGLE_QUEUE_LENGTH;
+            /* Keep the entry queued until both CAN packets and the sync
+             * trigger have actually been transmitted. */
+            axis_angle_queue_index = g_axis_angle_queue_read;
+            axis_angle_command = g_axis_angle_queue[axis_angle_queue_index];
         }
         arm_telemetry_requested = !arm_zero_requested &&
                                   !claw_requested &&
@@ -709,11 +754,11 @@ void Can_Thread_entry(void *pvParameters) {
         {
             if (claw_open_requested)
             {
-                Claw_Open();
+                (void) Claw_Open();
             }
             else
             {
-                Claw_Control();
+                (void) Claw_Control();
             }
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
@@ -721,7 +766,7 @@ void Can_Thread_entry(void *pvParameters) {
 
         if (task_joint5_requested)
         {
-            arm_prepare_task(task_joint5_angle_deg);
+            (void) arm_prepare_task(task_joint5_angle_deg);
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }
@@ -736,7 +781,17 @@ void Can_Thread_entry(void *pvParameters) {
             int32_t const angle_deg = (int32_t) encoded_angle +
                                       IPC_AXIS_ANGLE_MIN_DEG;
 
-            arm_set_axis_angle(axis, angle_deg);
+            if (arm_set_axis_angle(axis, angle_deg))
+            {
+                taskENTER_CRITICAL();
+                if ((g_axis_angle_queue_read == axis_angle_queue_index) &&
+                    (g_axis_angle_queue[axis_angle_queue_index] == axis_angle_command))
+                {
+                    g_axis_angle_queue_read = (g_axis_angle_queue_read + 1U) %
+                                              ARM_AXIS_ANGLE_QUEUE_LENGTH;
+                }
+                taskEXIT_CRITICAL();
+            }
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }

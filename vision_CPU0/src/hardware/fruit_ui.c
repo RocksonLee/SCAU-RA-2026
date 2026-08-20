@@ -53,6 +53,7 @@ typedef enum e_ui_page
     UI_PAGE_DETAIL,
     UI_PAGE_DEBUG,
     UI_PAGE_AXIS_ANGLE,
+    UI_PAGE_ARM_DEBUG,
 } ui_page_t;
 
 typedef struct st_axis_angle_request
@@ -104,6 +105,8 @@ static volatile bool g_claw_request_pending;
 static volatile bool g_claw_open_requested;
 static volatile bool g_task_joint5_request_pending;
 static volatile int32_t g_task_joint5_angle_deg;
+static volatile bool g_arm_debug_stop_at_target;
+static volatile bool g_arm_debug_stop_request_pending;
 static volatile axis_angle_request_t g_axis_angle_queue[UI_AXIS_ANGLE_QUEUE_LENGTH];
 static volatile uint32_t g_axis_angle_queue_write;
 static volatile uint32_t g_axis_angle_queue_read;
@@ -159,6 +162,8 @@ static lv_obj_t * g_axis_angle_editor;
 static lv_obj_t * g_axis_angle_keyboard;
 static lv_obj_t * g_axis_angle_status_label;
 static lv_obj_t * g_axis_coordinate_label;
+static lv_obj_t * g_arm_debug_toggle_button;
+static lv_obj_t * g_arm_debug_status_label;
 static uint32_t g_axis_angle_edit_index;
 static lv_obj_t * g_task_preview_image;
 static lv_obj_t * g_task_camera_title;
@@ -194,6 +199,7 @@ static void show_select(void);
 static void show_detail(fruit_ui_target_t target);
 static void show_debug(void);
 static void show_axis_angle(void);
+static void show_arm_debug(void);
 
 static void init_debug_preview(void)
 {
@@ -406,6 +412,8 @@ static void prepare_screen(void)
     g_axis_angle_keyboard = NULL;
     g_axis_angle_status_label = NULL;
     g_axis_coordinate_label = NULL;
+    g_arm_debug_toggle_button = NULL;
+    g_arm_debug_status_label = NULL;
     g_task_preview_image = NULL;
     g_task_camera_title = NULL;
     g_task_camera_status = NULL;
@@ -829,6 +837,54 @@ static void on_axis_angle_page(lv_event_t * e)
         g_debug_light_requested = false;
         taskEXIT_CRITICAL();
         show_axis_angle();
+    }
+}
+
+static void update_arm_debug_toggle_button(void)
+{
+    if (g_arm_debug_toggle_button != NULL) {
+        lv_obj_t * label = lv_obj_get_child(g_arm_debug_toggle_button, 0);
+
+        if (label != NULL) {
+            lv_label_set_text(label,
+                              g_arm_debug_stop_at_target ?
+                              "STOP AT TARGET: ON" : "STOP AT TARGET: OFF");
+        }
+        lv_obj_set_style_bg_color(g_arm_debug_toggle_button,
+                                  g_arm_debug_stop_at_target ?
+                                  lv_color_hex(0xD67B20) : lv_color_hex(0x31445A),
+                                  0);
+    }
+}
+
+static void on_arm_debug_page(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        show_arm_debug();
+    }
+}
+
+static void on_arm_debug_back(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        show_axis_angle();
+    }
+}
+
+static void on_arm_debug_toggle(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        taskENTER_CRITICAL();
+        g_arm_debug_stop_at_target = !g_arm_debug_stop_at_target;
+        g_arm_debug_stop_request_pending = true;
+        taskEXIT_CRITICAL();
+
+        update_arm_debug_toggle_button();
+        if (g_arm_debug_status_label != NULL) {
+            lv_label_set_text(g_arm_debug_status_label, "Applying setting...");
+            lv_obj_set_style_text_color(g_arm_debug_status_label,
+                                        lv_color_hex(0x77818C), 0);
+        }
     }
 }
 
@@ -1563,6 +1619,9 @@ static void show_detail(fruit_ui_target_t target)
 
 void fruit_ui_create(void)
 {
+    /* Safety default: a fresh boot always runs the complete pick sequence. */
+    g_arm_debug_stop_at_target = false;
+    g_arm_debug_stop_request_pending = false;
     app_detection_settings_init();
     init_debug_preview();
     init_styles();
@@ -2002,8 +2061,54 @@ static void update_arm_telemetry_widgets(void)
     }
 }
 
+static void show_arm_debug(void)
+{
+    lv_obj_t * card;
+    lv_obj_t * description;
+
+    prepare_screen();
+    g_current_page = UI_PAGE_ARM_DEBUG;
+
+    add_small_button(page_screen(), "BACK", 12, 12, 68, 30,
+                     on_arm_debug_back, NULL);
+    add_label(page_screen(), "ARM DEBUG",
+              lv_color_hex(0x20303F), &lv_font_montserrat_16,
+              LV_ALIGN_TOP_MID, 0, 18);
+
+    card = add_card(page_screen(), 24, 58, 432, 220);
+    add_label(card, "TASK STOP POSITION",
+              lv_color_hex(0x20303F), &lv_font_montserrat_16,
+              LV_ALIGN_TOP_MID, 0, 2);
+
+    description = add_label(card,
+                            "When enabled, Task moves to the detected target and stops.\n"
+                            "Gripper, transfer, drop and auto-zero are skipped.",
+                            lv_color_hex(0x435466), &lv_font_montserrat_14,
+                            LV_ALIGN_TOP_LEFT, 8, 42);
+    lv_obj_set_width(description, 396);
+    lv_label_set_long_mode(description, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_align(description, LV_TEXT_ALIGN_CENTER, 0);
+
+    g_arm_debug_toggle_button =
+        add_button(card, "STOP AT TARGET: OFF", 66, 118, 280, 48,
+                   on_arm_debug_toggle, NULL);
+    update_arm_debug_toggle_button();
+
+    g_arm_debug_status_label = add_label(page_screen(),
+                                          g_arm_debug_stop_at_target ?
+                                          "Debug mode enabled" : "Normal pick mode",
+                                          g_arm_debug_stop_at_target ?
+                                          lv_color_hex(0xD67B20) :
+                                          lv_color_hex(0x1F7A5A),
+                                          &lv_font_montserrat_12,
+                                          LV_ALIGN_BOTTOM_MID, 0, -16);
+    finish_screen_switch();
+}
+
 static void show_axis_angle(void)
 {
+    lv_obj_t * debug_button;
+
     prepare_screen();
     g_current_page = UI_PAGE_AXIS_ANGLE;
     g_task_stream_active = false;
@@ -2022,9 +2127,13 @@ static void show_axis_angle(void)
                      on_claw_control, (void *) (uintptr_t) false);
     add_small_button(page_screen(), "CLAW OPEN", 258, 12, 98, 30,
                      on_claw_control, (void *) (uintptr_t) true);
-    add_label(page_screen(), "ARM SETTING",
-              lv_color_hex(0x20303F), &lv_font_montserrat_16,
-              LV_ALIGN_TOP_RIGHT, -12, 18);
+    debug_button = add_small_button(page_screen(),
+                                    g_arm_debug_stop_at_target ? "DBG ON" : "DEBUG",
+                                    392, 12, 76, 30,
+                                    on_arm_debug_page, NULL);
+    if (g_arm_debug_stop_at_target) {
+        lv_obj_set_style_bg_color(debug_button, lv_color_hex(0xD67B20), 0);
+    }
 
     for (uint32_t i = 0U; i < UI_AXIS_COUNT; i++) {
         int32_t const y = 56 + ((int32_t) i * 46);
@@ -2196,6 +2305,47 @@ bool fruit_ui_take_task_joint5_request(int32_t * p_angle_deg)
     }
     taskEXIT_CRITICAL();
     return requested;
+}
+
+bool fruit_ui_take_arm_debug_stop_request(bool * p_enabled)
+{
+    bool requested;
+
+    if (NULL == p_enabled) {
+        return false;
+    }
+
+    taskENTER_CRITICAL();
+    requested = g_arm_debug_stop_request_pending;
+    if (requested) {
+        *p_enabled = g_arm_debug_stop_at_target;
+        g_arm_debug_stop_request_pending = false;
+    }
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+void fruit_ui_notify_arm_debug_stop_result(bool enabled, bool sent)
+{
+    if ((UI_PAGE_ARM_DEBUG == g_current_page) &&
+        (g_arm_debug_status_label != NULL)) {
+        char const * text;
+        lv_color_t color;
+
+        if (!sent) {
+            text = "Setting send failed";
+            color = lv_color_hex(0xD83B35);
+        } else if (enabled) {
+            text = "Debug enabled: Task stops at target";
+            color = lv_color_hex(0xD67B20);
+        } else {
+            text = "Normal pick mode restored";
+            color = lv_color_hex(0x1F7A5A);
+        }
+
+        lv_label_set_text(g_arm_debug_status_label, text);
+        lv_obj_set_style_text_color(g_arm_debug_status_label, color, 0);
+    }
 }
 
 bool fruit_ui_take_axis_angle_request(uint8_t * p_axis, int32_t * p_angle_deg)

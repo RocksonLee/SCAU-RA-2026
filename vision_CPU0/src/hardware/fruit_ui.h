@@ -63,6 +63,8 @@ bool fruit_ui_take_arm_zero_request(void);
 bool fruit_ui_take_claw_request(bool * p_open);
 void fruit_ui_notify_claw_result(bool open, bool sent);
 bool fruit_ui_take_task_joint5_request(int32_t * p_angle_deg);
+bool fruit_ui_take_arm_debug_stop_request(bool * p_enabled);
+void fruit_ui_notify_arm_debug_stop_result(bool enabled, bool sent);
 bool fruit_ui_take_axis_angle_request(uint8_t * p_axis, int32_t * p_angle_deg);
 void fruit_ui_notify_axis_angle_result(uint8_t axis, int32_t angle_deg, bool sent);
 bool fruit_ui_is_arm_setting_active(void);

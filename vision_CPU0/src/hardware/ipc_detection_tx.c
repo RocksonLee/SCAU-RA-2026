@@ -100,6 +100,12 @@ bool ipc_detection_send_task_joint5(int32_t angle_deg)
     return false;
 }
 
+bool ipc_detection_send_arm_debug_stop(bool enabled)
+{
+    return ipc_detection_send_word(enabled ? IPC_ARM_DEBUG_STOP_ENABLE :
+                                              IPC_ARM_DEBUG_STOP_DISABLE);
+}
+
 bool ipc_detection_send_axis_angle(uint8_t axis, int32_t angle_deg)
 {
     uint32_t command;
