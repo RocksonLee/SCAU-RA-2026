@@ -17,7 +17,7 @@
 #define DET_NUM_LEVELS              (3U)
 #define DET_CONF_THRESHOLD          (0.35f)
 #define DET_PURPLE_CONF_THRESHOLD   (0.30f)
-#define DET_NMS_IOU_THRESHOLD       (0.30f)
+#define DET_NMS_IOU_THRESHOLD       (0.15f)
 #define DET_MAX_CANDIDATES          (64U)
 #define DET_MAX_OUTPUTS             APP_DETECTION_MAX_RESULTS
 #define     DET_UART_LINE_BYTES         (96U)

@@ -46,6 +46,7 @@
 #define CAMERA_TOP_BATCH_MIN_FRAMES (5U)
 #define CAMERA_TOP_BATCH_MAX_FRAMES (10U)
 #define CAMERA_SIDE_SAMPLES      (5U)
+#define CAMERA_SIDE_SAMPLE_MAX_DEVIATION_PX (60)
 #define CAMERA_SIDE_MAX_FRAMES   (90U)
 #define CAMERA_SIDE_Y_MIN_PX     (50)
 #define CAMERA_SIDE_CAL_X_MIN_PX (104)
@@ -651,32 +652,54 @@ static void camera_reset_top_samples(void)
     g_camera_top_frame_id = 0U;
 }
 
+static bool camera_detection_pigment_confirmed(app_detection_result_t const * p_result)
+{
+    return (NULL != p_result) &&
+           (p_result->mean_r >= 0) &&
+           (p_result->mean_g >= 0) &&
+           (p_result->mean_b >= 0);
+}
+
 static void camera_record_top_samples(app_detection_result_t const * p_results,
                                       uint32_t                       result_count)
 {
-    bool sampled_this_frame[APP_DETECTION_MAX_RESULTS] = {false};
     g_camera_top_frame_id++;
 
-    for (uint32_t i = 0U; i < result_count; i++)
+    for (uint32_t class_id = 0U; class_id < APP_DETECTION_MAX_RESULTS; class_id++)
     {
-        uint32_t const class_id = p_results[i].class_id;
+        uint32_t selected = result_count;
+        bool selected_confirmed = false;
 
-        if ((class_id >= APP_DETECTION_MAX_RESULTS) || sampled_this_frame[class_id])
+        for (uint32_t i = 0U; i < result_count; i++)
+        {
+            if (p_results[i].class_id != class_id)
+            {
+                continue;
+            }
+
+            bool const confirmed = camera_detection_pigment_confirmed(&p_results[i]);
+            if ((result_count == selected) || (confirmed && !selected_confirmed))
+            {
+                selected = i;
+                selected_confirmed = confirmed;
+            }
+        }
+
+        if (result_count == selected)
         {
             continue;
         }
 
         camera_top_samples_t * p_samples = &g_camera_top_samples[class_id];
         uint32_t const sample = p_samples->next;
-        p_samples->x[sample] = p_results[i].x;
-        p_samples->y[sample] = p_results[i].y;
+        p_samples->x[sample] = p_results[selected].x;
+        p_samples->y[sample] = p_results[selected].y;
         p_samples->frame_id[sample] = g_camera_top_frame_id;
         p_samples->next = (sample + 1U) % CAMERA_TOP_SAMPLES;
         if (p_samples->count < CAMERA_TOP_SAMPLES)
         {
             p_samples->count++;
         }
-        sampled_this_frame[class_id] = true;
     }
 }
 
@@ -1127,6 +1150,70 @@ static void camera_process_task_joint5_request(void)
     }
 }
 
+static int32_t camera_select_side_detection(app_detection_result_t const * p_results,
+                                            uint32_t                       result_count,
+                                            uint32_t                       class_id,
+                                            int32_t const                  x_samples[CAMERA_SIDE_SAMPLES],
+                                            int32_t const                  y_samples[CAMERA_SIDE_SAMPLES],
+                                            uint32_t                       sample_count)
+{
+    bool has_confirmed = false;
+    for (uint32_t i = 0U; i < result_count; i++)
+    {
+        if ((p_results[i].class_id == class_id) &&
+            (p_results[i].y >= CAMERA_SIDE_Y_MIN_PX) &&
+            camera_detection_pigment_confirmed(&p_results[i]))
+        {
+            has_confirmed = true;
+            break;
+        }
+    }
+
+    int32_t reference_x = 0;
+    int32_t reference_y = 0;
+    if (sample_count > 0U)
+    {
+        reference_x = camera_median_samples(x_samples, sample_count);
+        reference_y = camera_median_samples(y_samples, sample_count);
+    }
+
+    uint64_t best_distance = UINT64_MAX;
+    int32_t selected = -1;
+    for (uint32_t i = 0U; i < result_count; i++)
+    {
+        app_detection_result_t const * const p_result = &p_results[i];
+        if ((p_result->class_id != class_id) ||
+            (p_result->y < CAMERA_SIDE_Y_MIN_PX) ||
+            (has_confirmed && !camera_detection_pigment_confirmed(p_result)))
+        {
+            continue;
+        }
+
+        if (0U == sample_count)
+        {
+            return (int32_t) i;
+        }
+
+        int32_t const dx = p_result->x - reference_x;
+        int32_t const dy = p_result->y - reference_y;
+        if ((camera_abs_i32(dx) > CAMERA_SIDE_SAMPLE_MAX_DEVIATION_PX) ||
+            (camera_abs_i32(dy) > CAMERA_SIDE_SAMPLE_MAX_DEVIATION_PX))
+        {
+            continue;
+        }
+
+        uint64_t const distance = ((uint64_t) camera_abs_i32(dx) * (uint64_t) camera_abs_i32(dx)) +
+                                  ((uint64_t) camera_abs_i32(dy) * (uint64_t) camera_abs_i32(dy));
+        if (distance < best_distance)
+        {
+            best_distance = distance;
+            selected = (int32_t) i;
+        }
+    }
+
+    return selected;
+}
+
 static bool camera_collect_side_samples(app_detection_result_t const * p_top_results,
                                         uint32_t                       target_count,
                                         int32_t                      * p_side_x,
@@ -1204,7 +1291,6 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
                                        true,
                                        false);
 
-        bool sampled_this_frame[APP_DETECTION_MAX_RESULTS] = {false};
         for (uint32_t i = 0U; i < result_count; i++)
         {
             if (g_detection_results[i].y < CAMERA_SIDE_Y_MIN_PX)
@@ -1223,19 +1309,27 @@ static bool camera_collect_side_samples(app_detection_result_t const * p_top_res
                 camera_uart_send_text(g_uart_line);
             }
 
-            for (uint32_t target = 0U; target < target_count; target++)
+        }
+
+        for (uint32_t target = 0U; target < target_count; target++)
+        {
+            if (sample_count[target] >= CAMERA_SIDE_SAMPLES)
             {
-                if (!sampled_this_frame[target] &&
-                    (sample_count[target] < CAMERA_SIDE_SAMPLES) &&
-                    (g_detection_results[i].class_id == p_top_results[target].class_id))
-                {
-                    uint32_t const sample = sample_count[target];
-                    x_samples[target][sample] = g_detection_results[i].x;
-                    y_samples[target][sample] = g_detection_results[i].y;
-                    sample_count[target]++;
-                    sampled_this_frame[target] = true;
-                    break;
-                }
+                continue;
+            }
+
+            int32_t const selected = camera_select_side_detection(g_detection_results,
+                                                                   result_count,
+                                                                   p_top_results[target].class_id,
+                                                                   x_samples[target],
+                                                                   y_samples[target],
+                                                                   sample_count[target]);
+            if (selected >= 0)
+            {
+                uint32_t const sample = sample_count[target];
+                x_samples[target][sample] = g_detection_results[(uint32_t) selected].x;
+                y_samples[target][sample] = g_detection_results[(uint32_t) selected].y;
+                sample_count[target]++;
             }
         }
     }
