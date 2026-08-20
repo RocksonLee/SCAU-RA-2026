@@ -1,5 +1,6 @@
 #include <Can_Thread.h>
 #include <math.h>
+#include <string.h>
 #include "hardware/canfd0.h"
 #include "hardware/handeye_transform.h"
 #include "hardware/jiesuan.h"
@@ -18,6 +19,13 @@ typedef enum e_ipc_coordinate_rx_state
     IPC_RX_READ_SIDE_X,
     IPC_RX_READ_SIDE_Y,
     IPC_RX_WAIT_END,
+    IPC_RX_READ_CAL_MOVE_SEQUENCE,
+    IPC_RX_READ_CAL_MOVE_X,
+    IPC_RX_READ_CAL_MOVE_Y,
+    IPC_RX_READ_CAL_MOVE_Z,
+    IPC_RX_WAIT_CAL_MOVE_END,
+    IPC_RX_READ_CAL_CONFIG,
+    IPC_RX_WAIT_CAL_CONFIG_END,
     IPC_RX_READ_MANUAL_X,
     IPC_RX_READ_MANUAL_Y,
     IPC_RX_READ_MANUAL_Z,
@@ -44,6 +52,7 @@ typedef enum e_ipc_coordinate_rx_state
 #define ARM_TELEMETRY_IPC_TIMEOUT_MS (100U)
 #define ARM_TELEMETRY_IPC_GAP_MS     (2U)
 #define ARM_DEG_TO_RAD                (0.017453292519943295)
+#define ARM_CALIBRATION_SETTLE_DELAY_MS (3000U)
 
 typedef struct st_ipc_arm_result
 {
@@ -73,6 +82,14 @@ static volatile ipc_manual_coordinate_t g_manual_coordinate_request;
 static volatile bool g_manual_coordinate_request_pending;
 static double g_arm_solved_angles_deg[IPC_ARM_TELEMETRY_AXIS_COUNT];
 static uint32_t g_arm_solved_angle_valid_mask = 0x1FU;
+static volatile bool g_calibration_move_request_pending;
+static volatile uint32_t g_calibration_move_sequence;
+static volatile int32_t g_calibration_move_x_0p1mm;
+static volatile int32_t g_calibration_move_y_0p1mm;
+static volatile int32_t g_calibration_move_z_0p1mm;
+static ipc_handeye_calibration_t g_receive_calibration_config;
+static ipc_handeye_calibration_t g_pending_calibration_config;
+static volatile bool g_calibration_config_pending;
 
 #if DM_COORDINATE_UART_ENABLE
 extern TaskHandle_t Uart_dm_thread;
@@ -83,6 +100,8 @@ static void arm_publish_telemetry(void);
 static bool arm_move_to_zero(void);
 static bool arm_prepare_task(int32_t joint5_angle_deg);
 static bool arm_return_to_task_pose(void);
+static bool arm_move_to_calibration_point(handeye_arm_point_t const * p_point,
+                                          handeye_arm_point_t       * p_actual_point);
 
 static bool arm_move_to_point(handeye_arm_point_t const * p_point)
 {
@@ -344,6 +363,96 @@ static bool arm_telemetry_send_word(uint32_t word)
     return true;
 }
 
+static bool arm_calibration_send_result(uint32_t sequence,
+                                        bool success,
+                                        handeye_arm_point_t const * p_actual_point)
+{
+    int32_t x_0p1mm = 0;
+    int32_t y_0p1mm = 0;
+    int32_t z_0p1mm = 0;
+
+    if (success && (NULL != p_actual_point))
+    {
+        x_0p1mm = (int32_t) round(p_actual_point->x_mm * 10.0);
+        y_0p1mm = (int32_t) round(p_actual_point->y_mm * 10.0);
+        z_0p1mm = (int32_t) round(p_actual_point->z_mm * 10.0);
+    }
+
+    return arm_telemetry_send_word(IPC_CALIBRATION_RESULT_BEGIN) &&
+           arm_telemetry_send_word(sequence) &&
+           arm_telemetry_send_word(success ? 1U : 0U) &&
+           arm_telemetry_send_word((uint32_t) x_0p1mm) &&
+           arm_telemetry_send_word((uint32_t) y_0p1mm) &&
+           arm_telemetry_send_word((uint32_t) z_0p1mm) &&
+           arm_telemetry_send_word(IPC_CALIBRATION_RESULT_END);
+}
+
+static bool arm_move_to_calibration_point(handeye_arm_point_t const * p_point,
+                                          handeye_arm_point_t       * p_actual_point)
+{
+    double q1;
+    double q2;
+    double q3;
+    double q5;
+
+    if ((NULL == p_point) || (NULL == p_actual_point) ||
+        !inverse_kinematics_5dof(p_point->x_mm,
+                                 p_point->y_mm,
+                                 p_point->z_mm,
+                                 ARM_IK_ELBOW_DIRECTION,
+                                 &q1,
+                                 &q2,
+                                 &q3,
+                                 &q5) ||
+        (q2 > ARM_JOINT_2_MAX_DEG) ||
+        (q1 < IPC_AXIS_ANGLE_MIN_DEG) || (q1 > IPC_AXIS_ANGLE_MAX_DEG) ||
+        (q2 < IPC_AXIS_ANGLE_MIN_DEG) ||
+        (q3 < IPC_AXIS_ANGLE_MIN_DEG) || (q3 > IPC_AXIS_ANGLE_MAX_DEG) ||
+        (q5 < IPC_AXIS_ANGLE_MIN_DEG) || (q5 > IPC_AXIS_ANGLE_MAX_DEG))
+    {
+        return false;
+    }
+
+    int32_t const command_q1 = (int32_t) round(q1);
+    int32_t const command_q2 = (int32_t) round(q2);
+    int32_t const command_q3 = (int32_t) round(q3);
+    int32_t const command_q5 = (int32_t) round(q5);
+
+    if (!CANFD0_Operation_1(command_q1) ||
+        !CANFD0_Operation_2(command_q2) ||
+        !CANFD0_Operation_3(command_q3) ||
+        !run())
+    {
+        return false;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_SETTLE_DELAY_MS));
+    if (!CANFD0_Operation_5(command_q5) || !run())
+    {
+        return false;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(ARM_CALIBRATION_SETTLE_DELAY_MS));
+
+    g_arm_solved_angles_deg[0] = (double) command_q1;
+    g_arm_solved_angles_deg[1] = (double) command_q2;
+    g_arm_solved_angles_deg[2] = (double) command_q3;
+    g_arm_solved_angles_deg[3] = 0.0;
+    g_arm_solved_angles_deg[4] = (double) command_q5;
+    g_arm_solved_angle_valid_mask = 0x1FU;
+
+    Pose pose;
+    forward_kinematics_5dof(g_arm_solved_angles_deg[0] * ARM_DEG_TO_RAD,
+                            g_arm_solved_angles_deg[1] * ARM_DEG_TO_RAD,
+                            g_arm_solved_angles_deg[2] * ARM_DEG_TO_RAD,
+                            &pose);
+    p_actual_point->x_mm = pose.x;
+    p_actual_point->y_mm = pose.y;
+    p_actual_point->z_mm = pose.z;
+    arm_publish_telemetry();
+    return true;
+}
+
 static void arm_publish_telemetry(void)
 {
     int32_t angles_0p1deg[IPC_ARM_TELEMETRY_AXIS_COUNT];
@@ -455,6 +564,7 @@ void ipc0_callback(ipc_callback_args_t *p_args)
 {
     static ipc_coordinate_rx_state_t receive_state = IPC_RX_WAIT_BEGIN;
     static uint32_t receive_item_index;
+    static uint32_t receive_calibration_word_index;
     static ipc_manual_coordinate_t manual_coordinate;
 
 	if ((NULL == p_args) || (IPC_EVENT_MESSAGE_RECEIVED != p_args->event))
@@ -472,6 +582,33 @@ void ipc0_callback(ipc_callback_args_t *p_args)
         receive_state = IPC_RX_READ_BATCH_ID;
         return;
 	}
+
+    if (IPC_CALIBRATION_FIRST_COMMAND == p_args->message)
+    {
+        /* AUTO CAL always starts from this known, IK-checked point.  Keeping
+         * the start command to one IPC word makes the initial movement fully
+         * independent of camera detection and packet assembly. */
+        g_calibration_move_sequence = IPC_CALIBRATION_FIRST_SEQUENCE;
+        g_calibration_move_x_0p1mm = IPC_CALIBRATION_FIRST_X_0P1MM;
+        g_calibration_move_y_0p1mm = IPC_CALIBRATION_FIRST_Y_0P1MM;
+        g_calibration_move_z_0p1mm = IPC_CALIBRATION_FIRST_Z_0P1MM;
+        g_calibration_move_request_pending = true;
+        ipc_coordinate_rx_reset(&receive_state);
+        return;
+    }
+
+    if (IPC_CALIBRATION_MOVE_BEGIN == p_args->message)
+    {
+        receive_state = IPC_RX_READ_CAL_MOVE_SEQUENCE;
+        return;
+    }
+
+    if (IPC_CALIBRATION_CONFIG_BEGIN == p_args->message)
+    {
+        receive_calibration_word_index = 0U;
+        receive_state = IPC_RX_READ_CAL_CONFIG;
+        return;
+    }
 
     if (IPC_MANUAL_COORDINATE_BEGIN == p_args->message)
     {
@@ -513,8 +650,9 @@ void ipc0_callback(ipc_callback_args_t *p_args)
         return;
     }
 
-    if (IPC_CLAW_CURRENT_COMMAND_PREFIX ==
-        (p_args->message & IPC_CLAW_CURRENT_COMMAND_MASK))
+    if ((IPC_RX_WAIT_BEGIN == receive_state) &&
+        (IPC_CLAW_CURRENT_COMMAND_PREFIX ==
+         (p_args->message & IPC_CLAW_CURRENT_COMMAND_MASK)))
     {
         uint32_t const current_ma =
             p_args->message & IPC_CLAW_CURRENT_VALUE_MASK;
@@ -543,8 +681,9 @@ void ipc0_callback(ipc_callback_args_t *p_args)
         return;
     }
 
-    if (IPC_AXIS_ANGLE_COMMAND_PREFIX ==
-        (p_args->message & IPC_AXIS_ANGLE_COMMAND_MASK))
+    if ((IPC_RX_WAIT_BEGIN == receive_state) &&
+        (IPC_AXIS_ANGLE_COMMAND_PREFIX ==
+         (p_args->message & IPC_AXIS_ANGLE_COMMAND_MASK)))
     {
         uint32_t const axis = p_args->message & IPC_AXIS_ANGLE_AXIS_MASK;
         uint32_t const encoded_angle =
@@ -642,6 +781,68 @@ void ipc0_callback(ipc_callback_args_t *p_args)
             ipc_coordinate_rx_reset(&receive_state);
             break;
 		}
+
+        case IPC_RX_READ_CAL_MOVE_SEQUENCE:
+        {
+            g_calibration_move_sequence = p_args->message;
+            receive_state = IPC_RX_READ_CAL_MOVE_X;
+            break;
+        }
+
+        case IPC_RX_READ_CAL_MOVE_X:
+        {
+            g_calibration_move_x_0p1mm = (int32_t) p_args->message;
+            receive_state = IPC_RX_READ_CAL_MOVE_Y;
+            break;
+        }
+
+        case IPC_RX_READ_CAL_MOVE_Y:
+        {
+            g_calibration_move_y_0p1mm = (int32_t) p_args->message;
+            receive_state = IPC_RX_READ_CAL_MOVE_Z;
+            break;
+        }
+
+        case IPC_RX_READ_CAL_MOVE_Z:
+        {
+            g_calibration_move_z_0p1mm = (int32_t) p_args->message;
+            receive_state = IPC_RX_WAIT_CAL_MOVE_END;
+            break;
+        }
+
+        case IPC_RX_WAIT_CAL_MOVE_END:
+        {
+            if (IPC_CALIBRATION_MOVE_END == p_args->message)
+            {
+                g_calibration_move_request_pending = true;
+            }
+            ipc_coordinate_rx_reset(&receive_state);
+            break;
+        }
+
+        case IPC_RX_READ_CAL_CONFIG:
+        {
+            uint8_t * p_bytes = (uint8_t *) &g_receive_calibration_config;
+            memcpy(&p_bytes[receive_calibration_word_index * sizeof(uint32_t)],
+                   &p_args->message,
+                   sizeof(uint32_t));
+            receive_calibration_word_index++;
+            receive_state =
+                (receive_calibration_word_index < IPC_CALIBRATION_CONFIG_WORDS) ?
+                IPC_RX_READ_CAL_CONFIG : IPC_RX_WAIT_CAL_CONFIG_END;
+            break;
+        }
+
+        case IPC_RX_WAIT_CAL_CONFIG_END:
+        {
+            if (IPC_CALIBRATION_CONFIG_END == p_args->message)
+            {
+                g_pending_calibration_config = g_receive_calibration_config;
+                g_calibration_config_pending = true;
+            }
+            ipc_coordinate_rx_reset(&receive_state);
+            break;
+        }
 
         case IPC_RX_READ_MANUAL_X:
         {
@@ -779,6 +980,11 @@ void Can_Thread_entry(void *pvParameters) {
         uint32_t axis_angle_command = 0U;
         uint32_t axis_angle_queue_index = 0U;
         bool arm_telemetry_requested;
+        bool calibration_move_requested;
+        uint32_t calibration_move_sequence = 0U;
+        handeye_arm_point_t calibration_target = {0.0, 0.0, 0.0};
+        bool calibration_config_requested;
+        ipc_handeye_calibration_t calibration_config;
 
         taskENTER_CRITICAL();
         arm_zero_requested = g_arm_zero_request_pending;
@@ -786,6 +992,7 @@ void Can_Thread_entry(void *pvParameters) {
         if (arm_zero_requested)
         {
             g_claw_request_pending = false;
+            g_calibration_move_request_pending = false;
         }
         claw_requested = !arm_zero_requested && g_claw_request_pending;
         if (claw_requested)
@@ -819,7 +1026,35 @@ void Can_Thread_entry(void *pvParameters) {
         {
             g_arm_telemetry_request_pending = false;
         }
+        calibration_config_requested = g_calibration_config_pending;
+        if (calibration_config_requested)
+        {
+            calibration_config = g_pending_calibration_config;
+            g_calibration_config_pending = false;
+        }
+        calibration_move_requested = !arm_zero_requested &&
+                                     !claw_requested &&
+                                     !task_joint5_requested &&
+                                     !axis_angle_requested &&
+                                     !arm_telemetry_requested &&
+                                     g_calibration_move_request_pending;
+        if (calibration_move_requested)
+        {
+            calibration_move_sequence = g_calibration_move_sequence;
+            calibration_target.x_mm =
+                (double) g_calibration_move_x_0p1mm / 10.0;
+            calibration_target.y_mm =
+                (double) g_calibration_move_y_0p1mm / 10.0;
+            calibration_target.z_mm =
+                (double) g_calibration_move_z_0p1mm / 10.0;
+            g_calibration_move_request_pending = false;
+        }
         taskEXIT_CRITICAL();
+
+        if (calibration_config_requested)
+        {
+            (void) handeye_set_calibration(&calibration_config);
+        }
 
         if (arm_zero_requested)
         {
@@ -877,6 +1112,18 @@ void Can_Thread_entry(void *pvParameters) {
         if (arm_telemetry_requested)
         {
             arm_publish_telemetry();
+            vTaskDelay(pdMS_TO_TICKS(10U));
+            continue;
+        }
+
+        if (calibration_move_requested)
+        {
+            handeye_arm_point_t actual_point;
+            bool const moved = arm_move_to_calibration_point(&calibration_target,
+                                                              &actual_point);
+            (void) arm_calibration_send_result(calibration_move_sequence,
+                                               moved,
+                                               moved ? &actual_point : NULL);
             vTaskDelay(pdMS_TO_TICKS(10U));
             continue;
         }

@@ -18,6 +18,13 @@
 #define IPC_TASK2_JOINT5_COMMAND        (0x54324A35U) /* "T2J5" */
 #define IPC_ARM_DEBUG_STOP_DISABLE      (0x44535430U) /* "DST0" */
 #define IPC_ARM_DEBUG_STOP_ENABLE       (0x44535431U) /* "DST1" */
+#define IPC_CALIBRATION_FIRST_COMMAND   (0x434D5631U) /* "CMV1" */
+#define IPC_CALIBRATION_MOVE_BEGIN      (0x434D5642U) /* "CMVB" */
+#define IPC_CALIBRATION_MOVE_END        (0x434D5645U) /* "CMVE" */
+#define IPC_CALIBRATION_RESULT_BEGIN    (0x43525342U) /* "CRSB" */
+#define IPC_CALIBRATION_RESULT_END      (0x43525345U) /* "CRSE" */
+#define IPC_CALIBRATION_CONFIG_BEGIN    (0x43434642U) /* "CCFB" */
+#define IPC_CALIBRATION_CONFIG_END      (0x43434645U) /* "CCFE" */
 #define IPC_CLAW_CURRENT_COMMAND_PREFIX (0x434D0000U) /* "CM" + current in mA */
 #define IPC_CLAW_CURRENT_COMMAND_MASK   (0xFFFF0000U)
 #define IPC_CLAW_CURRENT_VALUE_MASK     (0x0000FFFFU)
@@ -32,6 +39,23 @@
 #define IPC_MANUAL_COORDINATE_MIN_0P1MM (-9999)
 #define IPC_MANUAL_COORDINATE_MAX_0P1MM (9999)
 #define IPC_COORDINATE_BATCH_MAX_ITEMS  (3U)
+#define IPC_CALIBRATION_FIRST_SEQUENCE  (1U)
+#define IPC_CALIBRATION_FIRST_X_0P1MM   (1350)
+#define IPC_CALIBRATION_FIRST_Y_0P1MM   (2550)
+#define IPC_CALIBRATION_FIRST_Z_0P1MM   (3250)
+
+typedef struct st_ipc_handeye_calibration
+{
+    float top_z_low_mm;
+    float top_z_high_mm;
+    float top_h_low[3][3];
+    float top_h_high[3][3];
+    float side_z_slope_mm_px;
+    float side_z_offset_mm;
+} ipc_handeye_calibration_t;
+
+#define IPC_CALIBRATION_CONFIG_WORDS \
+    ((uint32_t) (sizeof(ipc_handeye_calibration_t) / sizeof(uint32_t)))
 
 typedef struct st_ipc_manual_coordinate
 {

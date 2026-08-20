@@ -2,6 +2,7 @@
 #include "Touch_Thread.h"
 
 #include "hardware/fruit_ui.h"
+#include "hardware/camera_stream.h"
 #include "hardware/ipc_detection_tx.h"
 #include "hardware/lcd_spi.h"
 #include "hardware/lv_port_disp.h"
@@ -28,6 +29,12 @@ typedef enum e_arm_telemetry_rx_state
 	ARM_TELEMETRY_RX_Y,
 	ARM_TELEMETRY_RX_Z,
 	ARM_TELEMETRY_RX_WAIT_END,
+	ARM_TELEMETRY_RX_CAL_SEQUENCE,
+	ARM_TELEMETRY_RX_CAL_SUCCESS,
+	ARM_TELEMETRY_RX_CAL_X,
+	ARM_TELEMETRY_RX_CAL_Y,
+	ARM_TELEMETRY_RX_CAL_Z,
+	ARM_TELEMETRY_RX_CAL_WAIT_END,
 } arm_telemetry_rx_state_t;
 
 static volatile uint32_t g_arm_telemetry_pending_valid_mask;
@@ -46,6 +53,11 @@ void ipc0_callback(ipc_callback_args_t * p_args)
 	static int32_t y_0p1mm;
 	static int32_t z_0p1mm;
 	static uint32_t angle_index;
+	static uint32_t calibration_sequence;
+	static bool calibration_success;
+	static int32_t calibration_x_0p1mm;
+	static int32_t calibration_y_0p1mm;
+	static int32_t calibration_z_0p1mm;
 
 	if ((NULL == p_args) || (IPC_EVENT_MESSAGE_RECEIVED != p_args->event))
 	{
@@ -56,6 +68,12 @@ void ipc0_callback(ipc_callback_args_t * p_args)
 	{
 		angle_index = 0U;
 		state = ARM_TELEMETRY_RX_VALID_MASK;
+		return;
+	}
+
+	if (IPC_CALIBRATION_RESULT_BEGIN == p_args->message)
+	{
+		state = ARM_TELEMETRY_RX_CAL_SEQUENCE;
 		return;
 	}
 
@@ -101,6 +119,43 @@ void ipc0_callback(ipc_callback_args_t * p_args)
 				g_arm_telemetry_pending_y_0p1mm = y_0p1mm;
 				g_arm_telemetry_pending_z_0p1mm = z_0p1mm;
 				g_arm_telemetry_update_pending = true;
+			}
+			state = ARM_TELEMETRY_RX_WAIT_BEGIN;
+			break;
+
+		case ARM_TELEMETRY_RX_CAL_SEQUENCE:
+			calibration_sequence = p_args->message;
+			state = ARM_TELEMETRY_RX_CAL_SUCCESS;
+			break;
+
+		case ARM_TELEMETRY_RX_CAL_SUCCESS:
+			calibration_success = (0U != p_args->message);
+			state = ARM_TELEMETRY_RX_CAL_X;
+			break;
+
+		case ARM_TELEMETRY_RX_CAL_X:
+			calibration_x_0p1mm = (int32_t) p_args->message;
+			state = ARM_TELEMETRY_RX_CAL_Y;
+			break;
+
+		case ARM_TELEMETRY_RX_CAL_Y:
+			calibration_y_0p1mm = (int32_t) p_args->message;
+			state = ARM_TELEMETRY_RX_CAL_Z;
+			break;
+
+		case ARM_TELEMETRY_RX_CAL_Z:
+			calibration_z_0p1mm = (int32_t) p_args->message;
+			state = ARM_TELEMETRY_RX_CAL_WAIT_END;
+			break;
+
+		case ARM_TELEMETRY_RX_CAL_WAIT_END:
+			if (IPC_CALIBRATION_RESULT_END == p_args->message)
+			{
+				camera_calibration_notify_arm_result(calibration_sequence,
+				                                     calibration_success,
+				                                     calibration_x_0p1mm,
+				                                     calibration_y_0p1mm,
+				                                     calibration_z_0p1mm);
 			}
 			state = ARM_TELEMETRY_RX_WAIT_BEGIN;
 			break;

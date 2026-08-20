@@ -1,5 +1,6 @@
 #include "handeye_transform.h"
 
+#include <math.h>
 #include <stddef.h>
 
 #define HANDEYE_CAMERA_WIDTH_PX       (640)
@@ -20,19 +21,24 @@ static double const g_camera_to_arm_homography_z0[3][3] =
 };
 
 /* Height-aware top-camera homographies calibrated at 325 mm and 385 mm. */
-static double const g_camera_to_arm_homography_z325[3][3] =
+static double g_camera_to_arm_homography_z_low[3][3] =
 {
     {-0.0050620485,  0.2640889468, 38.1704684559},
     { 0.3836043009, -0.0242952309, 75.9593991709},
     { 0.0002450191, -0.0002921146,  1.0000000000},
 };
 
-static double const g_camera_to_arm_homography_z385[3][3] =
+static double g_camera_to_arm_homography_z_high[3][3] =
 {
     {0.1914500083, 0.4343906439, 62.3737818695},
     {0.9075307303, 0.2533455801, 42.1344710727},
     {0.0025644552, 0.0008938283,  1.0000000000},
 };
+
+static double g_top_cal_z_low_mm = HANDEYE_TOP_CAL_Z_LOW_MM;
+static double g_top_cal_z_high_mm = HANDEYE_TOP_CAL_Z_HIGH_MM;
+static double g_side_z_slope_mm_px = HANDEYE_SIDE_Z_SLOPE_MM_PX;
+static double g_side_z_offset_mm = HANDEYE_SIDE_Z_OFFSET_MM;
 
 static bool handeye_project_top(double const homography[3][3],
                                 double       u,
@@ -78,14 +84,14 @@ static bool handeye_top_pixel_to_arm_at_z(int32_t               camera_x_px,
     double x_high_mm;
     double y_high_mm;
 
-    if (!handeye_project_top(g_camera_to_arm_homography_z325, u, v, &x_low_mm, &y_low_mm) ||
-        !handeye_project_top(g_camera_to_arm_homography_z385, u, v, &x_high_mm, &y_high_mm))
+    if (!handeye_project_top(g_camera_to_arm_homography_z_low, u, v, &x_low_mm, &y_low_mm) ||
+        !handeye_project_top(g_camera_to_arm_homography_z_high, u, v, &x_high_mm, &y_high_mm))
     {
         return false;
     }
 
-    double const ratio = (z_mm - HANDEYE_TOP_CAL_Z_LOW_MM) /
-                         (HANDEYE_TOP_CAL_Z_HIGH_MM - HANDEYE_TOP_CAL_Z_LOW_MM);
+    double const ratio = (z_mm - g_top_cal_z_low_mm) /
+                         (g_top_cal_z_high_mm - g_top_cal_z_low_mm);
     p_arm_point->x_mm = x_low_mm + (ratio * (x_high_mm - x_low_mm));
     p_arm_point->y_mm = y_low_mm + (ratio * (y_high_mm - y_low_mm));
     p_arm_point->z_mm = z_mm;
@@ -122,9 +128,53 @@ bool handeye_side_pixel_to_arm_z(int32_t side_x_px, double * p_z_mm)
         return false;
     }
 
-    *p_z_mm = (HANDEYE_SIDE_Z_SLOPE_MM_PX * (double) side_x_px) +
-               HANDEYE_SIDE_Z_OFFSET_MM;
+    *p_z_mm = (g_side_z_slope_mm_px * (double) side_x_px) +
+               g_side_z_offset_mm;
 
+    return true;
+}
+
+bool handeye_set_calibration(ipc_handeye_calibration_t const * p_calibration)
+{
+    if ((NULL == p_calibration) ||
+        !isfinite(p_calibration->top_z_low_mm) ||
+        !isfinite(p_calibration->top_z_high_mm) ||
+        !isfinite(p_calibration->side_z_slope_mm_px) ||
+        !isfinite(p_calibration->side_z_offset_mm) ||
+        !((double) p_calibration->top_z_high_mm >
+          ((double) p_calibration->top_z_low_mm + HANDEYE_DENOMINATOR_EPSILON)) ||
+        !((double) p_calibration->side_z_slope_mm_px > 0.0))
+    {
+        return false;
+    }
+
+    for (uint32_t row = 0U; row < 3U; row++)
+    {
+        for (uint32_t column = 0U; column < 3U; column++)
+        {
+            if (!isfinite(p_calibration->top_h_low[row][column]) ||
+                !isfinite(p_calibration->top_h_high[row][column]))
+            {
+                return false;
+            }
+        }
+    }
+
+    for (uint32_t row = 0U; row < 3U; row++)
+    {
+        for (uint32_t column = 0U; column < 3U; column++)
+        {
+            g_camera_to_arm_homography_z_low[row][column] =
+                (double) p_calibration->top_h_low[row][column];
+            g_camera_to_arm_homography_z_high[row][column] =
+                (double) p_calibration->top_h_high[row][column];
+        }
+    }
+
+    g_top_cal_z_low_mm = (double) p_calibration->top_z_low_mm;
+    g_top_cal_z_high_mm = (double) p_calibration->top_z_high_mm;
+    g_side_z_slope_mm_px = (double) p_calibration->side_z_slope_mm_px;
+    g_side_z_offset_mm = (double) p_calibration->side_z_offset_mm;
     return true;
 }
 

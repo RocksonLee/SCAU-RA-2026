@@ -71,6 +71,7 @@ typedef enum e_ui_page
     UI_PAGE_SELECT,
     UI_PAGE_DETAIL,
     UI_PAGE_DEBUG,
+    UI_PAGE_CALIBRATION,
     UI_PAGE_AXIS_ANGLE,
     UI_PAGE_MANUAL_COORDINATE,
     UI_PAGE_ARM_DEBUG,
@@ -127,6 +128,28 @@ static volatile bool g_task_side_camera;
 static volatile bool g_pending_task_side_camera;
 static volatile bool g_task_camera_update_pending;
 static volatile bool g_frame_dump_request_pending;
+static volatile bool g_calibration_start_request_pending;
+static volatile bool g_calibration_cancel_request_pending;
+static volatile bool g_calibration_confirm_request_pending;
+static volatile bool g_calibration_endpoint_update_pending;
+static volatile int32_t g_pending_calibration_x_0p1mm;
+static volatile int32_t g_pending_calibration_y_0p1mm;
+static volatile int32_t g_pending_calibration_z_0p1mm;
+static volatile bool g_pending_calibration_point_is_next;
+static volatile bool g_pending_calibration_point_is_moving;
+static volatile fruit_ui_calibration_state_t g_pending_calibration_state;
+static volatile uint32_t g_pending_calibration_completed;
+static volatile uint32_t g_pending_calibration_total;
+static volatile int32_t g_pending_calibration_rmse_0p1mm;
+static volatile bool g_calibration_status_update_pending;
+static volatile bool g_calibration_camera_update_pending;
+static volatile bool g_pending_calibration_side_camera;
+static bool g_calibration_running;
+static bool g_calibration_waiting_confirmation;
+static uint32_t g_calibration_completed;
+static uint32_t g_calibration_total;
+static bool g_calibration_light_restore;
+static bool g_calibration_light_forced;
 static volatile bool g_arm_zero_request_pending;
 static volatile bool g_claw_request_pending;
 static volatile bool g_claw_open_requested;
@@ -185,6 +208,8 @@ static lv_obj_t * g_debug_camera_title;
 static lv_obj_t * g_debug_camera_button;
 static lv_obj_t * g_debug_light_button;
 static lv_obj_t * g_debug_uart_log_button;
+static lv_obj_t * g_debug_calibration_button;
+static lv_obj_t * g_debug_action_button;
 static lv_obj_t * g_top_light_default_button;
 static lv_obj_t * g_side_light_default_button;
 static lv_obj_t * g_axis_angle_inputs[UI_AXIS_COUNT];
@@ -259,9 +284,11 @@ static void show_task_stream(void);
 static void show_select(void);
 static void show_detail(fruit_ui_target_t target);
 static void show_debug(void);
+static void show_calibration(void);
 static void show_axis_angle(void);
 static void show_manual_coordinate(void);
 static void show_arm_debug(void);
+static void on_calibration_page(lv_event_t * e);
 
 static uint16_t claw_current_settings_check(uint16_t current_ma,
                                             uint16_t current_inverse)
@@ -524,6 +551,8 @@ static void prepare_screen(void)
     g_debug_camera_button = NULL;
     g_debug_light_button = NULL;
     g_debug_uart_log_button = NULL;
+    g_debug_calibration_button = NULL;
+    g_debug_action_button = NULL;
     g_top_light_default_button = NULL;
     g_side_light_default_button = NULL;
     for (uint32_t i = 0U; i < UI_AXIS_COUNT; i++) {
@@ -923,9 +952,14 @@ static void set_debug_threshold(uint32_t percent)
 static void cancel_activity_for_home(void)
 {
     taskENTER_CRITICAL();
+    if (g_calibration_running)
+    {
+        g_calibration_cancel_request_pending = true;
+    }
     g_debug_mode_active = false;
     g_debug_side_camera_requested = false;
     g_debug_light_requested = false;
+    g_calibration_light_forced = false;
     g_frame_dump_request_pending = false;
     g_task_joint5_request_pending = false;
     g_task_mode = FRUIT_UI_TASK_NONE;
@@ -937,6 +971,39 @@ static void cancel_activity_for_home(void)
     taskEXIT_CRITICAL();
 
     reset_preview_session();
+}
+
+static void on_debug_calibration(lv_event_t * e)
+{
+    if (LV_EVENT_CLICKED != lv_event_get_code(e))
+    {
+        return;
+    }
+
+    taskENTER_CRITICAL();
+    if (g_calibration_running)
+    {
+        g_calibration_cancel_request_pending = true;
+    }
+    else
+    {
+        g_calibration_start_request_pending = true;
+        g_calibration_light_restore = g_debug_light_requested;
+        g_calibration_light_forced = true;
+        g_debug_light_requested = true;
+    }
+    taskEXIT_CRITICAL();
+
+    if (!g_calibration_running && (NULL != g_debug_light_button))
+    {
+        lv_obj_t * label = lv_obj_get_child(g_debug_light_button, 0);
+        if (NULL != label)
+        {
+            lv_label_set_text(label, "LIGHT OFF");
+        }
+        lv_obj_set_style_bg_color(g_debug_light_button,
+                                  lv_color_hex(0x1F7A5A), 0);
+    }
 }
 
 static void on_task_select(lv_event_t * e)
@@ -1496,6 +1563,12 @@ static void on_manual_coordinate_send(lv_event_t * e)
 static void on_debug_camera_toggle(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        /* During movement/sampling the top camera is reserved for calibration.
+         * The operator may inspect the side view while waiting to approve the
+         * next movement; confirming a move switches back to top automatically. */
+        if (g_calibration_running && !g_calibration_waiting_confirmation) {
+            return;
+        }
         if ((xTaskGetTickCount() - g_debug_camera_button_open_tick) <
             pdMS_TO_TICKS(350U)) {
             return;
@@ -1518,8 +1591,13 @@ static void on_debug_camera_toggle(lv_event_t * e)
         }
 
         if (g_debug_camera_title != NULL) {
-            lv_label_set_text(g_debug_camera_title,
-                              request_side ? "SIDE CAMERA DEBUG" : "TOP CAMERA DEBUG");
+            bool const calibration_page =
+                (UI_PAGE_CALIBRATION == g_current_page);
+            lv_label_set_text(
+                g_debug_camera_title,
+                request_side ?
+                (calibration_page ? "SIDE CAMERA CALIBRATION" : "SIDE CAMERA DEBUG") :
+                (calibration_page ? "TOP CAMERA CALIBRATION" : "TOP CAMERA DEBUG"));
         }
 
         if (g_debug_camera_button != NULL) {
@@ -1568,10 +1646,23 @@ static void on_debug_uart_dump(lv_event_t * e)
 {
     if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
         taskENTER_CRITICAL();
-        g_frame_dump_request_pending = true;
+        if (g_calibration_running && g_calibration_waiting_confirmation) {
+            g_calibration_confirm_request_pending = true;
+            g_calibration_waiting_confirmation = false;
+        } else if (!g_calibration_running &&
+                   (UI_PAGE_DEBUG == g_current_page)) {
+            g_frame_dump_request_pending = true;
+        }
         taskEXIT_CRITICAL();
 
-        if (g_debug_save_label != NULL) {
+        if (g_calibration_running && (g_debug_action_button != NULL)) {
+            lv_obj_t * label = lv_obj_get_child(g_debug_action_button, 0);
+            if (label != NULL) {
+                lv_label_set_text(label, "WAIT");
+            }
+            lv_obj_set_style_bg_color(g_debug_action_button,
+                                      lv_color_hex(0x31445A), 0);
+        } else if (g_debug_save_label != NULL) {
             lv_label_set_text(g_debug_save_label, "UART queued");
             lv_obj_set_style_text_color(g_debug_save_label, lv_color_hex(0x31445A), 0);
         }
@@ -1812,11 +1903,13 @@ static void show_home(void)
     task_2_button = add_button(page_screen(), "TASK 2  |  TOP + SIDE", 236, 169, 224, 40,
                                on_task_select,
                                (void *) (uintptr_t) FRUIT_UI_TASK_TOP_AND_SIDE);
-    add_small_button(page_screen(), "CAM TEST", 236, 219, 70, 40,
+    add_small_button(page_screen(), "CAM", 236, 219, 50, 40,
                      on_settings, NULL);
-    add_small_button(page_screen(), "JOINT", 313, 219, 70, 40,
+    add_small_button(page_screen(), "CAL", 290, 219, 50, 40,
+                     on_calibration_page, NULL);
+    add_small_button(page_screen(), "JOINT", 344, 219, 54, 40,
                      on_axis_angle_page, NULL);
-    add_small_button(page_screen(), "XYZ MOVE", 390, 219, 70, 40,
+    add_small_button(page_screen(), "XYZ", 402, 219, 58, 40,
                      on_manual_coordinate_page, NULL);
 
     card = add_card(page_screen(), 218, 269, 242, 39);
@@ -1949,7 +2042,7 @@ static void show_debug(void)
 
     create_detection_boxes();
 
-    card = add_card(page_screen(), 328, 52, 148, 240);
+    card = add_card(page_screen(), 328, 52, 148, 264);
     lv_obj_set_style_pad_all(card, 6, 0);
     add_label(card, "G ratio threshold", lv_color_hex(0x687685),
               &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 0);
@@ -1993,18 +2086,89 @@ static void show_debug(void)
     update_camera_light_default_button(g_side_light_default_button,
                                        "SIDE", side_light_default);
 
+    g_debug_calibration_button =
+        add_small_button(card, "AUTO CAL", 0, 194, 68, 26,
+                         on_debug_calibration, NULL);
+    g_debug_action_button =
+        add_small_button(card, "DUMP", 72, 194, 62, 26,
+                         on_debug_uart_dump, NULL);
     g_debug_uart_log_button =
         add_small_button(card,
                          uart_debug_logs_enabled() ? "LOG ON" : "LOG OFF",
-                         0, 194, 64, 26,
+                         0, 224, 134, 24,
                          on_debug_uart_log_toggle, NULL);
     if (uart_debug_logs_enabled()) {
         lv_obj_set_style_bg_color(g_debug_uart_log_button,
                                   lv_color_hex(0x1F7A5A), 0);
     }
-    add_small_button(card, "DUMP", 70, 194, 64, 26,
-                     on_debug_uart_dump, NULL);
     update_debug_results_widget();
+
+    taskENTER_CRITICAL();
+    g_debug_mode_active = true;
+    taskEXIT_CRITICAL();
+    finish_screen_switch();
+}
+
+static void show_calibration(void)
+{
+    lv_obj_t * card;
+
+    prepare_screen();
+    g_current_page = UI_PAGE_CALIBRATION;
+    g_task_stream_active = false;
+    g_debug_mode_active = false;
+    reset_preview_session();
+
+    add_small_button(page_screen(), "HOME", 12, 12, 68, 30,
+                     on_back_debug, NULL);
+    g_debug_camera_title =
+        add_label(page_screen(), "TOP CAMERA CALIBRATION",
+                  lv_color_hex(0x20303F), &lv_font_montserrat_16,
+                  LV_ALIGN_TOP_MID, 0, 15);
+    g_debug_camera_button =
+        add_small_button(page_screen(), "SIDE", 84, 12, 76, 30,
+                         on_debug_camera_toggle, NULL);
+    g_debug_light_button =
+        add_small_button(page_screen(), "LIGHT ON", 392, 12, 76, 30,
+                         on_debug_light_toggle, NULL);
+
+    add_preview_backdrop(page_screen(), 4, 52);
+    g_debug_preview_image = lv_image_create(page_screen());
+    lv_obj_set_pos(g_debug_preview_image, 4, 52);
+    lv_obj_set_style_border_width(g_debug_preview_image, 1, 0);
+    lv_obj_set_style_border_color(g_debug_preview_image,
+                                  lv_color_hex(0x31445A), 0);
+    lv_obj_add_flag(g_debug_preview_image, LV_OBJ_FLAG_HIDDEN);
+    create_detection_boxes();
+
+    card = add_card(page_screen(), 328, 52, 148, 240);
+    lv_obj_set_style_pad_all(card, 6, 0);
+    add_label(card, "HAND-EYE XY", lv_color_hex(0x687685),
+              &lv_font_montserrat_10, LV_ALIGN_TOP_MID, 0, 0);
+    g_debug_save_label =
+        add_label(card, "Ready - grip green grape",
+                  lv_color_hex(0x1F7A5A), &lv_font_montserrat_10,
+                  LV_ALIGN_TOP_MID, 0, 22);
+    lv_obj_set_width(g_debug_save_label, 134);
+    lv_obj_set_style_text_align(g_debug_save_label, LV_TEXT_ALIGN_CENTER, 0);
+
+    g_debug_results_label =
+        add_label(card, "TOP camera\nTarget: --\nActual: --",
+                  lv_color_hex(0x31445A), &lv_font_montserrat_10,
+                  LV_ALIGN_TOP_LEFT, 0, 52);
+    lv_obj_set_width(g_debug_results_label, 134);
+    lv_obj_set_height(g_debug_results_label, 72);
+    lv_label_set_long_mode(g_debug_results_label, LV_LABEL_LONG_CLIP);
+
+    add_label(card, "Confirm each NEXT move",
+              lv_color_hex(0x77818C), &lv_font_montserrat_10,
+              LV_ALIGN_TOP_MID, 0, 128);
+    g_debug_calibration_button =
+        add_small_button(card, "AUTO CAL", 0, 151, 134, 32,
+                         on_debug_calibration, NULL);
+    g_debug_action_button =
+        add_small_button(card, "CONFIRM", 0, 190, 134, 32,
+                         on_debug_uart_dump, NULL);
 
     taskENTER_CRITICAL();
     g_debug_mode_active = true;
@@ -2168,6 +2332,19 @@ void fruit_ui_process(void)
     bool has_task_camera_update = false;
     fruit_ui_target_t pending_pick_sent_target = FRUIT_UI_TARGET_NONE;
     bool has_pick_sent_update = false;
+    bool has_calibration_status_update = false;
+    fruit_ui_calibration_state_t calibration_state = FRUIT_UI_CALIBRATION_IDLE;
+    uint32_t calibration_completed = 0U;
+    uint32_t calibration_total = 0U;
+    int32_t calibration_rmse_0p1mm = 0;
+    bool has_calibration_camera_update = false;
+    bool calibration_side_camera = false;
+    bool has_calibration_endpoint_update = false;
+    int32_t calibration_x_0p1mm = 0;
+    int32_t calibration_y_0p1mm = 0;
+    int32_t calibration_z_0p1mm = 0;
+    bool calibration_point_is_next = false;
+    bool calibration_point_is_moving = false;
 
     taskENTER_CRITICAL();
     if (g_target_update_pending) {
@@ -2231,7 +2408,205 @@ void fruit_ui_process(void)
         g_pick_sent_update_pending = false;
         has_pick_sent_update = true;
     }
+    if (g_calibration_status_update_pending) {
+        calibration_state = g_pending_calibration_state;
+        calibration_completed = g_pending_calibration_completed;
+        calibration_total = g_pending_calibration_total;
+        calibration_rmse_0p1mm = g_pending_calibration_rmse_0p1mm;
+        g_calibration_status_update_pending = false;
+        has_calibration_status_update = true;
+    }
+    if (g_calibration_camera_update_pending) {
+        calibration_side_camera = g_pending_calibration_side_camera;
+        g_calibration_camera_update_pending = false;
+        has_calibration_camera_update = true;
+    }
+    if (g_calibration_endpoint_update_pending) {
+        calibration_x_0p1mm = g_pending_calibration_x_0p1mm;
+        calibration_y_0p1mm = g_pending_calibration_y_0p1mm;
+        calibration_z_0p1mm = g_pending_calibration_z_0p1mm;
+        calibration_point_is_next = g_pending_calibration_point_is_next;
+        calibration_point_is_moving = g_pending_calibration_point_is_moving;
+        g_calibration_endpoint_update_pending = false;
+        has_calibration_endpoint_update = true;
+    }
     taskEXIT_CRITICAL();
+
+    bool const debug_camera_page =
+        ((UI_PAGE_DEBUG == g_current_page) ||
+         (UI_PAGE_CALIBRATION == g_current_page));
+
+    if (has_calibration_camera_update && debug_camera_page) {
+        if (NULL != g_debug_camera_title) {
+            lv_label_set_text(g_debug_camera_title,
+                              calibration_side_camera ?
+                              "SIDE CAMERA CALIBRATION" :
+                              "TOP CAMERA CALIBRATION");
+        }
+        if (NULL != g_debug_camera_button) {
+            lv_obj_t * label = lv_obj_get_child(g_debug_camera_button, 0);
+            if (NULL != label) {
+                lv_label_set_text(label, calibration_side_camera ? "TOP" : "SIDE");
+            }
+        }
+        if (NULL != g_debug_preview_image) {
+            lv_obj_add_flag(g_debug_preview_image, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    if (has_calibration_status_update) {
+        char status[40];
+        lv_color_t color = lv_color_hex(0x31445A);
+
+        g_calibration_running = (FRUIT_UI_CALIBRATION_RUNNING == calibration_state);
+        g_calibration_completed = calibration_completed;
+        g_calibration_total = calibration_total;
+        if (g_calibration_running) {
+            (void) snprintf(status, sizeof(status), "CAL %lu/%lu - keep clear",
+                            (unsigned long) calibration_completed,
+                            (unsigned long) calibration_total);
+            color = lv_color_hex(0xD67B20);
+        } else if (FRUIT_UI_CALIBRATION_SUCCESS == calibration_state) {
+            (void) snprintf(status, sizeof(status), "CAL OK %ld.%ldmm",
+                            (long) (calibration_rmse_0p1mm / 10),
+                            (long) (calibration_rmse_0p1mm % 10));
+            color = lv_color_hex(0x1F7A5A);
+        } else if (FRUIT_UI_CALIBRATION_CANCELLED == calibration_state) {
+            (void) snprintf(status, sizeof(status), "Calibration cancelled");
+        } else if (FRUIT_UI_CALIBRATION_ERROR == calibration_state) {
+            (void) snprintf(status, sizeof(status), "Calibration failed %ld",
+                            (long) calibration_rmse_0p1mm);
+            color = lv_color_hex(0xD83B35);
+        } else {
+            (void) snprintf(status, sizeof(status), "Calibration ready");
+        }
+
+        if (!g_calibration_running && debug_camera_page) {
+            if (g_calibration_light_forced) {
+                taskENTER_CRITICAL();
+                g_debug_light_requested = g_calibration_light_restore;
+                taskEXIT_CRITICAL();
+                g_calibration_light_forced = false;
+                if (NULL != g_debug_light_button) {
+                    lv_obj_t * light_label = lv_obj_get_child(g_debug_light_button, 0);
+                    if (NULL != light_label) {
+                        lv_label_set_text(light_label,
+                                          g_debug_light_requested ? "LIGHT OFF" : "LIGHT ON");
+                    }
+                    lv_obj_set_style_bg_color(g_debug_light_button,
+                                              g_debug_light_requested ? lv_color_hex(0x1F7A5A) :
+                                                                        lv_color_hex(0x31445A),
+                                              0);
+                }
+            }
+            if (NULL != g_debug_camera_title) {
+                bool const calibration_page =
+                    (UI_PAGE_CALIBRATION == g_current_page);
+                lv_label_set_text(
+                    g_debug_camera_title,
+                    g_debug_side_camera_requested ?
+                    (calibration_page ? "SIDE CAMERA CALIBRATION" : "SIDE CAMERA DEBUG") :
+                    (calibration_page ? "TOP CAMERA CALIBRATION" : "TOP CAMERA DEBUG"));
+            }
+            if (NULL != g_debug_camera_button) {
+                lv_obj_t * label = lv_obj_get_child(g_debug_camera_button, 0);
+                if (NULL != label) {
+                    lv_label_set_text(label,
+                                      g_debug_side_camera_requested ? "TOP" : "SIDE");
+                }
+            }
+        }
+
+        if (debug_camera_page && (NULL != g_debug_save_label)) {
+            lv_label_set_text(g_debug_save_label, status);
+            lv_obj_set_style_text_color(g_debug_save_label, color, 0);
+        }
+        if (debug_camera_page &&
+            (NULL != g_debug_calibration_button)) {
+            lv_obj_t * label = lv_obj_get_child(g_debug_calibration_button, 0);
+            if (NULL != label) {
+                lv_label_set_text(label, g_calibration_running ? "CANCEL" : "AUTO CAL");
+            }
+            lv_obj_set_style_bg_color(g_debug_calibration_button,
+                                      g_calibration_running ? lv_color_hex(0xD67B20) :
+                                                              lv_color_hex(0x1F7A5A),
+                                      0);
+        }
+        if (!g_calibration_running && (NULL != g_debug_action_button)) {
+            lv_obj_t * action_label = lv_obj_get_child(g_debug_action_button, 0);
+            g_calibration_waiting_confirmation = false;
+            if (NULL != action_label) {
+                lv_label_set_text(action_label,
+                                  (UI_PAGE_CALIBRATION == g_current_page) ?
+                                  "CONFIRM" : "DUMP");
+            }
+            lv_obj_set_style_bg_color(g_debug_action_button,
+                                      lv_color_hex(0x31445A), 0);
+        } else if (g_calibration_running &&
+                   !g_calibration_waiting_confirmation &&
+                   (NULL != g_debug_action_button)) {
+            lv_obj_t * action_label = lv_obj_get_child(g_debug_action_button, 0);
+            if (NULL != action_label) {
+                lv_label_set_text(action_label, "WAIT");
+            }
+        }
+    }
+
+    if (has_calibration_endpoint_update &&
+        g_calibration_running && debug_camera_page) {
+        char point_text[72];
+        g_calibration_waiting_confirmation = calibration_point_is_next;
+        if (calibration_point_is_next) {
+            (void) snprintf(point_text, sizeof(point_text),
+                            "NEXT P%lu/%lu\nX%ld.%ld Y%ld.%ld\nZ%ld.%ld mm",
+                            (unsigned long) (g_calibration_completed + 1U),
+                            (unsigned long) g_calibration_total,
+                            (long) (calibration_x_0p1mm / 10),
+                            (long) abs(calibration_x_0p1mm % 10),
+                            (long) (calibration_y_0p1mm / 10),
+                            (long) abs(calibration_y_0p1mm % 10),
+                            (long) (calibration_z_0p1mm / 10),
+                            (long) abs(calibration_z_0p1mm % 10));
+        } else if (calibration_point_is_moving) {
+            (void) snprintf(point_text, sizeof(point_text),
+                            "MOVING P%lu/%lu\nX%ld.%ld Y%ld.%ld\nZ%ld.%ld mm",
+                            (unsigned long) (g_calibration_completed + 1U),
+                            (unsigned long) g_calibration_total,
+                            (long) (calibration_x_0p1mm / 10),
+                            (long) abs(calibration_x_0p1mm % 10),
+                            (long) (calibration_y_0p1mm / 10),
+                            (long) abs(calibration_y_0p1mm % 10),
+                            (long) (calibration_z_0p1mm / 10),
+                            (long) abs(calibration_z_0p1mm % 10));
+        } else {
+            (void) snprintf(point_text, sizeof(point_text),
+                            "P%lu/%lu ARRIVED\nX%ld.%ld Y%ld.%ld\nZ%ld.%ld sampling",
+                            (unsigned long) (g_calibration_completed + 1U),
+                            (unsigned long) g_calibration_total,
+                            (long) (calibration_x_0p1mm / 10),
+                            (long) abs(calibration_x_0p1mm % 10),
+                            (long) (calibration_y_0p1mm / 10),
+                            (long) abs(calibration_y_0p1mm % 10),
+                            (long) (calibration_z_0p1mm / 10),
+                            (long) abs(calibration_z_0p1mm % 10));
+        }
+        if (NULL != g_debug_results_label) {
+            lv_label_set_text(g_debug_results_label, point_text);
+            lv_obj_set_style_text_color(g_debug_results_label,
+                                        lv_color_hex(0xD67B20), 0);
+        }
+        if (NULL != g_debug_action_button) {
+            lv_obj_t * action_label = lv_obj_get_child(g_debug_action_button, 0);
+            if (NULL != action_label) {
+                lv_label_set_text(action_label,
+                                  calibration_point_is_next ? "CONFIRM" : "WAIT");
+            }
+            lv_obj_set_style_bg_color(g_debug_action_button,
+                                      calibration_point_is_next ? lv_color_hex(0xD67B20) :
+                                                                  lv_color_hex(0x31445A),
+                                      0);
+        }
+    }
 
     if (has_task_camera_update) {
         g_task_side_camera = pending_task_side_camera;
@@ -2320,20 +2695,26 @@ void fruit_ui_process(void)
             g_debug_detections[i] = pending_debug_detections[i];
         }
 
-        if (g_current_page == UI_PAGE_DEBUG) {
-            update_debug_results_widget();
+        if (debug_camera_page) {
+            if (!g_calibration_running) {
+                update_debug_results_widget();
+            } else {
+                /* Keep the live recognition box visible without replacing
+                 * the calibration target/endpoint coordinate text. */
+                update_detection_boxes();
+            }
         } else if (g_current_page == UI_PAGE_STREAM) {
             update_detection_boxes();
         }
     }
 
-    if (has_preview_update && (g_current_page == UI_PAGE_DEBUG) &&
+    if (has_preview_update && debug_camera_page &&
         (g_debug_preview_image != NULL)) {
         lv_image_set_src(g_debug_preview_image, &g_debug_preview_dsc[preview_index]);
         lv_obj_remove_flag(g_debug_preview_image, LV_OBJ_FLAG_HIDDEN);
         lv_obj_invalidate(g_debug_preview_image);
 
-        if (g_debug_save_label != NULL) {
+        if ((g_debug_save_label != NULL) && !g_calibration_running) {
             lv_label_set_text(g_debug_save_label,
                               g_debug_side_camera_requested ? "SIDE active" : "TOP active");
             lv_obj_set_style_text_color(g_debug_save_label, lv_color_hex(0x1F7A5A), 0);
@@ -2982,6 +3363,117 @@ bool fruit_ui_take_frame_dump_request(void)
     g_frame_dump_request_pending = false;
     taskEXIT_CRITICAL();
     return requested;
+}
+
+static void on_calibration_page(lv_event_t * e)
+{
+    if (LV_EVENT_CLICKED == lv_event_get_code(e))
+    {
+        taskENTER_CRITICAL();
+        g_debug_side_camera_requested = false;
+        g_debug_light_requested = false;
+        taskEXIT_CRITICAL();
+        g_debug_camera_button_open_tick = xTaskGetTickCount();
+        show_calibration();
+    }
+}
+
+bool fruit_ui_take_calibration_start_request(void)
+{
+    bool requested;
+
+    taskENTER_CRITICAL();
+    requested = g_calibration_start_request_pending;
+    g_calibration_start_request_pending = false;
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+bool fruit_ui_take_calibration_cancel_request(void)
+{
+    bool requested;
+
+    taskENTER_CRITICAL();
+    requested = g_calibration_cancel_request_pending;
+    g_calibration_cancel_request_pending = false;
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+bool fruit_ui_take_calibration_confirm_request(void)
+{
+    bool requested;
+
+    taskENTER_CRITICAL();
+    requested = g_calibration_confirm_request_pending;
+    g_calibration_confirm_request_pending = false;
+    taskEXIT_CRITICAL();
+    return requested;
+}
+
+void fruit_ui_set_calibration_status(fruit_ui_calibration_state_t state,
+                                     uint32_t completed,
+                                     uint32_t total,
+                                     int32_t rmse_0p1mm)
+{
+    taskENTER_CRITICAL();
+    g_pending_calibration_state = state;
+    g_pending_calibration_completed = completed;
+    g_pending_calibration_total = total;
+    g_pending_calibration_rmse_0p1mm = rmse_0p1mm;
+    g_calibration_status_update_pending = true;
+    taskEXIT_CRITICAL();
+}
+
+void fruit_ui_set_calibration_camera(bool side_camera)
+{
+    taskENTER_CRITICAL();
+    g_debug_side_camera_requested = side_camera;
+    g_pending_calibration_side_camera = side_camera;
+    g_calibration_camera_update_pending = true;
+    taskEXIT_CRITICAL();
+}
+
+void fruit_ui_set_calibration_endpoint(int32_t x_0p1mm,
+                                       int32_t y_0p1mm,
+                                       int32_t z_0p1mm)
+{
+    taskENTER_CRITICAL();
+    g_pending_calibration_x_0p1mm = x_0p1mm;
+    g_pending_calibration_y_0p1mm = y_0p1mm;
+    g_pending_calibration_z_0p1mm = z_0p1mm;
+    g_pending_calibration_point_is_next = false;
+    g_pending_calibration_point_is_moving = false;
+    g_calibration_endpoint_update_pending = true;
+    taskEXIT_CRITICAL();
+}
+
+void fruit_ui_set_calibration_next_target(int32_t x_0p1mm,
+                                          int32_t y_0p1mm,
+                                          int32_t z_0p1mm)
+{
+    taskENTER_CRITICAL();
+    g_pending_calibration_x_0p1mm = x_0p1mm;
+    g_pending_calibration_y_0p1mm = y_0p1mm;
+    g_pending_calibration_z_0p1mm = z_0p1mm;
+    g_pending_calibration_point_is_next = true;
+    g_pending_calibration_point_is_moving = false;
+    g_calibration_endpoint_update_pending = true;
+    taskEXIT_CRITICAL();
+}
+
+void fruit_ui_set_calibration_moving_target(int32_t x_0p1mm,
+                                            int32_t y_0p1mm,
+                                            int32_t z_0p1mm)
+{
+    taskENTER_CRITICAL();
+    g_pending_calibration_x_0p1mm = x_0p1mm;
+    g_pending_calibration_y_0p1mm = y_0p1mm;
+    g_pending_calibration_z_0p1mm = z_0p1mm;
+    g_pending_calibration_point_is_next = false;
+    g_pending_calibration_point_is_moving = true;
+    g_calibration_endpoint_update_pending = true;
+    taskEXIT_CRITICAL();
 }
 
 bool fruit_ui_take_arm_zero_request(void)

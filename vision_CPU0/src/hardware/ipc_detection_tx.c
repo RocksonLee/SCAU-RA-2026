@@ -1,6 +1,7 @@
 #include "ipc_detection_tx.h"
 
 #include <stddef.h>
+#include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -162,4 +163,51 @@ bool ipc_detection_send_manual_coordinate(int32_t x_0p1mm,
 bool ipc_detection_send_arm_telemetry_request(void)
 {
     return ipc_detection_send_word(IPC_ARM_TELEMETRY_REQUEST);
+}
+
+bool ipc_detection_send_calibration_first(void)
+{
+    /* The first calibration move is intentionally one IPC word.  It must be
+     * able to start with an empty camera view and cannot depend on a model
+     * result or a partially received multi-word coordinate packet. */
+    return ipc_detection_send_word(IPC_CALIBRATION_FIRST_COMMAND);
+}
+
+bool ipc_detection_send_calibration_move(uint32_t sequence,
+                                         int32_t  x_0p1mm,
+                                         int32_t  y_0p1mm,
+                                         int32_t  z_0p1mm)
+{
+    return ipc_detection_send_word(IPC_CALIBRATION_MOVE_BEGIN) &&
+           ipc_detection_send_word(sequence) &&
+           ipc_detection_send_word((uint32_t) x_0p1mm) &&
+           ipc_detection_send_word((uint32_t) y_0p1mm) &&
+           ipc_detection_send_word((uint32_t) z_0p1mm) &&
+           ipc_detection_send_word(IPC_CALIBRATION_MOVE_END);
+}
+
+bool ipc_detection_send_calibration_config(ipc_handeye_calibration_t const * p_config)
+{
+    if ((NULL == p_config) ||
+        (0U != (sizeof(*p_config) % sizeof(uint32_t))))
+    {
+        return false;
+    }
+
+    if (!ipc_detection_send_word(IPC_CALIBRATION_CONFIG_BEGIN))
+    {
+        return false;
+    }
+
+    for (uint32_t i = 0U; i < IPC_CALIBRATION_CONFIG_WORDS; i++)
+    {
+        uint32_t word;
+        memcpy(&word, &((uint8_t const *) p_config)[i * sizeof(word)], sizeof(word));
+        if (!ipc_detection_send_word(word))
+        {
+            return false;
+        }
+    }
+
+    return ipc_detection_send_word(IPC_CALIBRATION_CONFIG_END);
 }

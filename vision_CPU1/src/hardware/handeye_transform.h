@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "ipc_detection_protocol.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -51,6 +53,8 @@ bool handeye_pixels_to_arm_3d(int32_t top_x_px,
                               int32_t top_y_px,
                               int32_t side_x_px,
                               handeye_arm_point_t * p_arm_point);
+
+bool handeye_set_calibration(ipc_handeye_calibration_t const * p_calibration);
 
 #ifdef __cplusplus
 }

@@ -23,6 +23,15 @@ typedef enum e_fruit_ui_task_mode
     FRUIT_UI_TASK_TOP_AND_SIDE,
 } fruit_ui_task_mode_t;
 
+typedef enum e_fruit_ui_calibration_state
+{
+    FRUIT_UI_CALIBRATION_IDLE = 0,
+    FRUIT_UI_CALIBRATION_RUNNING,
+    FRUIT_UI_CALIBRATION_SUCCESS,
+    FRUIT_UI_CALIBRATION_CANCELLED,
+    FRUIT_UI_CALIBRATION_ERROR,
+} fruit_ui_calibration_state_t;
+
 #define FRUIT_UI_MAX_DETECTIONS (3U)
 
 typedef struct st_fruit_ui_detection
@@ -59,6 +68,23 @@ bool fruit_ui_debug_light_requested(void);
 fruit_ui_task_mode_t fruit_ui_get_task_mode(void);
 uint32_t fruit_ui_get_task_generation(void);
 bool fruit_ui_take_frame_dump_request(void);
+bool fruit_ui_take_calibration_start_request(void);
+bool fruit_ui_take_calibration_cancel_request(void);
+bool fruit_ui_take_calibration_confirm_request(void);
+void fruit_ui_set_calibration_camera(bool side_camera);
+void fruit_ui_set_calibration_endpoint(int32_t x_0p1mm,
+                                       int32_t y_0p1mm,
+                                       int32_t z_0p1mm);
+void fruit_ui_set_calibration_next_target(int32_t x_0p1mm,
+                                          int32_t y_0p1mm,
+                                          int32_t z_0p1mm);
+void fruit_ui_set_calibration_moving_target(int32_t x_0p1mm,
+                                            int32_t y_0p1mm,
+                                            int32_t z_0p1mm);
+void fruit_ui_set_calibration_status(fruit_ui_calibration_state_t state,
+                                     uint32_t completed,
+                                     uint32_t total,
+                                     int32_t rmse_0p1mm);
 bool fruit_ui_take_arm_zero_request(void);
 bool fruit_ui_take_claw_request(bool * p_open);
 void fruit_ui_notify_claw_result(bool open, bool sent);
