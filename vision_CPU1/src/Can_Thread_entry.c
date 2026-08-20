@@ -75,6 +75,7 @@ extern TaskHandle_t Uart_dm_thread;
 #if !DM_COORDINATE_UART_ENABLE
 static void arm_publish_telemetry(void);
 static bool arm_move_to_zero(void);
+static bool arm_return_to_task_pose(void);
 
 static bool arm_move_to_point(handeye_arm_point_t const * p_point)
 {
@@ -229,12 +230,35 @@ static bool arm_pick_and_place(handeye_arm_point_t const * p_pick_point)
         vTaskDelay(pdMS_TO_TICKS(ARM_CLAW_OPEN_DELAY_MS));
     }
 
-    /* Returning to zero is mandatory even when the gripper completion frame
-     * is missing.  Previously this path returned early and left the arm at
-     * the drop/pick pose whenever the gripper Response setting did not emit
-     * the active 9F completion frame. */
-    bool const arm_zeroed = arm_move_to_zero();
-    return claw_opened && arm_zeroed;
+    /* Return the arm links to their standby positions, but restore axis 5 to
+     * the angle selected when the current Task was opened (-30 or 80 deg). */
+    bool const arm_ready = arm_return_to_task_pose();
+    return claw_opened && arm_ready;
+}
+
+static bool arm_return_to_task_pose(void)
+{
+    int32_t const joint5_angle_deg = g_task_joint5_angle_deg;
+
+    if (!CANFD0_Operation_1(0) ||
+        !CANFD0_Operation_2(0) ||
+        !CANFD0_Operation_3(0) ||
+        !CANFD0_Operation_5(joint5_angle_deg) ||
+        !run())
+    {
+        return false;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_SETTLE_DELAY_MS));
+
+    for (uint32_t i = 0U; i < IPC_ARM_TELEMETRY_AXIS_COUNT; i++)
+    {
+        g_arm_solved_angles_deg[i] = 0.0;
+    }
+    g_arm_solved_angles_deg[4] = (double) joint5_angle_deg;
+    g_arm_solved_angle_valid_mask = 0x1FU;
+    arm_publish_telemetry();
+    return true;
 }
 
 static bool arm_move_to_zero(void)
