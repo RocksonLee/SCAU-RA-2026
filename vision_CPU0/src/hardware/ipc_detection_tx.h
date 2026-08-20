@@ -16,5 +16,6 @@ bool ipc_detection_send_manual_coordinate(int32_t x_0p1mm,
                                           int32_t y_0p1mm,
                                           int32_t z_0p1mm);
 bool ipc_detection_send_arm_telemetry_request(void);
+bool ipc_detection_send_performance_ping(uint16_t sequence);
 
 #endif /* IPC_DETECTION_TX_H */

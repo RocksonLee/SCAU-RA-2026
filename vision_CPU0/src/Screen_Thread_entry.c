@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "hardware/fruit_ui.h"
+#include "hardware/app_detection.h"
 #include "hardware/ipc_detection_tx.h"
 #include "hardware/lcd_spi.h"
 #include "hardware/lv_port_disp.h"
@@ -46,6 +47,9 @@ static int32_t g_manual_pixel_probe_x;
 static int32_t g_manual_pixel_probe_y;
 static TickType_t g_manual_pixel_probe_deadline;
 static char g_manual_pixel_probe_uart_line[MANUAL_PIXEL_PROBE_UART_LINE_BYTES];
+static volatile uint16_t g_performance_ping_sequence;
+static volatile TickType_t g_performance_ping_start_tick;
+static volatile bool g_performance_ping_pending;
 
 void ipc0_callback(ipc_callback_args_t * p_args)
 {
@@ -59,6 +63,45 @@ void ipc0_callback(ipc_callback_args_t * p_args)
 
 	if ((NULL == p_args) || (IPC_EVENT_MESSAGE_RECEIVED != p_args->event))
 	{
+		return;
+	}
+
+	if (IPC_PERFORMANCE_REPLY_PREFIX ==
+	    (p_args->message & IPC_PERFORMANCE_MESSAGE_MASK))
+	{
+		uint16_t const sequence =
+			(uint16_t) (p_args->message & IPC_PERFORMANCE_VALUE_MASK);
+
+		if (g_performance_ping_pending &&
+		    (sequence == g_performance_ping_sequence))
+		{
+			TickType_t const elapsed =
+				xTaskGetTickCountFromISR() - g_performance_ping_start_tick;
+			uint32_t const elapsed_ms = (uint32_t) pdTICKS_TO_MS(elapsed);
+
+			app_detection_performance_set_ipc_latency(elapsed_ms * 5U);
+			g_performance_ping_pending = false;
+		}
+		return;
+	}
+
+	if (IPC_PERFORMANCE_EXEC_ACK_PREFIX ==
+	    (p_args->message & IPC_PERFORMANCE_MESSAGE_MASK))
+	{
+		app_detection_performance_finish_execution(
+			p_args->message & IPC_PERFORMANCE_VALUE_MASK);
+		return;
+	}
+
+	uint32_t const performance_prefix =
+		p_args->message & IPC_PERFORMANCE_MESSAGE_MASK;
+	if ((IPC_PERFORMANCE_RAM_PREFIX == performance_prefix) ||
+	    (IPC_PERFORMANCE_FLASH_PREFIX == performance_prefix) ||
+	    (IPC_PERFORMANCE_SDRAM_PREFIX == performance_prefix))
+	{
+		app_detection_performance_set_cpu1_memory(
+			performance_prefix,
+			(p_args->message & IPC_PERFORMANCE_VALUE_MASK) * 256U);
 		return;
 	}
 
@@ -126,6 +169,46 @@ void ipc0_callback(ipc_callback_args_t * p_args)
 static uint32_t lvgl_freertos_tick_ms(void)
 {
 	return (uint32_t) pdTICKS_TO_MS(xTaskGetTickCount());
+}
+
+static void screen_process_performance_ping(void)
+{
+	static TickType_t last_ping_tick;
+	TickType_t const now = xTaskGetTickCount();
+
+	if (!fruit_ui_is_performance_page_active())
+	{
+		last_ping_tick = 0U;
+		return;
+	}
+
+	if (g_performance_ping_pending)
+	{
+		if ((now - g_performance_ping_start_tick) >= pdMS_TO_TICKS(2000U))
+		{
+			g_performance_ping_pending = false;
+		}
+		else
+		{
+			return;
+		}
+	}
+
+	if ((0U == last_ping_tick) ||
+	    ((now - last_ping_tick) >= pdMS_TO_TICKS(500U)))
+	{
+		g_performance_ping_sequence++;
+		g_performance_ping_start_tick = now;
+		g_performance_ping_pending = true;
+		if (ipc_detection_send_performance_ping(g_performance_ping_sequence))
+		{
+			last_ping_tick = now;
+		}
+		else
+		{
+			g_performance_ping_pending = false;
+		}
+	}
 }
 
 static void screen_process_arm_control_request(void)
@@ -368,6 +451,7 @@ void Screen_Thread_entry(void *pvParameters)
 		screen_process_arm_control_request();
 		screen_process_arm_telemetry();
 		screen_process_manual_pixel_probe();
+		screen_process_performance_ping();
 
 		vTaskDelayUntil(&last_wake_time, pdMS_TO_TICKS(5U));
 	}

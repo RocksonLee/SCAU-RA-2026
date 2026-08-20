@@ -46,6 +46,13 @@ typedef enum e_ipc_coordinate_rx_state
 #define ARM_TELEMETRY_IPC_GAP_MS     (2U)
 #define ARM_DEG_TO_RAD                (0.017453292519943295)
 
+extern uint8_t g_cpu1_ram_start[] __asm__("__ddsc_RAM_START");
+extern uint8_t g_cpu1_ram_end[] __asm__("__ddsc_RAM_END");
+extern uint8_t g_cpu1_flash_start[] __asm__("__ddsc_FLASH_START");
+extern uint8_t g_cpu1_flash_end[] __asm__("__ddsc_FLASH_END");
+extern uint8_t g_cpu1_sdram_start[] __asm__("__ddsc_SDRAM_START");
+extern uint8_t g_cpu1_sdram_end[] __asm__("__ddsc_SDRAM_END");
+
 typedef struct st_ipc_arm_result
 {
     handeye_arm_point_t point;
@@ -72,12 +79,36 @@ static volatile uint32_t g_axis_angle_queue_read;
 static volatile bool g_arm_telemetry_request_pending;
 static volatile ipc_manual_coordinate_t g_manual_coordinate_request;
 static volatile bool g_manual_coordinate_request_pending;
+static volatile uint32_t g_performance_reply_word;
+static volatile bool g_performance_reply_pending;
 static double g_arm_solved_angles_deg[IPC_ARM_TELEMETRY_AXIS_COUNT];
 static uint32_t g_arm_solved_angle_valid_mask = 0x1FU;
 
 #if DM_COORDINATE_UART_ENABLE
 extern TaskHandle_t Uart_dm_thread;
 #endif
+
+static bool ipc_performance_send_word(uint32_t word)
+{
+    TickType_t const start_tick = xTaskGetTickCount();
+    fsp_err_t err;
+
+    do
+    {
+        err = g_ipc0.p_api->messageSend(g_ipc0.p_ctrl, word);
+        if (FSP_ERR_OVERFLOW == err)
+        {
+            if ((xTaskGetTickCount() - start_tick) >=
+                pdMS_TO_TICKS(ARM_TELEMETRY_IPC_TIMEOUT_MS))
+            {
+                return false;
+            }
+            vTaskDelay(pdMS_TO_TICKS(1U));
+        }
+    } while (FSP_ERR_OVERFLOW == err);
+
+    return FSP_SUCCESS == err;
+}
 
 #if !DM_COORDINATE_UART_ENABLE
 static void arm_publish_telemetry(void);
@@ -465,6 +496,15 @@ void ipc0_callback(ipc_callback_args_t *p_args)
 		return;
 	}
 
+    if (IPC_PERFORMANCE_PING_PREFIX ==
+        (p_args->message & IPC_PERFORMANCE_MESSAGE_MASK))
+    {
+        g_performance_reply_word = IPC_PERFORMANCE_REPLY_PREFIX |
+            (p_args->message & IPC_PERFORMANCE_VALUE_MASK);
+        g_performance_reply_pending = true;
+        return;
+    }
+
 	/*
 	 * A new packet header always takes precedence. This lets the receiver
 	 * recover when CPU0 times out after sending only part of a packet.
@@ -772,6 +812,35 @@ void Can_Thread_entry(void *pvParameters) {
 #endif
 	while (1)
 	{
+        bool performance_reply_pending;
+        uint32_t performance_reply_word = 0U;
+
+        taskENTER_CRITICAL();
+        performance_reply_pending = g_performance_reply_pending;
+        if (performance_reply_pending)
+        {
+            performance_reply_word = g_performance_reply_word;
+            g_performance_reply_pending = false;
+        }
+        taskEXIT_CRITICAL();
+
+        if (performance_reply_pending)
+        {
+            (void) ipc_performance_send_word(performance_reply_word);
+            (void) ipc_performance_send_word(
+                IPC_PERFORMANCE_RAM_PREFIX |
+                (uint32_t) (((uintptr_t) g_cpu1_ram_end -
+                             (uintptr_t) g_cpu1_ram_start) / 256U));
+            (void) ipc_performance_send_word(
+                IPC_PERFORMANCE_FLASH_PREFIX |
+                (uint32_t) (((uintptr_t) g_cpu1_flash_end -
+                             (uintptr_t) g_cpu1_flash_start) / 256U));
+            (void) ipc_performance_send_word(
+                IPC_PERFORMANCE_SDRAM_PREFIX |
+                (uint32_t) (((uintptr_t) g_cpu1_sdram_end -
+                             (uintptr_t) g_cpu1_sdram_start) / 256U));
+        }
+
 #if !DM_COORDINATE_UART_ENABLE
         bool arm_zero_requested;
         bool claw_requested;
@@ -935,6 +1004,9 @@ void Can_Thread_entry(void *pvParameters) {
                                                        pair.side_x,
                                                        &arm_point)))
             {
+                (void) ipc_performance_send_word(
+                    IPC_PERFORMANCE_EXEC_ACK_PREFIX |
+                    (pair.pair_id & IPC_PERFORMANCE_VALUE_MASK));
 #if DM_COORDINATE_UART_ENABLE
                 if (ipc_arm_point_publish(&arm_point, pair.pair_id, pair.class_id))
                 {

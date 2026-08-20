@@ -88,6 +88,7 @@ bool fruit_ui_take_manual_pixel_probe_result(int32_t  * p_pixel_x,
 void fruit_ui_notify_manual_pixel_probe_capture(bool found);
 void fruit_ui_notify_manual_pixel_probe_uart(bool sent);
 bool fruit_ui_is_arm_setting_active(void);
+bool fruit_ui_is_performance_page_active(void);
 void fruit_ui_set_arm_telemetry(uint32_t        valid_mask,
                                 int32_t const * p_angles_0p1deg,
                                 bool            coordinate_valid,

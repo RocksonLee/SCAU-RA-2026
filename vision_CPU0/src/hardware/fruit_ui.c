@@ -26,8 +26,8 @@
 #define UI_PREVIEW_H (240U)
 #define UI_PREVIEW_PIXELS (UI_PREVIEW_W * UI_PREVIEW_H)
 #define UI_TARGET_COUNT (4U)
-#define UI_WEIGHT_LOCK_DELAY_MS (1500U)
-#define UI_WEIGHT_STABLE_SAMPLES (5U)
+#define UI_WEIGHT_LOCK_DELAY_MS (300U)
+#define UI_WEIGHT_STABLE_SAMPLES (3U)
 #define UI_WEIGHT_STABLE_TOLERANCE_0P1G (5)
 #define UI_WEIGHT_MIN_VALID_0P1G (20)
 #define UI_AXIS_COUNT (5U)
@@ -45,6 +45,17 @@
 #define UI_CLAW_SETTINGS_VERSION (2U)
 #define UI_CLAW_SETTINGS_LEGACY_MAGIC (0x434D4131UL) /* "CMA1" */
 #define UI_CLAW_SETTINGS_LEGACY_VERSION (1U)
+#define UI_SYSTEM_RAM_BYTES              (0x001D4000UL)
+#define UI_SYSTEM_FLASH_BYTES            (0x00100000UL)
+#define UI_SYSTEM_SDRAM_BYTES            (0x08000000UL)
+#define UI_PERFORMANCE_REFRESH_MS         (250U)
+
+extern uint8_t g_cpu0_ram_start[] __asm__("__ddsc_RAM_START");
+extern uint8_t g_cpu0_ram_end[] __asm__("__ddsc_RAM_END");
+extern uint8_t g_cpu0_flash_start[] __asm__("__ddsc_FLASH_START");
+extern uint8_t g_cpu0_flash_end[] __asm__("__ddsc_FLASH_END");
+extern uint8_t g_cpu0_sdram_start[] __asm__("__ddsc_SDRAM_START");
+extern uint8_t g_cpu0_sdram_end[] __asm__("__ddsc_SDRAM_END");
 
 typedef struct st_claw_current_settings
 {
@@ -87,6 +98,7 @@ typedef enum e_ui_page
     UI_PAGE_AXIS_ANGLE,
     UI_PAGE_MANUAL_COORDINATE,
     UI_PAGE_ARM_DEBUG,
+    UI_PAGE_PERFORMANCE,
 } ui_page_t;
 
 typedef struct st_axis_angle_request
@@ -245,6 +257,12 @@ static lv_obj_t * g_task_preview_image;
 static lv_obj_t * g_task_camera_title;
 static lv_obj_t * g_task_camera_status;
 static lv_obj_t * g_confirm_pick_button;
+static lv_obj_t * g_performance_inference_label;
+static lv_obj_t * g_performance_fps_label;
+static lv_obj_t * g_performance_total_label;
+static lv_obj_t * g_performance_ipc_label;
+static lv_obj_t * g_performance_memory_label;
+static TickType_t g_performance_refresh_tick;
 static lv_obj_t * g_debug_boxes[FRUIT_UI_MAX_DETECTIONS];
 static lv_obj_t * g_debug_box_labels[FRUIT_UI_MAX_DETECTIONS];
 static bool g_style_ready;
@@ -293,6 +311,7 @@ static void show_debug(void);
 static void show_axis_angle(void);
 static void show_manual_coordinate(void);
 static void show_arm_debug(void);
+static void show_performance(void);
 
 static bool claw_current_profile_index(fruit_ui_target_t target,
                                        uint32_t        * p_index)
@@ -658,6 +677,11 @@ static void prepare_screen(void)
     g_task_camera_title = NULL;
     g_task_camera_status = NULL;
     g_confirm_pick_button = NULL;
+    g_performance_inference_label = NULL;
+    g_performance_fps_label = NULL;
+    g_performance_total_label = NULL;
+    g_performance_ipc_label = NULL;
+    g_performance_memory_label = NULL;
     for (uint32_t i = 0U; i < FRUIT_UI_MAX_DETECTIONS; i++) {
         g_debug_boxes[i] = NULL;
         g_debug_box_labels[i] = NULL;
@@ -753,6 +777,99 @@ static lv_obj_t * add_card(lv_obj_t * parent, int32_t x, int32_t y, int32_t w, i
     lv_obj_set_size(card, w, h);
     lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
     return card;
+}
+
+static lv_obj_t * add_performance_card(char const * title,
+                                       int32_t x,
+                                       int32_t y)
+{
+    lv_obj_t * card = add_card(page_screen(), x, y, 210, 72);
+
+    add_label(card, title, lv_color_hex(0x77818C),
+              &lv_font_montserrat_10, LV_ALIGN_TOP_LEFT, 0, 0);
+    return add_label(card, "--", lv_color_hex(0x1F7A5A),
+                     &lv_font_montserrat_18, LV_ALIGN_CENTER, 0, 9);
+}
+
+static void update_performance_page(void)
+{
+    app_performance_metrics_t metrics;
+    char text[128];
+    uintptr_t const cpu0_ram =
+        (uintptr_t) g_cpu0_ram_end - (uintptr_t) g_cpu0_ram_start;
+    uintptr_t const cpu0_flash =
+        (uintptr_t) g_cpu0_flash_end - (uintptr_t) g_cpu0_flash_start;
+    uintptr_t const cpu0_sdram =
+        (uintptr_t) g_cpu0_sdram_end - (uintptr_t) g_cpu0_sdram_start;
+
+    app_detection_get_performance(&metrics);
+    uint32_t const ram_used = (uint32_t) cpu0_ram + metrics.cpu1_ram_bytes;
+    uint32_t const flash_used = (uint32_t) cpu0_flash + metrics.cpu1_flash_bytes;
+    uint32_t const sdram_used = (uint32_t) cpu0_sdram + metrics.cpu1_sdram_bytes;
+
+    if (NULL != g_performance_inference_label) {
+        if (metrics.inference_valid) {
+            (void) snprintf(text, sizeof(text), "%lu.%lu ms",
+                            (unsigned long) (metrics.inference_0p1ms / 10U),
+                            (unsigned long) (metrics.inference_0p1ms % 10U));
+        } else {
+            (void) snprintf(text, sizeof(text), "WAITING");
+        }
+        lv_label_set_text(g_performance_inference_label, text);
+    }
+
+    if (NULL != g_performance_fps_label) {
+        if (metrics.fps_valid) {
+            (void) snprintf(text, sizeof(text), "%lu.%lu FPS",
+                            (unsigned long) (metrics.fps_0p1 / 10U),
+                            (unsigned long) (metrics.fps_0p1 % 10U));
+        } else {
+            (void) snprintf(text, sizeof(text), "WAITING");
+        }
+        lv_label_set_text(g_performance_fps_label, text);
+    }
+
+    if (NULL != g_performance_total_label) {
+        if (metrics.vision_to_execution_valid) {
+            (void) snprintf(text, sizeof(text), "%lu.%lu ms",
+                            (unsigned long) (metrics.vision_to_execution_0p1ms / 10U),
+                            (unsigned long) (metrics.vision_to_execution_0p1ms % 10U));
+        } else {
+            (void) snprintf(text, sizeof(text), "WAITING");
+        }
+        lv_label_set_text(g_performance_total_label, text);
+    }
+
+    if (NULL != g_performance_ipc_label) {
+        if (metrics.ipc_latency_valid) {
+            (void) snprintf(text, sizeof(text), "%lu.%lu ms",
+                            (unsigned long) (metrics.ipc_latency_0p1ms / 10U),
+                            (unsigned long) (metrics.ipc_latency_0p1ms % 10U));
+        } else {
+            (void) snprintf(text, sizeof(text), "WAITING");
+        }
+        lv_label_set_text(g_performance_ipc_label, text);
+    }
+
+    if ((NULL != g_performance_memory_label) && metrics.cpu1_memory_valid) {
+        (void) snprintf(
+            text, sizeof(text),
+            "RAM %lu/%lu KB  %lu.%lu%%    FLASH %lu/%lu KB  %lu.%lu%%\n"
+            "SDRAM %lu/%lu KB  %lu.%lu%%",
+            (unsigned long) (ram_used / 1024U),
+            (unsigned long) (UI_SYSTEM_RAM_BYTES / 1024U),
+            (unsigned long) (((uint64_t) ram_used * 1000ULL / UI_SYSTEM_RAM_BYTES) / 10U),
+            (unsigned long) (((uint64_t) ram_used * 1000ULL / UI_SYSTEM_RAM_BYTES) % 10U),
+            (unsigned long) (flash_used / 1024U),
+            (unsigned long) (UI_SYSTEM_FLASH_BYTES / 1024U),
+            (unsigned long) (((uint64_t) flash_used * 1000ULL / UI_SYSTEM_FLASH_BYTES) / 10U),
+            (unsigned long) (((uint64_t) flash_used * 1000ULL / UI_SYSTEM_FLASH_BYTES) % 10U),
+            (unsigned long) (sdram_used / 1024U),
+            (unsigned long) (UI_SYSTEM_SDRAM_BYTES / 1024U),
+            (unsigned long) (((uint64_t) sdram_used * 1000ULL / UI_SYSTEM_SDRAM_BYTES) / 10U),
+            (unsigned long) (((uint64_t) sdram_used * 1000ULL / UI_SYSTEM_SDRAM_BYTES) % 10U));
+        lv_label_set_text(g_performance_memory_label, text);
+    }
 }
 
 static void add_circle(lv_obj_t * parent, int32_t x, int32_t y, int32_t size, lv_color_t color)
@@ -1198,6 +1315,13 @@ static void update_claw_current_widget(void)
                     lv_color_hex(0x1F7A5A) : lv_color_hex(0x31445A),
                 0);
         }
+    }
+}
+
+static void on_performance(lv_event_t * e)
+{
+    if (lv_event_get_code(e) == LV_EVENT_CLICKED) {
+        show_performance();
     }
 }
 
@@ -2011,12 +2135,14 @@ static void show_home(void)
     task_2_button = add_button(page_screen(), "TASK 2  |  TOP + SIDE", 236, 169, 224, 40,
                                on_task_select,
                                (void *) (uintptr_t) FRUIT_UI_TASK_TOP_AND_SIDE);
-    add_small_button(page_screen(), "CAM TEST", 236, 219, 70, 40,
+    add_small_button(page_screen(), "CAM", 236, 219, 50, 40,
                      on_settings, NULL);
-    add_small_button(page_screen(), "JOINT", 313, 219, 70, 40,
+    add_small_button(page_screen(), "JOINT", 294, 219, 50, 40,
                      on_axis_angle_page, NULL);
-    add_small_button(page_screen(), "XYZ MOVE", 390, 219, 70, 40,
+    add_small_button(page_screen(), "XYZ", 352, 219, 50, 40,
                      on_manual_coordinate_page, NULL);
+    add_small_button(page_screen(), "PERF", 410, 219, 50, 40,
+                     on_performance, NULL);
 
     card = add_card(page_screen(), 218, 269, 242, 39);
     lv_obj_set_style_pad_all(card, 5, 0);
@@ -2075,6 +2201,42 @@ static void show_home(void)
     }
 
     update_home_detection_widgets();
+    finish_screen_switch();
+}
+
+static void show_performance(void)
+{
+    lv_obj_t * card;
+
+    prepare_screen();
+    g_current_page = UI_PAGE_PERFORMANCE;
+    g_task_stream_active = false;
+    g_performance_refresh_tick = 0U;
+
+    add_small_button(page_screen(), "HOME", 12, 12, 68, 30, on_home, NULL);
+    add_label(page_screen(), "SYSTEM PERFORMANCE", lv_color_hex(0x20303F),
+              &lv_font_montserrat_18, LV_ALIGN_TOP_MID, 0, 15);
+    add_label(page_screen(), "LIVE", lv_color_hex(0x1F7A5A),
+              &lv_font_montserrat_10, LV_ALIGN_TOP_RIGHT, -16, 20);
+
+    g_performance_inference_label =
+        add_performance_card("NPU INFERENCE", 20, 52);
+    g_performance_fps_label =
+        add_performance_card("VISION THROUGHPUT", 250, 52);
+    g_performance_total_label =
+        add_performance_card("VISION -> EXECUTION", 20, 134);
+    g_performance_ipc_label =
+        add_performance_card("IPC ONE-WAY", 250, 134);
+
+    card = add_card(page_screen(), 20, 216, 440, 91);
+    add_label(card, "ACTUAL LINKED MEMORY (CPU0 + CPU1)",
+              lv_color_hex(0x77818C), &lv_font_montserrat_10,
+              LV_ALIGN_TOP_LEFT, 0, 0);
+    g_performance_memory_label =
+        add_label(card, "WAITING FOR CPU1...", lv_color_hex(0x435466),
+                  &lv_font_montserrat_12, LV_ALIGN_CENTER, 0, 10);
+
+    update_performance_page();
     finish_screen_switch();
 }
 
@@ -2389,6 +2551,17 @@ void fruit_ui_process(void)
     bool has_task_camera_update = false;
     fruit_ui_target_t pending_pick_sent_target = FRUIT_UI_TARGET_NONE;
     bool has_pick_sent_update = false;
+
+    if (UI_PAGE_PERFORMANCE == g_current_page) {
+        TickType_t const now = xTaskGetTickCount();
+
+        if ((0U == g_performance_refresh_tick) ||
+            ((now - g_performance_refresh_tick) >=
+             pdMS_TO_TICKS(UI_PERFORMANCE_REFRESH_MS))) {
+            update_performance_page();
+            g_performance_refresh_tick = now;
+        }
+    }
 
     taskENTER_CRITICAL();
     if (g_target_update_pending) {
@@ -3562,6 +3735,11 @@ bool fruit_ui_is_arm_setting_active(void)
 {
     return (UI_PAGE_AXIS_ANGLE == g_current_page) ||
            (UI_PAGE_MANUAL_COORDINATE == g_current_page);
+}
+
+bool fruit_ui_is_performance_page_active(void)
+{
+    return UI_PAGE_PERFORMANCE == g_current_page;
 }
 
 void fruit_ui_set_arm_telemetry(uint32_t        valid_mask,

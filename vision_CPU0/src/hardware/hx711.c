@@ -12,11 +12,16 @@
 #define HX711_TARE_WINDOW_SAMPLES (16U)
 #define HX711_TARE_TIMEOUT_MS  (5000U)
 #define HX711_TARE_MAX_SPAN    (600L) /* About 0.83 g peak-to-peak at the current calibration. */
-#define HX711_FILTER_SAMPLES   (16U)
+#define HX711_FILTER_SAMPLES   (4U)
 #define HX711_READY_POLL_MS    (5U)
-#define HX711_FILTER_TIMEOUT_MS (5000U)
+#define HX711_FILTER_TIMEOUT_MS (500U)
 #define HX711_COUNTS_PER_10G   (7192L) /* 719.2 counts/g: net ~= 359600 at 500 g. */
 #define HX711_ZERO_DEADBAND    (40L)
+
+static int32_t g_hx711_filter_window[HX711_FILTER_SAMPLES];
+static int64_t g_hx711_filter_sum;
+static uint32_t g_hx711_filter_count;
+static uint32_t g_hx711_filter_index;
 
 static void hx711_delay_1us(void)
 {
@@ -27,6 +32,10 @@ void hx711_init(void)
 {
     /* PD_SCK must remain low while HX711 is converting. */
     (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, HX711_SCK, BSP_IO_LEVEL_LOW);
+
+    g_hx711_filter_sum = 0;
+    g_hx711_filter_count = 0U;
+    g_hx711_filter_index = 0U;
 }
 
 bool hx711_is_ready(void)
@@ -81,42 +90,6 @@ bool hx711_read(int32_t * p_raw)
     }
 
     *p_raw = (int32_t) value;
-    return true;
-}
-
-static bool hx711_average(uint32_t sample_count, uint32_t timeout_ms, int32_t * p_average)
-{
-    int64_t sum = 0;
-    uint32_t samples = 0U;
-    TickType_t const deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
-
-    if ((0U == sample_count) || (NULL == p_average))
-    {
-        return false;
-    }
-
-    while ((samples < sample_count) &&
-           ((int32_t) (deadline - xTaskGetTickCount()) > 0))
-    {
-        int32_t raw = 0;
-
-        if (hx711_read(&raw))
-        {
-            sum += raw;
-            samples++;
-        }
-        else
-        {
-            vTaskDelay(pdMS_TO_TICKS(HX711_READY_POLL_MS));
-        }
-    }
-
-    if (samples != sample_count)
-    {
-        return false;
-    }
-
-    *p_average = (int32_t) (sum / (int64_t) sample_count);
     return true;
 }
 
@@ -185,7 +158,45 @@ hx711_prepare_status_t hx711_prepare(int32_t * p_offset)
 
 bool hx711_read_filtered(int32_t * p_raw)
 {
-    return hx711_average(HX711_FILTER_SAMPLES, HX711_FILTER_TIMEOUT_MS, p_raw);
+    int32_t raw = 0;
+    TickType_t const deadline =
+        xTaskGetTickCount() + pdMS_TO_TICKS(HX711_FILTER_TIMEOUT_MS);
+
+    if (NULL == p_raw)
+    {
+        return false;
+    }
+
+    /* Wait for exactly one fresh conversion.  The moving window retains the
+     * previous samples, so a new filtered value is available at the HX711
+     * data rate instead of after another complete four-sample batch. */
+    while ((int32_t) (deadline - xTaskGetTickCount()) > 0)
+    {
+        if (hx711_read(&raw))
+        {
+            if (g_hx711_filter_count < HX711_FILTER_SAMPLES)
+            {
+                g_hx711_filter_count++;
+            }
+            else
+            {
+                g_hx711_filter_sum -=
+                    g_hx711_filter_window[g_hx711_filter_index];
+            }
+
+            g_hx711_filter_window[g_hx711_filter_index] = raw;
+            g_hx711_filter_sum += raw;
+            g_hx711_filter_index =
+                (g_hx711_filter_index + 1U) % HX711_FILTER_SAMPLES;
+            *p_raw = (int32_t) (g_hx711_filter_sum /
+                                (int64_t) g_hx711_filter_count);
+            return true;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(HX711_READY_POLL_MS));
+    }
+
+    return false;
 }
 
 int32_t hx711_net_to_weight_0p1g(int32_t net)

@@ -32,6 +32,14 @@
 #define IPC_MANUAL_COORDINATE_MIN_0P1MM (-9999)
 #define IPC_MANUAL_COORDINATE_MAX_0P1MM (9999)
 #define IPC_COORDINATE_BATCH_MAX_ITEMS  (3U)
+#define IPC_PERFORMANCE_PING_PREFIX      (0x50470000U) /* "PG" + sequence */
+#define IPC_PERFORMANCE_REPLY_PREFIX     (0x50520000U) /* "PR" + sequence */
+#define IPC_PERFORMANCE_EXEC_ACK_PREFIX  (0x45410000U) /* "EA" + batch id */
+#define IPC_PERFORMANCE_RAM_PREFIX       (0x524D0000U) /* "RM" + 256-byte units */
+#define IPC_PERFORMANCE_FLASH_PREFIX     (0x464C0000U) /* "FL" + 256-byte units */
+#define IPC_PERFORMANCE_SDRAM_PREFIX     (0x53440000U) /* "SD" + 256-byte units */
+#define IPC_PERFORMANCE_MESSAGE_MASK     (0xFFFF0000U)
+#define IPC_PERFORMANCE_VALUE_MASK       (0x0000FFFFU)
 
 typedef struct st_ipc_manual_coordinate
 {

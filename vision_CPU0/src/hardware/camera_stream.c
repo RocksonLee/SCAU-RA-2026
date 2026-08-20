@@ -1867,6 +1867,8 @@ void camera_stream_task(void)
                         vTaskDelay(pdMS_TO_TICKS(1000U));
                     }
 
+                    app_detection_performance_track_execution(
+                        selected_batch.batch_id);
                     while (!ipc_detection_send_coordinate_batch(&selected_batch))
                     {
                         camera_uart_send_text("PICK_ERR ipc_send_retry\r\n");

@@ -3,7 +3,6 @@
 #include "hardware/fruit_ui.h"
 #include "hardware/hx711.h"
 
-#define HX711_REPORT_PERIOD_MS   (200U)
 #define HX711_TARE_RETRY_MS      (1000U)
 
 /* Weight_Thread entry function */
@@ -36,7 +35,6 @@ void Weight_Thread_entry(void *pvParameters)
             int32_t const net = raw - offset;
             int32_t const weight_0p1g = hx711_net_to_weight_0p1g(net);
             fruit_ui_set_weight(weight_0p1g, true);
-            vTaskDelay(pdMS_TO_TICKS(HX711_REPORT_PERIOD_MS));
         }
         else
         {

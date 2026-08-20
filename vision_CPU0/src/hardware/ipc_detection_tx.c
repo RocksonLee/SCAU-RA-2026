@@ -163,3 +163,9 @@ bool ipc_detection_send_arm_telemetry_request(void)
 {
     return ipc_detection_send_word(IPC_ARM_TELEMETRY_REQUEST);
 }
+
+bool ipc_detection_send_performance_ping(uint16_t sequence)
+{
+    return ipc_detection_send_word(IPC_PERFORMANCE_PING_PREFIX |
+                                   (uint32_t) sequence);
+}

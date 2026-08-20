@@ -8,6 +8,7 @@
 #include "task.h"
 #include "camera_ov5640.h"
 #include "hal_data.h"
+#include "ipc_detection_protocol.h"
 #include "model.h"
 // 【34cm，112】，【36.5，146】[33,92] [37.5,172] [44,283] [47,338] [44.5,300] [40,219]
 #define DET_INPUT_SIZE              (256U)
@@ -92,6 +93,87 @@ static bool g_camera_light_settings_initialized;
 static volatile uint32_t g_green_ratio_threshold = APP_DETECTION_GREEN_RATIO_DEFAULT;
 static volatile bool g_top_camera_light_default = true;
 static volatile bool g_side_camera_light_default = true;
+static volatile uint32_t g_performance_inference_0p1ms;
+static volatile uint32_t g_performance_fps_0p1;
+static volatile uint32_t g_performance_vision_to_execution_0p1ms;
+static volatile uint32_t g_performance_ipc_latency_0p1ms;
+static volatile bool g_performance_inference_valid;
+static volatile bool g_performance_fps_valid;
+static volatile bool g_performance_vision_to_execution_valid;
+static volatile bool g_performance_ipc_latency_valid;
+static volatile uint32_t g_performance_cpu1_ram_bytes;
+static volatile uint32_t g_performance_cpu1_flash_bytes;
+static volatile uint32_t g_performance_cpu1_sdram_bytes;
+static volatile bool g_performance_cpu1_memory_valid;
+static TickType_t g_performance_frame_start_tick;
+static TickType_t g_performance_fps_window_tick;
+static uint32_t g_performance_fps_window_frames;
+static volatile TickType_t g_performance_execution_origin_tick;
+static volatile uint32_t g_performance_execution_batch_id;
+static volatile bool g_performance_execution_pending;
+static bool g_performance_cycle_counter_ready;
+
+static void performance_cycle_counter_init(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0U;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    g_performance_cycle_counter_ready =
+        (0U != (DWT->CTRL & DWT_CTRL_CYCCNTENA_Msk));
+}
+
+static void performance_record_frame(uint32_t inference_start_cycles,
+                                     TickType_t inference_start_tick)
+{
+    TickType_t const now = xTaskGetTickCount();
+    uint32_t inference_0p1ms;
+
+    if (g_performance_cycle_counter_ready && (SystemCoreClock > 0U))
+    {
+        uint32_t const cycles = DWT->CYCCNT - inference_start_cycles;
+        inference_0p1ms = (uint32_t) ((((uint64_t) cycles * 10000ULL) +
+                                      ((uint64_t) SystemCoreClock / 2ULL)) /
+                                     (uint64_t) SystemCoreClock);
+    }
+    else
+    {
+        inference_0p1ms =
+            (uint32_t) pdTICKS_TO_MS(now - inference_start_tick) * 10U;
+    }
+
+    g_performance_inference_0p1ms = inference_0p1ms;
+    g_performance_inference_valid = true;
+    if (0U == g_performance_fps_window_tick)
+    {
+        g_performance_fps_window_tick = now;
+        g_performance_fps_window_frames = 1U;
+    }
+    else
+    {
+        uint32_t const elapsed_ms =
+            (uint32_t) pdTICKS_TO_MS(now - g_performance_fps_window_tick);
+
+        if (elapsed_ms > 2000U)
+        {
+            /* Exclude time while recognition was deliberately idle. */
+            g_performance_fps_window_frames = 1U;
+            g_performance_fps_window_tick = now;
+        }
+        else
+        {
+            g_performance_fps_window_frames++;
+            if (elapsed_ms >= 1000U)
+            {
+                g_performance_fps_0p1 =
+                    (uint32_t) (((uint64_t) g_performance_fps_window_frames *
+                                 10000ULL) / (uint64_t) elapsed_ms);
+                g_performance_fps_valid = true;
+                g_performance_fps_window_frames = 0U;
+                g_performance_fps_window_tick = now;
+            }
+        }
+    }
+}
 
 static void det_settings_enable_backup_access(void)
 {
@@ -902,6 +984,10 @@ static void det_correct_center_by_pigment(uint8_t const          * p_rgb565_fram
 bool app_detection_init(void)
 {
     app_detection_settings_init();
+    if (!g_performance_cycle_counter_ready)
+    {
+        performance_cycle_counter_init();
+    }
     fsp_err_t const err = g_rm_ethosu0.p_api->open(g_rm_ethosu0.p_ctrl, g_rm_ethosu0.p_cfg);
     g_detection_initialized = (FSP_SUCCESS == err) || (FSP_ERR_ALREADY_OPEN == err);
 
@@ -931,7 +1017,10 @@ bool app_detection_run_frame(uint8_t const                 * p_rgb565_frame,
         return false;
     }
 
+    g_performance_frame_start_tick = xTaskGetTickCount();
     det_preprocess_rgb565(p_rgb565_frame);
+    uint32_t const inference_start_cycles = DWT->CYCCNT;
+    TickType_t const inference_start_tick = xTaskGetTickCount();
     if (!RunModel())
     {
         if (NULL != write_text)
@@ -941,6 +1030,7 @@ bool app_detection_run_frame(uint8_t const                 * p_rgb565_frame,
 
         return false;
     }
+    performance_record_frame(inference_start_cycles, inference_start_tick);
 
     uint32_t candidate_count = 0U;
     det_decode_nanodet(GetModelOutputPtr_output_70634(), &candidate_count);
@@ -996,4 +1086,77 @@ bool app_detection_run_frame(uint8_t const                 * p_rgb565_frame,
     *p_result_count = result_count;
 
     return true;
+}
+
+void app_detection_get_performance(app_performance_metrics_t * p_metrics)
+{
+    if (NULL == p_metrics)
+    {
+        return;
+    }
+
+    taskENTER_CRITICAL();
+    p_metrics->inference_0p1ms = g_performance_inference_0p1ms;
+    p_metrics->fps_0p1 = g_performance_fps_0p1;
+    p_metrics->vision_to_execution_0p1ms =
+        g_performance_vision_to_execution_0p1ms;
+    p_metrics->ipc_latency_0p1ms = g_performance_ipc_latency_0p1ms;
+    p_metrics->cpu1_ram_bytes = g_performance_cpu1_ram_bytes;
+    p_metrics->cpu1_flash_bytes = g_performance_cpu1_flash_bytes;
+    p_metrics->cpu1_sdram_bytes = g_performance_cpu1_sdram_bytes;
+    p_metrics->inference_valid = g_performance_inference_valid;
+    p_metrics->fps_valid = g_performance_fps_valid;
+    p_metrics->vision_to_execution_valid =
+        g_performance_vision_to_execution_valid;
+    p_metrics->ipc_latency_valid = g_performance_ipc_latency_valid;
+    p_metrics->cpu1_memory_valid = g_performance_cpu1_memory_valid;
+    taskEXIT_CRITICAL();
+}
+
+void app_detection_performance_set_ipc_latency(uint32_t latency_0p1ms)
+{
+    g_performance_ipc_latency_0p1ms = latency_0p1ms;
+    g_performance_ipc_latency_valid = true;
+}
+
+void app_detection_performance_track_execution(uint32_t batch_id)
+{
+    taskENTER_CRITICAL();
+    g_performance_execution_origin_tick = g_performance_frame_start_tick;
+    g_performance_execution_batch_id = batch_id;
+    g_performance_execution_pending = true;
+    taskEXIT_CRITICAL();
+}
+
+void app_detection_performance_finish_execution(uint32_t batch_id)
+{
+    if (g_performance_execution_pending &&
+        ((g_performance_execution_batch_id & 0xFFFFU) ==
+         (batch_id & 0xFFFFU)))
+    {
+        TickType_t const elapsed =
+            xTaskGetTickCountFromISR() - g_performance_execution_origin_tick;
+        g_performance_vision_to_execution_0p1ms =
+            (uint32_t) pdTICKS_TO_MS(elapsed) * 10U;
+        g_performance_vision_to_execution_valid = true;
+        g_performance_execution_pending = false;
+    }
+}
+
+void app_detection_performance_set_cpu1_memory(uint32_t message_prefix,
+                                               uint32_t bytes)
+{
+    if (IPC_PERFORMANCE_RAM_PREFIX == message_prefix)
+    {
+        g_performance_cpu1_ram_bytes = bytes;
+    }
+    else if (IPC_PERFORMANCE_FLASH_PREFIX == message_prefix)
+    {
+        g_performance_cpu1_flash_bytes = bytes;
+    }
+    else if (IPC_PERFORMANCE_SDRAM_PREFIX == message_prefix)
+    {
+        g_performance_cpu1_sdram_bytes = bytes;
+        g_performance_cpu1_memory_valid = true;
+    }
 }
