@@ -25,7 +25,9 @@
 #define CAMERA_SWITCH_SETTLE_MS  (1000U)
 #define CAMERA_SIDE_MUX_SETTLE_MS (50U)
 #define CAMERA_SIDE_SWITCH_SETTLE_MS (2500U)
-#define CAMERA_SIDE_WARMUP_FRAMES (5U)
+#define CAMERA_FAST_SWITCH_SETTLE_MS (250U)
+#define CAMERA_FAST_PRIME_ATTEMPTS (3U)
+#define CAMERA_CAPTURE_RECOVERY_THRESHOLD (2U)
 #define CAMERA_SIDE_READY_ATTEMPTS (20U)
 #define CAMERA_SIDE_READY_FRAMES   (3U)
 #define CAMERA_SIDE_READY_GAP_MS   (100U)
@@ -94,6 +96,7 @@ static char g_uart_line[CAMERA_UART_LINE_BYTES];
 static app_detection_result_t g_detection_results[APP_DETECTION_MAX_RESULTS];
 static bool g_camera_illumination_enabled;
 static bool g_camera_illumination_state_valid;
+static bool g_camera_initialized[2];
 
 typedef struct st_camera_top_samples
 {
@@ -122,7 +125,9 @@ static uint32_t g_camera_top_frame_id;
 static camera_box_filter_t g_camera_box_filters[CAMERA_BOX_VIEW_COUNT][APP_DETECTION_MAX_RESULTS];
 
 static bool camera_pair_to_ui_detection(ipc_camera_coordinate_pair_t const * p_pair,
-                                        fruit_ui_detection_t                * p_detection);
+                                         fruit_ui_detection_t                * p_detection);
+static bool camera_frame_has_visible_content(uint8_t const * p_rgb565_frame);
+static bool camera_set_illumination(bool enabled);
 
 static fruit_ui_target_t camera_stream_target_from_class(uint32_t class_id)
 {
@@ -802,26 +807,73 @@ static uint32_t camera_get_stable_top_results(app_detection_result_t * p_results
     return result_count;
 }
 
-static void camera_discard_settle_frames(void)
+static bool camera_prime_selected(uint32_t settle_ms,
+                                  uint32_t attempts,
+                                  bool require_visible_content)
 {
-    vTaskDelay(pdMS_TO_TICKS(CAMERA_SWITCH_SETTLE_MS));
+    vTaskDelay(pdMS_TO_TICKS(settle_ms));
 
-    for (uint32_t i = 0U; i < CAMERA_DISCARD_FRAMES; i++)
+    for (uint32_t frame = 0U; frame < attempts; frame++)
     {
-        (void) camera_capture_frame_with_retry(g_camera_frame);
-        vTaskDelay(pdMS_TO_TICKS(100U));
-    }
-}
+        if ((CAMERA_OV5640_OK == camera_capture_frame_with_retry(g_camera_frame)) &&
+            (!require_visible_content || camera_frame_has_visible_content(g_camera_frame)))
+        {
+            return true;
+        }
 
-static void camera_warmup_side_camera(void)
-{
-    vTaskDelay(pdMS_TO_TICKS(CAMERA_SIDE_SWITCH_SETTLE_MS));
-
-    for (uint32_t frame = 0U; frame < CAMERA_SIDE_WARMUP_FRAMES; frame++)
-    {
-        (void) camera_capture_frame_with_retry(g_camera_frame);
         vTaskDelay(pdMS_TO_TICKS(CAMERA_CAPTURE_RETRY_MS));
     }
+
+    return false;
+}
+
+static bool camera_full_recover_selected(bool side_camera,
+                                         bool illumination_enabled)
+{
+    uint32_t const camera_index = side_camera ? 1U : 0U;
+
+    (void) camera_ov5640_stop();
+    g_camera_initialized[0] = false;
+    g_camera_initialized[1] = false;
+    g_camera_illumination_state_valid = false;
+
+    if (FSP_SUCCESS != g_ioport.p_api->pinWrite(g_ioport.p_ctrl,
+                                                 CAMERA_MUX_SEL,
+                                                 side_camera ? BSP_IO_LEVEL_LOW :
+                                                               BSP_IO_LEVEL_HIGH))
+    {
+        camera_uart_send_text("CAM_RECOVER_ERR select\r\n");
+        return false;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(side_camera ? CAMERA_SIDE_MUX_SETTLE_MS :
+                                           CAMERA_MUX_SETTLE_MS));
+
+    camera_ov5640_result_t const init_result = camera_ov5640_init();
+    if (CAMERA_OV5640_OK != init_result)
+    {
+        camera_uart_send_camera_init_error(init_result);
+        return false;
+    }
+
+    g_camera_initialized[camera_index] = true;
+    if (!camera_set_illumination(illumination_enabled))
+    {
+        return false;
+    }
+
+    if (!camera_prime_selected(side_camera ? CAMERA_SIDE_SWITCH_SETTLE_MS :
+                                             CAMERA_SWITCH_SETTLE_MS,
+                               CAMERA_FAST_PRIME_ATTEMPTS,
+                               illumination_enabled))
+    {
+        return false;
+    }
+
+    camera_reset_box_filters(side_camera);
+    camera_uart_send_text(side_camera ? "CAM_ACTIVE SIDE RECOVERED\r\n" :
+                                        "CAM_ACTIVE TOP RECOVERED\r\n");
+    return true;
 }
 
 static bool camera_set_illumination(bool enabled)
@@ -887,14 +939,17 @@ static bool camera_settle_debug_light(bool expected_enabled)
 
 static bool camera_switch_to(bool side_camera, bool illumination_enabled)
 {
-    /* Ensure the currently selected module's illumination is off before power-down. */
+    uint32_t const camera_index = side_camera ? 1U : 0U;
+    bool fast_path = g_camera_initialized[camera_index];
+
+    /* Ensure the currently selected module's illumination is off before it is paused. */
     if (!camera_set_illumination(false))
     {
         camera_uart_send_text("CAM_SWITCH_ERR current_light_off\r\n");
         return false;
     }
 
-    camera_ov5640_result_t const stop_result = camera_ov5640_stop();
+    camera_ov5640_result_t const stop_result = camera_ov5640_pause();
 
     if (CAMERA_OV5640_OK != stop_result)
     {
@@ -914,45 +969,39 @@ static bool camera_switch_to(bool side_camera, bool illumination_enabled)
 
     vTaskDelay(pdMS_TO_TICKS(side_camera ? CAMERA_SIDE_MUX_SETTLE_MS : CAMERA_MUX_SETTLE_MS));
 
-    if (!side_camera)
+    camera_ov5640_result_t const start_result = fast_path ?
+        camera_ov5640_resume() : camera_ov5640_init_warm();
+    if (CAMERA_OV5640_OK != start_result)
     {
-        camera_ov5640_result_t const init_result = camera_ov5640_init();
-        if (CAMERA_OV5640_OK != init_result)
-        {
-            camera_uart_send_camera_init_error(init_result);
-            return false;
-        }
-
-        if (!camera_set_illumination(illumination_enabled))
-        {
-            camera_uart_send_text("CAM_SWITCH_ERR top_light\r\n");
-            return false;
-        }
-
-        camera_discard_settle_frames();
-        camera_reset_box_filters(false);
-        camera_uart_send_text("CAM_ACTIVE TOP\r\n");
-        return true;
+        camera_uart_send_text(fast_path ? "CAM_FAST_RESUME_ERR\r\n" :
+                                           "CAM_WARM_INIT_ERR\r\n");
+        return camera_full_recover_selected(side_camera, illumination_enabled);
     }
 
-    /* Preserve the 508cd09 power-cycle -> mux -> full OV5640 init order. */
-    camera_ov5640_result_t const init_result = camera_ov5640_init();
-    if (CAMERA_OV5640_OK != init_result)
-    {
-        camera_uart_send_camera_init_error(init_result);
-        return false;
-    }
+    g_camera_initialized[camera_index] = true;
 
     if (!camera_set_illumination(illumination_enabled))
     {
-        camera_uart_send_text("CAM_SWITCH_ERR side_light\r\n");
+        camera_uart_send_text(side_camera ? "CAM_SWITCH_ERR side_light\r\n" :
+                                            "CAM_SWITCH_ERR top_light\r\n");
         return false;
     }
 
-    /* Bad warm-up frames are discarded, but they do not block recognition. */
-    camera_warmup_side_camera();
-    camera_reset_box_filters(true);
-    camera_uart_send_text("CAM_ACTIVE SIDE\r\n");
+    if (!camera_prime_selected(fast_path ? CAMERA_FAST_SWITCH_SETTLE_MS :
+                                           (side_camera ? CAMERA_SIDE_SWITCH_SETTLE_MS :
+                                                          CAMERA_SWITCH_SETTLE_MS),
+                               CAMERA_FAST_PRIME_ATTEMPTS,
+                               illumination_enabled))
+    {
+        camera_uart_send_text("CAM_FAST_PRIME_ERR full_recover\r\n");
+        return camera_full_recover_selected(side_camera, illumination_enabled);
+    }
+
+    camera_reset_box_filters(side_camera);
+    camera_uart_send_text(side_camera ? (fast_path ? "CAM_ACTIVE SIDE FAST\r\n" :
+                                                     "CAM_ACTIVE SIDE WARM\r\n") :
+                                        (fast_path ? "CAM_ACTIVE TOP FAST\r\n" :
+                                                     "CAM_ACTIVE TOP WARM\r\n"));
     return true;
 }
 
@@ -1413,6 +1462,7 @@ void camera_stream_task(void)
     bool recognition_complete = false;
     bool camera_side_active = false;
     bool task_preview_started = false;
+    uint32_t consecutive_capture_failures = 0U;
 
     if (camera_debug_uart_init())
     {
@@ -1432,16 +1482,18 @@ void camera_stream_task(void)
     (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, CAMERA_MUX_SEL, BSP_IO_LEVEL_HIGH);
     vTaskDelay(pdMS_TO_TICKS(CAMERA_MUX_SETTLE_MS));
 
-    camera_ov5640_result_t const camera_init_result = camera_ov5640_init();
-    if (CAMERA_OV5640_OK != camera_init_result)
+    camera_ov5640_result_t camera_init_result;
+    do
     {
-        camera_uart_send_camera_init_error(camera_init_result);
-
-        while (1)
+        camera_init_result = camera_ov5640_init();
+        if (CAMERA_OV5640_OK != camera_init_result)
         {
-            vTaskDelay(pdMS_TO_TICKS(1000U));
+            camera_uart_send_camera_init_error(camera_init_result);
+            vTaskDelay(pdMS_TO_TICKS(500U));
         }
-    }
+    } while (CAMERA_OV5640_OK != camera_init_result);
+    g_camera_initialized[0] = true;
+    g_camera_initialized[1] = false;
 
     bool const initial_task_light =
         (FRUIT_UI_TASK_NONE != fruit_ui_get_task_mode()) &&
@@ -1596,9 +1648,31 @@ void camera_stream_task(void)
         if (CAMERA_OV5640_OK != camera_capture_frame_with_retry(g_camera_frame))
         {
             camera_uart_send_ceu_events_line();
-            vTaskDelay(pdMS_TO_TICKS(10U));
+            consecutive_capture_failures++;
+            if (consecutive_capture_failures >= CAMERA_CAPTURE_RECOVERY_THRESHOLD)
+            {
+                bool const recovery_light = fruit_ui_is_debug_mode_active() ?
+                    fruit_ui_debug_light_requested() :
+                    (camera_side_active ? app_detection_get_side_camera_light_default() :
+                                          app_detection_get_top_camera_light_default());
+
+                camera_uart_send_text("CAM_CAPTURE_ERR full_recover\r\n");
+                if (camera_full_recover_selected(camera_side_active, recovery_light))
+                {
+                    consecutive_capture_failures = 0U;
+                }
+                else
+                {
+                    vTaskDelay(pdMS_TO_TICKS(500U));
+                }
+            }
+            else
+            {
+                vTaskDelay(pdMS_TO_TICKS(10U));
+            }
             continue;
         }
+        consecutive_capture_failures = 0U;
 
         uint32_t result_count = 0U;
         bool const detection_ok = app_detection_run_frame(g_camera_frame,

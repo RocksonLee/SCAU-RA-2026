@@ -36,6 +36,9 @@ typedef struct st_camera_ov5640_ceu_debug
 } camera_ov5640_ceu_debug_t;
 
 camera_ov5640_result_t camera_ov5640_init(void);
+camera_ov5640_result_t camera_ov5640_init_warm(void);
+camera_ov5640_result_t camera_ov5640_pause(void);
+camera_ov5640_result_t camera_ov5640_resume(void);
 camera_ov5640_result_t camera_ov5640_stop(void);
 camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame);
 uint16_t camera_ov5640_chip_id(void);

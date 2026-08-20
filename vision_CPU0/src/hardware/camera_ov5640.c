@@ -355,7 +355,7 @@ static void ov5640_pin_reset(void)
     vTaskDelay(pdMS_TO_TICKS(200U));
 }
 
-static bool ov5640_soft_reset(void)
+static bool ov5640_soft_reset(bool allow_pin_reset)
 {
     for (uint32_t attempt = 0U; attempt < OV5640_RESET_RETRIES; attempt++)
     {
@@ -366,7 +366,14 @@ static bool ov5640_soft_reset(void)
         }
 
         (void) g_i2c_camera.p_api->abort(g_i2c_camera.p_ctrl);
-        ov5640_pin_reset();
+        if (allow_pin_reset)
+        {
+            ov5640_pin_reset();
+        }
+        else
+        {
+            vTaskDelay(pdMS_TO_TICKS(20U));
+        }
     }
 
     return false;
@@ -489,15 +496,21 @@ void camera_ov5640_get_ceu_debug(camera_ov5640_ceu_debug_t * p_debug)
     }
 }
 
-camera_ov5640_result_t camera_ov5640_init(void)
+static camera_ov5640_result_t ov5640_init_internal(bool hardware_reset)
 {
     fsp_err_t err;
 
     g_last_error_step = OV5640_STEP_NONE;
     g_last_failed_reg = 0U;
-    ov5640_configure_control_pins();
     ov5640_configure_parallel_pins();
-    ov5640_pin_reset();
+    if (hardware_reset)
+    {
+        /* RESET/PWDN are shared by the two camera modules. Reconfiguring
+         * these pins during a warm init would reset the already configured
+         * inactive camera and defeat fast switching. */
+        ov5640_configure_control_pins();
+        ov5640_pin_reset();
+    }
 
     err = g_i2c_camera.p_api->open(g_i2c_camera.p_ctrl, g_i2c_camera.p_cfg);
     if ((FSP_SUCCESS != err) && (FSP_ERR_ALREADY_OPEN != err))
@@ -506,7 +519,7 @@ camera_ov5640_result_t camera_ov5640_init(void)
         return CAMERA_OV5640_ERR_I2C;
     }
 
-    if (!ov5640_soft_reset())
+    if (!ov5640_soft_reset(hardware_reset))
     {
         g_last_error_step = OV5640_STEP_SOFT_RESET;
         return CAMERA_OV5640_ERR_I2C;
@@ -566,14 +579,23 @@ camera_ov5640_result_t camera_ov5640_init(void)
     return CAMERA_OV5640_OK;
 }
 
-camera_ov5640_result_t camera_ov5640_stop(void)
+camera_ov5640_result_t camera_ov5640_init(void)
+{
+    return ov5640_init_internal(true);
+}
+
+camera_ov5640_result_t camera_ov5640_init_warm(void)
+{
+    /* The sensor is already powered. Only the module currently selected by
+     * the camera mux is soft-reset and configured, so the other module keeps
+     * its register state for the next fast switch. */
+    return ov5640_init_internal(false);
+}
+
+camera_ov5640_result_t camera_ov5640_pause(void)
 {
     fsp_err_t const ceu_close_error = g_ceu0.p_api->close(g_ceu0.p_ctrl);
     bool const stream_stopped = ov5640_write_reg(0x3008U, 0x42U);
-
-    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_RESET, BSP_IO_LEVEL_LOW);
-    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_PWDN, BSP_IO_LEVEL_HIGH);
-    vTaskDelay(pdMS_TO_TICKS(10U));
 
     if ((FSP_SUCCESS != ceu_close_error) && (FSP_ERR_NOT_OPEN != ceu_close_error))
     {
@@ -581,6 +603,37 @@ camera_ov5640_result_t camera_ov5640_stop(void)
     }
 
     return stream_stopped ? CAMERA_OV5640_OK : CAMERA_OV5640_ERR_I2C;
+}
+
+camera_ov5640_result_t camera_ov5640_resume(void)
+{
+    fsp_err_t err;
+
+    ov5640_configure_parallel_pins();
+    if (!ov5640_write_reg(0x3008U, 0x02U))
+    {
+        return CAMERA_OV5640_ERR_I2C;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100U));
+    err = g_ceu0.p_api->open(g_ceu0.p_ctrl, g_ceu0.p_cfg);
+    if ((FSP_SUCCESS != err) && (FSP_ERR_ALREADY_OPEN != err))
+    {
+        return CAMERA_OV5640_ERR_CAPTURE;
+    }
+
+    ov5640_set_ceu_sync_period();
+    return CAMERA_OV5640_OK;
+}
+
+camera_ov5640_result_t camera_ov5640_stop(void)
+{
+    camera_ov5640_result_t const pause_result = camera_ov5640_pause();
+
+    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_RESET, BSP_IO_LEVEL_LOW);
+    (void) g_ioport.p_api->pinWrite(g_ioport.p_ctrl, OV5640_PIN_PWDN, BSP_IO_LEVEL_HIGH);
+    vTaskDelay(pdMS_TO_TICKS(10U));
+    return pause_result;
 }
 
 camera_ov5640_result_t camera_ov5640_capture_frame(uint8_t * p_frame)
