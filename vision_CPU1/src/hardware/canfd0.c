@@ -77,31 +77,17 @@ static void canfd0_delay_ms(uint32_t delay_ms)
 	vTaskDelay(pdMS_TO_TICKS(delay_ms));
 }
 
-static bool canfd0_wait_tx_complete(void)
-{
-	TickType_t const start_tick = xTaskGetTickCount();
-	TickType_t const timeout_ticks = pdMS_TO_TICKS(CANFD_TX_TIMEOUT_MS);
-
-	while (!canfd0_tx_complete_flag)
-	{
-		if ((xTaskGetTickCount() - start_tick) >= timeout_ticks)
-		{
-			canfd0_tx_complete_flag = false;
-			return false;
-		}
-
-		vTaskDelay(pdMS_TO_TICKS(CANFD_TX_POLL_MS));
-	}
-
-	canfd0_tx_complete_flag = false;
-	return true;
-}
-
 /*
  * All commands share TX mailbox 0. A fixed delay cannot guarantee that the
  * previous request has left the mailbox. If arbitration or a retry keeps it
  * busy, R_CANFD_Write returns FSP_ERR_CAN_TRANSMIT_NOT_READY; the old
  * assert-only handling silently discarded that frame in release builds.
+ *
+ * Do not make command progress depend on the TX-complete callback. Some board
+ * configurations can report that callback later than the former 20 ms wait,
+ * even though the driver has already accepted the frame. Returning success as
+ * soon as R_CANFD_Write accepts the frame preserves the motor protocol timing;
+ * the next frame still waits here while mailbox 0 remains busy.
  */
 static bool canfd0_send_current_frame(void)
 {
@@ -111,14 +97,12 @@ static bool canfd0_send_current_frame(void)
 
 	do
 	{
-		/* Do not accept a TX-complete event left by the preceding frame. */
-		canfd0_tx_complete_flag = false;
 		err = R_CANFD_Write(&g_canfd0_ctrl,
 		                    CAN_MAILBOX_NUMBER_0,
 		                    &canfd0_tx_frame);
 		if (FSP_SUCCESS == err)
 		{
-			return canfd0_wait_tx_complete();
+			return true;
 		}
 
 		if (FSP_ERR_CAN_TRANSMIT_NOT_READY != err)
