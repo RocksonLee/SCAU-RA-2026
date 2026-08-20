@@ -9,7 +9,7 @@
 #define HANDEYE_TOP_CAL_Z_HIGH_MM     (385.0)
 #define HANDEYE_DENOMINATOR_EPSILON   (1.0e-9)
 #define HANDEYE_SIDE_Z_SLOPE_MM_PX    (0.39999866495781267)
-#define HANDEYE_SIDE_Z_OFFSET_MM      (278.64030625867775)
+#define HANDEYE_SIDE_Z_OFFSET_MM      (283.64030625867775)
 
 /* Z=0 top-camera homography used by the top-only task. */
 static double const g_camera_to_arm_homography_z0[3][3] =
@@ -29,9 +29,9 @@ static double const g_camera_to_arm_homography_z325[3][3] =
 
 static double const g_camera_to_arm_homography_z385[3][3] =
 {
-    {0.1914500083, 0.4343906439, 62.3737818695},
-    {0.9075307303, 0.2533455801, 42.1344710727},
-    {0.0025644552, 0.0008938283,  1.0000000000},
+    {0.0257950804, 0.3576002779, 66.9523336319},
+    {0.4781839469, 0.1959949183, 76.5192103329},
+    {0.0008325087, 0.0007115175,  1.0000000000},
 };
 
 static bool handeye_project_top(double const homography[3][3],
