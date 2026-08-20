@@ -29,10 +29,10 @@ typedef enum e_ipc_coordinate_rx_state
 #define ARM_CLAW_OPEN_DELAY_MS   (3000U)
 #define ARM_RESET_ZERO_DELAY_MS  (500U)
 #define ARM_DROP_AXIS_1_DEG      (0)
-#define ARM_DROP_AXIS_2_DEG      (-40)
+#define ARM_DROP_AXIS_2_DEG      (-50)
 #define ARM_DROP_AXIS_3_DEG      (15)
 #define ARM_DROP_AXIS_4_DEG      (0)
-#define ARM_DROP_AXIS_5_DEG      (50)
+#define ARM_DROP_AXIS_5_DEG      (30)
 #define ARM_TASK1_JOINT_5_DEG   (-30)
 #define ARM_TASK2_JOINT_5_DEG   (80)
 #define ARM_AXIS_COUNT           (5U)
@@ -75,6 +75,7 @@ extern TaskHandle_t Uart_dm_thread;
 #if !DM_COORDINATE_UART_ENABLE
 static void arm_publish_telemetry(void);
 static bool arm_move_to_zero(void);
+static bool arm_prepare_task(int32_t joint5_angle_deg);
 static bool arm_return_to_task_pose(void);
 
 static bool arm_move_to_point(handeye_arm_point_t const * p_point)
@@ -240,25 +241,14 @@ static bool arm_return_to_task_pose(void)
 {
     int32_t const joint5_angle_deg = g_task_joint5_angle_deg;
 
-    if (!CANFD0_Operation_1(0) ||
-        !CANFD0_Operation_2(0) ||
-        !CANFD0_Operation_3(0) ||
-        !CANFD0_Operation_5(joint5_angle_deg) ||
-        !run())
+    /* Complete a real all-axis ZERO first. Only after that movement settles
+     * may axis 5 rotate to the standby angle selected by the current Task. */
+    if (!arm_move_to_zero())
     {
         return false;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_SETTLE_DELAY_MS));
-
-    for (uint32_t i = 0U; i < IPC_ARM_TELEMETRY_AXIS_COUNT; i++)
-    {
-        g_arm_solved_angles_deg[i] = 0.0;
-    }
-    g_arm_solved_angles_deg[4] = (double) joint5_angle_deg;
-    g_arm_solved_angle_valid_mask = 0x1FU;
-    arm_publish_telemetry();
-    return true;
+    return arm_prepare_task(joint5_angle_deg);
 }
 
 static bool arm_move_to_zero(void)
