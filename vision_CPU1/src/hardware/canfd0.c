@@ -485,8 +485,8 @@ bool Claw_Control(void)
 	canfd0_tx_frame.data[5]=0xE8;
 	//同步标志
 	canfd0_tx_frame.data[6]=0x00;
-	//力矩电流限制200
-	canfd0_tx_frame.data[7]=0x00;
+	//力矩电流限制500 (0x01F4 mA)
+	canfd0_tx_frame.data[7]=0x01;
 	if (!canfd0_send_current_frame())
 	{
 		return false;
@@ -496,7 +496,7 @@ bool Claw_Control(void)
 	canfd0_tx_frame.data_length_code=CAN_DATA_LENGTH_CODE_P;
 	canfd0_tx_frame.data[0]=0xC6;
 	//接上面的电流限制
-	canfd0_tx_frame.data[1]=0xC8;
+	canfd0_tx_frame.data[1]=0xF4;
 	//校验码
 	canfd0_tx_frame.data[2]=0x6B;
 	
