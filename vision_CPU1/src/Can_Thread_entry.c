@@ -28,12 +28,11 @@ typedef enum e_ipc_coordinate_rx_state
 #define ARM_CLAW_SETTLE_DELAY_MS (3000U)
 #define ARM_CLAW_OPEN_DELAY_MS   (3000U)
 #define ARM_RESET_ZERO_DELAY_MS  (500U)
-#define ARM_DROP_AXIS_5_DELAY_MS (1000U)
 #define ARM_DROP_AXIS_1_DEG      (0)
-#define ARM_DROP_AXIS_2_DEG      (-50)
+#define ARM_DROP_AXIS_2_DEG      (-40)
 #define ARM_DROP_AXIS_3_DEG      (15)
 #define ARM_DROP_AXIS_4_DEG      (0)
-#define ARM_DROP_AXIS_5_DEG      (30)
+#define ARM_DROP_AXIS_5_DEG      (50)
 #define ARM_TASK1_JOINT_5_DEG   (-30)
 #define ARM_TASK2_JOINT_5_DEG   (80)
 #define ARM_AXIS_COUNT           (5U)
@@ -124,10 +123,6 @@ static bool arm_move_to_point(handeye_arm_point_t const * p_point)
         return false;
     }
 
-    /* Joint drivers are intentionally not polled for status. Some installations
-     * do not return 3A frames reliably; blocking here prevented joint 5 and the
-     * rest of the pick sequence from running even though motion frames were
-     * transmitted correctly. Keep the original fixed staging delay instead. */
     vTaskDelay(pdMS_TO_TICKS(ARM_JOINT_SETTLE_DELAY_MS));
 
     if (!CANFD0_Operation_5((int32_t) round(q5)) || !run())
@@ -158,10 +153,6 @@ static bool arm_move_to_drop_pose(void)
     {
         return false;
     }
-
-    /* Start the turntable after the arm links have already been moving for
-     * about one second, rather than triggering all four axes together. */
-    vTaskDelay(pdMS_TO_TICKS(ARM_DROP_AXIS_5_DELAY_MS));
 
     if (!CANFD0_Operation_5(ARM_DROP_AXIS_5_DEG) || !run())
     {
